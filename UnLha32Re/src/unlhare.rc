@@ -1,0 +1,88 @@
+#include <windows.h>
+#pragma code_page(65001)
+
+#define IDR_SFX_LOADER 101
+#define IDD_UNLHA_CONFIG 201
+#define IDD_UNLHA_LOCAL_CONFIG 202
+
+#ifdef _DEBUG
+IDR_SFX_LOADER RCDATA "..\\artifacts\\Debug\\unlhare_sfx_loader.exe"
+#else
+IDR_SFX_LOADER RCDATA "..\\artifacts\\Release\\unlhare_sfx_loader.exe"
+#endif
+
+IDD_UNLHA_CONFIG DIALOGEX 0, 0, 300, 222
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "UNLHA32 の設定"
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
+BEGIN
+    LTEXT           "基準ディレクトリ(&D)：",56,8,8,104,10
+    EDITTEXT        401,8,20,284,14,ES_UPPERCASE | ES_AUTOHSCROLL
+    CONTROL         "ディレクトリ構造を無視(&E)",410,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,39,130,10
+    GROUPBOX        "ディレクトリの扱い(&M)",402,8,53,138,43
+    CONTROL         "絶対ディレクトリ",403,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,16,67,120,10
+    CONTROL         "相対ディレクトリ",404,"Button",BS_AUTORADIOBUTTON,16,81,120,10
+    GROUPBOX        "不正パスチェック(&P)",413,153,53,139,57
+    CONTROL         "Level 0 (なし)",414,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,161,67,122,10
+    CONTROL         "Level 1 (基準ディレクトリ)",415,"Button",BS_AUTORADIOBUTTON,161,81,122,10
+    CONTROL         "Level 2 (絶対パス)",416,"Button",BS_AUTORADIOBUTTON,161,95,122,10
+    GROUPBOX        "上書き時の確認(&W)",405,8,103,138,57
+    CONTROL         "常に上書き",406,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,16,117,120,10
+    CONTROL         "確認する",407,"Button",BS_AUTORADIOBUTTON,16,131,120,10
+    CONTROL         "上書きしない",408,"Button",BS_AUTORADIOBUTTON,16,145,120,10
+    CONTROL         "属性も展開(&A)",409,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,161,119,122,10
+    PUSHBUTTON      "UNLHA32固有の設定(&L)>>",411,153,140,139,15
+    CONTROL         "",65535,"Static",SS_ETCHEDFRAME,8,169,284,1
+    DEFPUSHBUTTON   "了解(&O)",IDOK,82,179,64,15
+    PUSHBUTTON      "取消(&C)",IDCANCEL,153,179,64,15
+    PUSHBUTTON      "レジストリーに保存(&S)",412,82,201,135,15
+END
+
+IDD_UNLHA_LOCAL_CONFIG DIALOGEX 0, 0, 252, 132
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "UNLHA32 固有の設定"
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
+BEGIN
+    CONTROL         "ディレクトリ作成時の確認をしない(&M)",502,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,10,225,10
+    CONTROL         "ディスクスペースの確認をする(&S)",503,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,24,225,10
+    CONTROL         "バッファをフラッシュする(&B)",506,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,38,225,10
+    CONTROL         "メモリマップドファイルを使用(&F)",509,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,52,225,10
+    CONTROL         "合計でグラフ表示(&T)",504,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,66,112,10
+    CONTROL         "簡易ダイアログ(&D)",505,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,128,66,112,10
+    CONTROL         "旧式ログ出力(&L)",507,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,80,112,10
+    CONTROL         "旧式の gf スイッチ動作(&G)",508,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,128,80,112,10
+    DEFPUSHBUTTON   "了解(&O)",IDOK,58,105,64,15
+    PUSHBUTTON      "取消(&C)",IDCANCEL,130,105,64,15
+END
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 3,0,0,5
+ PRODUCTVERSION 3,0,0,5
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041104b0"
+        BEGIN
+            VALUE "FileDescription", "UnLha32Re UNLHA32-compatible library\0"
+            VALUE "FileVersion", "3.00.0.5\0"
+            VALUE "InternalName", "UNLHA32RE\0"
+            VALUE "LegalCopyright", "UnLhaRe contributors and upstream authors\0"
+            VALUE "OriginalFilename", "UNLHA32RE.DLL\0"
+            VALUE "ProductName", "UnLha32Re\0"
+            VALUE "ProductVersion", "3.00.0.5\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0411, 1200
+    END
+END
