@@ -86,6 +86,20 @@ foreach ($state in $ArchiveStates) { foreach ($case in $cases) { foreach ($comma
         foreach ($name in 'tree','tree/sub','empty') { if (-not (Test-Path -LiteralPath (Join-Path $inputDirectory $name) -PathType Container)) { throw "元ディレクトリーが失われました: $label/$side/$name" } }
         $metadata = @(& $TestProgram --registry '' --attribute-probe $Oracle $archive)
         if ($LASTEXITCODE -ne 0) { throw "生成書庫のメタデータを読み取れません: $label/$side" }
+        if ($side -eq 'reimpl') {
+            # 候補生成書庫を候補自身の全列挙・メモリ展開 API でも読み戻し、原版結果と厳密に比較する。
+            $candidateMetadata = @(& $TestProgram --registry '' --attribute-probe $Candidate $archive)
+            $candidateMetadataExit = $LASTEXITCODE
+            [IO.File]::WriteAllLines((Join-Path $root 'candidate-metadata.txt'),[string[]](@("probe-exit=$candidateMetadataExit") + $candidateMetadata))
+            if ($candidateMetadataExit -ne 0) {
+                throw "生成書庫のメタデータを候補自身で読み取れません: $label/$side"
+            }
+            $metadataDifference = @(Compare-Object $metadata $candidateMetadata -CaseSensitive -SyncWindow 0)
+            if ($metadataDifference.Count) {
+                $details = $metadataDifference | Select-Object -First 12 | Out-String -Width 2000
+                throw "候補生成書庫のメタデータ・メモリ展開が原版と不一致です: $label`n$details"
+            }
+        }
         $entries = @($metadata | Where-Object { $_ -match '^attribute\.0\.\d+=' })
         $expectedNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         if ($state -ne 'new') { $null = $expectedNames.Add('guard.txt') }

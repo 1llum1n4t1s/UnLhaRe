@@ -3,11 +3,13 @@
  * 変更内容と再配布条件は README.md / THIRD_PARTY_NOTICES.md を参照。
  */
 #include <windows.h>
+#include <commdlg.h>
 #include "UNLHA32.H"
 #include "UNLHA64EX.H"
 #include "UnLhaReSfxFormat.h"
 
 #pragma comment(lib, "version.lib")
+#pragma comment(lib, "comdlg32.lib")
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -23,6 +25,7 @@ extern "C" {
 }
 
 #include <shellapi.h>
+#include <shlwapi.h>
 #include <ctype.h>
 #include <algorithm>
 #include <atomic>
@@ -40,6 +43,8 @@ extern "C" {
 #include <io.h>
 #include <share.h>
 #include <crtdbg.h>
+
+#pragma comment(lib, "shlwapi.lib")
 
 // CRTの無効パラメータハンドラ（アサーションダイアログを抑制する）
 static void lha_invalid_parameter_handler(
@@ -88,6 +93,8 @@ struct WideCommandUtf8InputScope final {
     ~WideCommandUtf8InputScope() { g_wide_command_utf8_input = previous; }
 };
 static thread_local bool g_memory_extracting = false;
+class MemoryProgressDialog;
+static thread_local MemoryProgressDialog* g_memory_progress_dialog = nullptr;
 static thread_local bool g_command_progress_enabled = true;
 static thread_local bool g_rewrite_progress_member_transformed = false;
 static thread_local int g_command_progress_cancel_state = -1;
@@ -218,8 +225,9 @@ extern "C" int Lha_StatFile(const char* path, struct stat* status) {
 }
 
 extern "C" int Lha_RenameFile(const char* source, const char* destination) {
-    if (!g_unicode_mode.load()) return rename(source, destination);
-    return _wrename(StringToWString(source).c_str(), StringToWString(destination).c_str());
+    if (!UsesUnicodeFilePath(source) && !UsesUnicodeFilePath(destination))
+        return rename(source, destination);
+    return _wrename(FilePathToWide(source).c_str(), FilePathToWide(destination).c_str());
 }
 
 extern "C" int Lha_UnlinkFile(const char* path) {
@@ -242,21 +250,22 @@ extern "C" int Lha_OpenDescriptor(const char* path, int flags, ...) {
         mode = va_arg(arguments, int);
         va_end(arguments);
     }
-    return g_unicode_mode.load() ? _wopen(StringToWString(path).c_str(), flags, mode) : _open(path, flags, mode);
+    return UsesUnicodeFilePath(path) ? _wopen(FilePathToWide(path).c_str(), flags, mode)
+                                     : _open(path, flags, mode);
 }
 
 extern "C" int Lha_RemoveDirectory(const char* path) {
-    return g_unicode_mode.load() ? _wrmdir(StringToWString(path).c_str()) : _rmdir(path);
+    return UsesUnicodeFilePath(path) ? _wrmdir(FilePathToWide(path).c_str()) : _rmdir(path);
 }
 
 extern "C" int Lha_SetFileTimes(const char* path, struct utimbuf* times) {
-    if (!g_unicode_mode.load()) return utime(path, times);
+    if (!UsesUnicodeFilePath(path)) return utime(path, times);
     struct _utimbuf values{};
     if (times) {
         values.actime = times->actime;
         values.modtime = times->modtime;
     }
-    return _wutime(StringToWString(path).c_str(), times ? &values : nullptr);
+    return _wutime(FilePathToWide(path).c_str(), times ? &values : nullptr);
 }
 
 extern "C" unsigned int Lha_GetPathCodePage(void) { return ActiveCodePage(); }
@@ -326,7 +335,12 @@ static std::wstring HeaderNameToWString(const LzHeader& header, const UINT fallb
 }
 
 static void SetHeaderNameFromWide(LzHeader& header, std::wstring value,
-                                  const bool compression_utf8_input = false) {
+                                  const bool compression_utf8_input = false,
+                                  const bool compression_ansi_input = false,
+                                  bool* thread_ansi_directory_used_default = nullptr,
+                                  bool* thread_ansi_name_used_default = nullptr) {
+    if (thread_ansi_directory_used_default) *thread_ansi_directory_used_default = false;
+    if (thread_ansi_name_used_default) *thread_ansi_name_used_default = false;
     std::replace(value.begin(), value.end(), L'\\', L'/');
     const size_t separator = value.find_last_of(L'/');
     const std::wstring directory = separator == std::wstring::npos
@@ -353,6 +367,21 @@ static void SetHeaderNameFromWide(LzHeader& header, std::wstring value,
             WideStringToMultiByte(name, CP_THREAD_ACP, &name_used_default);
             // Unicode ファイル名を持つパスは、ANSI で表せる親ディレクトリも拡張へ保持する。
             directory_used_default = directory_used_default || (name_used_default && !directory.empty());
+        }
+    } else if (compression_ansi_input) {
+        const UINT stored_code_page = HeaderCodePage(header, ConfiguredArchiveCodePage());
+        // ANSI 圧縮入力はシステム ACP のファイル名を格納するが、level-2 の Unicode 拡張は
+        // 呼び出しスレッドの ANSI 表現可否にも従う。UTF-8 保存名は拡張を加えない。
+        if (stored_code_page != CP_UTF8 && stored_code_page != CP_UTF7) {
+            bool thread_directory_default = false;
+            bool thread_name_default = false;
+            WideStringToMultiByte(directory, CP_THREAD_ACP, &thread_directory_default);
+            WideStringToMultiByte(name, CP_THREAD_ACP, &thread_name_default);
+            if (thread_ansi_directory_used_default)
+                *thread_ansi_directory_used_default = thread_directory_default;
+            if (thread_ansi_name_used_default) *thread_ansi_name_used_default = thread_name_default;
+            directory_used_default = directory_used_default || thread_directory_default;
+            name_used_default = name_used_default || thread_name_default;
         }
     }
 
@@ -393,7 +422,9 @@ static std::string HeaderNameToString(const LzHeader& header, const UINT fallbac
 
 extern "C" void Lha_EncodeHeaderName(LzHeader* header) {
     if (!header) return;
-    header->input_name_code_page = ActiveCodePage();
+    // 圧縮コアの ANSI ファイル列挙はスレッドではなくシステム ACP の生バイトを返す。
+    header->input_name_code_page = g_unicode_mode.load() || g_wide_command_utf8_input
+        ? CP_UTF8 : CP_ACP;
     header->has_input_name_code_page = TRUE;
 }
 
@@ -431,13 +462,16 @@ extern "C" void Lha_EncodeStoredHeaderName(LzHeader* header) {
         return;
     }
     header->has_input_name_code_page = FALSE;
-    SetHeaderNameFromWide(*header, name, utf8_input);
+    bool thread_ansi_directory_default = false;
+    bool thread_ansi_name_default = false;
+    SetHeaderNameFromWide(*header, name, utf8_input, !utf8_input,
+                          &thread_ansi_directory_default, &thread_ansi_name_default);
     // 通知・進捗の元ヘッダーは保持し、保存用コピーだけを変換する。
-    if (!needs_unicode_name) {
+    if (!needs_unicode_name && !thread_ansi_name_default) {
         header->has_unicode_name = FALSE;
         header->unicode_name_length = 0;
     }
-    if (!needs_unicode_directory) {
+    if (!needs_unicode_directory && !thread_ansi_directory_default) {
         header->has_unicode_directory = FALSE;
         header->unicode_directory_length = 0;
     }
@@ -455,11 +489,11 @@ extern "C" int Lha_GetHeaderPath(const LzHeader* header, char* path, size_t capa
 }
 
 extern "C" char* Lha_FullPath(char* output, const char* path, size_t capacity) {
-    if (!g_unicode_mode.load()) return _fullpath(output, path, capacity);
+    if (!UsesUnicodeFilePath(path)) return _fullpath(output, path, capacity);
     wchar_t wide[FILENAME_LENGTH * 4]{};
-    const DWORD length = GetFullPathNameW(StringToWString(path).c_str(), _countof(wide), wide, nullptr);
+    const DWORD length = GetFullPathNameW(FilePathToWide(path).c_str(), _countof(wide), wide, nullptr);
     if (length == 0 || length >= _countof(wide)) return nullptr;
-    const std::string converted = WStringToString(wide);
+    const std::string converted = WideStringToUtf8(wide);
     if (!output || converted.size() >= capacity) return nullptr;
     strcpy_s(output, capacity, converted.c_str());
     return output;
@@ -681,6 +715,20 @@ static CommandEvent g_command_read_member;
 static std::vector<__int64> g_command_test_crc_errors;
 static bool g_command_crc_stopped = false;
 static std::wstring g_command_crc_failure_path;
+static std::wstring g_command_disk_space_failure_path;
+struct CommandExtractionFailure final {
+    int code = 0;
+    DWORD system_error = ERROR_SUCCESS;
+    std::wstring path;
+    const wchar_t* location = L"extractsub";
+    bool include_system_error = false;
+};
+static CommandExtractionFailure g_command_extraction_failure;
+// j の連結元を末尾判定で拒否した場合だけ、原版と同じ arccopy の出力を組み立てる。
+static bool g_rewrite_foreign_source_rejected = false;
+static std::wstring g_rewrite_foreign_source_path;
+// 最後の連結元で、終端から基本ヘッダー 21 バイトを読めるかによる終了状態を保つ。
+static DWORD g_rewrite_join_source_system_error = ERROR_SUCCESS;
 enum class CommandReadFailure {
     None,
     CopyFile,
@@ -704,8 +752,27 @@ struct CommandUpdatePolicy final {
     int protected_attributes = 0;
     bool suppress_errors = false;
     bool restore_attributes = false;
+    bool assume_overwrite = false;
+    bool assume_directory = false;
+    bool suppress_new_name = true;
+    bool check_disk_space = true;
+    int stop_on_extract_error = 0;
+    ULONGLONG reserved_disk_space = 0;
 };
 static CommandUpdatePolicy g_command_update_policy;
+enum class CommandFileQuestion { Overwrite, ReadOnly, Directory };
+struct CommandQuestionState final {
+    bool overwrite_all = false;
+    bool skip_existing = false;
+    int protected_all = 0;
+    int create_directory = 0;
+    const wchar_t* cancelled_location = nullptr;
+};
+static CommandQuestionState g_command_question_state;
+static constexpr int IDD_UNLHA_OVERWRITE = 204;
+extern "C" INT_PTR CALLBACK OverWriteMsgDlgProc(HWND, UINT, WPARAM, LPARAM);
+extern "C" INT_PTR CALLBACK OWReadOnlyMsgDlgProc(HWND, UINT, WPARAM, LPARAM);
+extern "C" INT_PTR CALLBACK MakeDirMsgDlgProc(HWND, UINT, WPARAM, LPARAM);
 struct CommandExistingMember final {
     FILETIME write_time;
     ULHA_INT64 size;
@@ -900,6 +967,15 @@ struct CompressionWriteBuffer {
 };
 static thread_local CompressionWriteBuffer g_compression_write_buffer;
 
+static void ClearNewCompressionArchiveState(FILE* file) {
+    if (file == g_new_compression_file) {
+        g_new_compression_file = nullptr;
+        g_new_compression_mapped = false;
+        g_new_compression_allocation = 0;
+        g_compression_write_buffer = CompressionWriteBuffer{};
+    }
+}
+
 static bool UsesCompressionWriteBuffer(FILE* file) {
     return file && file == g_new_compression_file && !g_new_compression_mapped;
 }
@@ -1022,13 +1098,11 @@ extern "C" int Lha_BeginNewCompressionArchive(const char* name, FILE** file) {
 }
 
 extern "C" int Lha_FinishNewCompressionArchive(FILE* file, off_t size) {
-    if (UsesCompressionWriteBuffer(file) && FlushCompressionWriteBuffer(file) != 0) return -1;
-    if (fflush(file) != 0) return -1;
-    const int result = _chsize_s(_fileno(file), size) == 0 ? 0 : -1;
-    if (file == g_new_compression_file) {
-        g_new_compression_file = nullptr;
-        g_compression_write_buffer = CompressionWriteBuffer{};
-    }
+    int result = 0;
+    if (UsesCompressionWriteBuffer(file) && FlushCompressionWriteBuffer(file) != 0) result = -1;
+    if (result == 0 && fflush(file) != 0) result = -1;
+    if (result == 0 && _chsize_s(_fileno(file), size) != 0) result = -1;
+    ClearNewCompressionArchiveState(file);
     return result;
 }
 
@@ -1670,7 +1744,7 @@ static std::wstring CommandCancellationMessage() {
 }
 
 static void ReportCommandCancellation() {
-    if (g_command_update_policy.suppress_errors) return;
+    if (g_memory_extracting || g_command_update_policy.suppress_errors) return;
     const std::wstring title = std::wstring(UseEnglishDialogResources() ? L"UNLHA32 Error report (on "
         : L"UNLHA32 エラー報告 (on ") + CommandCancellationLocation() + L")";
     MessageBoxW(nullptr, CommandCancellationMessage().c_str(), title.c_str(), MB_TASKMODAL | MB_ICONERROR);
@@ -1737,29 +1811,344 @@ extern "C" int Lha_CommandShouldAddMember(const LzHeader* header) {
         ? TRUE : FALSE;
 }
 
-static void InspectExistingExtractionFile(const std::wstring& path) {
+static DWORD InspectExistingExtractionFile(const std::wstring& path, bool& opened) {
     // 原版は判定対象を読み取りマッピングで開く。参照日時の更新もファイルシステムに委ねる。
-    // ビューは不要で、空ファイルや読み取り不可の場合も既存の選択判定は継続する。
+    // ビューは不要。空ファイルは判定を継続し、開けない場合は呼び出し元で停止する。
     const DWORD previous_error = GetLastError();
+    // 原版のボリューム照会前処理は NULL パスを 87 と記録する。
+    // マッピング成功時はその値を残し、未使用・空ファイルではサイズ照会の値へ更新する。
+    DWORD system_error = ERROR_INVALID_PARAMETER;
     const HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+    opened = file != INVALID_HANDLE_VALUE;
     if (file != INVALID_HANDLE_VALUE) {
         // 原版は空ファイルをマッピングしない。失敗するマッピング作成でも参照日時が変わる。
         LARGE_INTEGER size{};
-        if (ConfiguredMappedFileEnabled() && GetFileSizeEx(file, &size) && size.QuadPart > 0) {
+        SetLastError(ERROR_SUCCESS);
+        const BOOL sized = GetFileSizeEx(file, &size);
+        if (sized && ConfiguredMappedFileEnabled() && size.QuadPart > 0) {
             const HANDLE mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
             if (mapping) CloseHandle(mapping);
-        }
+            else system_error = GetLastError();
+        } else system_error = GetLastError();
         CloseHandle(file);
-    }
+    } else system_error = GetLastError();
     SetLastError(previous_error);
+    return system_error;
 }
 
-static int PrepareCommandExtraction(const LzHeader& header, std::wstring& path) {
+static std::wstring CommandExtractionErrorMessage(const int code) {
+    const bool english = UseEnglishDialogResources();
+    switch (code) {
+    case ERROR_MORE_FRESH: return english ? L"Newer or same file exists." : L"新しいファイルが既に存在しています";
+    case ERROR_ALREADY_EXIST: return english ? L"Already exists." : L"既にファイルが存在しています";
+    case ERROR_NOT_EXIST: return english ? L"No file exists." : L"同名のファイルが存在していません";
+    case ERROR_READ_ONLY: return english ? L"Read only file." : L"上書きしようとしているファイルはリードオンリーです";
+    case ERROR_USER_SKIP: return english ? L"Break signaled by user." : L"ユーザーによって展開をスキップされました";
+    case ERROR_UNKNOWN_TYPE: return english ? L"Unknown file type." : L"格納ファイルが MS-DOS で扱える形式ではありません";
+    case ERROR_MAKEDIRECTORY: return english ? L"Can't create directory." : L"ディレクトリが作成できません";
+    default: return english ? L"Can't open file." : L"ファイルを開けませんでした";
+    }
+}
+
+static std::wstring CommandExtractionFailureLocation() {
+    const auto& failure = g_command_extraction_failure;
+    return std::wstring(L" (on ") + failure.location +
+        (failure.include_system_error ? L" : " + std::to_wstring(failure.system_error) : L"") + L")";
+}
+
+static void RecordCommandExtractionFailure(const int code, const std::wstring& path, const DWORD system_error,
+                                          const wchar_t* location = L"extractsub", const bool include_system = false) {
+    auto& failure = g_command_extraction_failure;
+    failure = {code, system_error, path, location, include_system};
+    std::replace(failure.path.begin(), failure.path.end(), L'\\', L'/');
+    if (!g_command_update_policy.suppress_errors) {
+        const std::wstring title = (UseEnglishDialogResources() ? L"UNLHA32 Error report" : L"UNLHA32 エラー報告") +
+            CommandExtractionFailureLocation();
+        const std::wstring report = CommandExtractionErrorMessage(code) + L" : '" + failure.path + L"'";
+        MessageBoxW(nullptr, report.c_str(), title.c_str(), MB_TASKMODAL | MB_ICONERROR);
+    }
+}
+
+static void InitializeFileQuestionDialog(HWND dialog, const wchar_t* body, const CommandFileQuestion kind) {
+    const bool english = UseEnglishDialogResources();
+    const bool directory = kind == CommandFileQuestion::Directory;
+    SetWindowTextW(dialog, directory ? (english ? L"Creating Directory" : L"ディレクトリの作成")
+        : kind == CommandFileQuestion::ReadOnly
+        ? (english ? L"Overwriting a file" : L"特殊属性上書き確認")
+        : (english ? L"Overwriting" : L"上書き確認"));
+    SetDlgItemTextW(dialog, 11, body ? body : L"");
+    SetDlgItemTextW(dialog, 20, english ? L"&Process" : L"処理(&P)");
+    const wchar_t* overwrite_labels[] = {
+        english ? L"Over&Write" : L"上書き(&W)", english ? L"&Skip" : L"上書きしない(&N)",
+        english ? L"Overwrite &All" : L"全て上書き(&A)", english ? L"s&Kip All" : L"全て無視(&H)"
+    };
+    const wchar_t* directory_labels[] = {
+        english ? L"&Create" : L"作成する(&M)", english ? L"&Not create" : L"作成しない(&N)",
+        english ? L"Create &All" : L"以降全て作成(&A)", english ? L"&Skip All" : L"全て作成しない(&H)"
+    };
+    const wchar_t* const* labels = directory ? directory_labels : overwrite_labels;
+    for (int index = 0; index < 4; ++index) {
+        const HWND control = GetDlgItem(dialog, 21 + index);
+        SetWindowTextW(control, labels[index]);
+        HDC dc = GetDC(control);
+        if (dc) {
+            const HFONT font = reinterpret_cast<HFONT>(SendMessageW(control, WM_GETFONT, 0, 0));
+            const HGDIOBJ previous = font ? SelectObject(dc, font) : nullptr;
+            SIZE extent{};
+            if (GetTextExtentPoint32W(dc, labels[index], static_cast<int>(wcslen(labels[index])), &extent)) {
+                RECT rect{};
+                GetWindowRect(control, &rect);
+                SetWindowPos(control, nullptr, 0, 0, rect.right - rect.left + extent.cx,
+                    rect.bottom - rect.top, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+            }
+            if (previous) SelectObject(dc, previous);
+            ReleaseDC(control, dc);
+        }
+    }
+    SetDlgItemTextW(dialog, IDOK, english ? L"&Ok" : L"了解(&O)");
+    SetDlgItemTextW(dialog, IDCANCEL, english ? L"&Cancel" : L"中止(&C)");
+    CheckRadioButton(dialog, 21, 24, 21);
+
+    // 原版は長い説明行を最大2行へ折り返せる幅まで広げ、本文以外の配置は保つ。
+    LONG longest = 0;
+    HDC dc = GetDC(dialog);
+    if (dc && body) {
+        const HFONT font = reinterpret_cast<HFONT>(SendMessageW(dialog, WM_GETFONT, 0, 0));
+        const HGDIOBJ previous = font ? SelectObject(dc, font) : nullptr;
+        for (const wchar_t* cursor = body; *cursor;) {
+            const wchar_t* line = cursor;
+            while (*cursor >= 0x20) ++cursor;
+            SIZE extent{};
+            if (GetTextExtentPoint32W(dc, line, static_cast<int>(cursor - line), &extent))
+                longest = (std::max)(longest, extent.cx);
+            while (*cursor && *cursor < 0x20) ++cursor;
+        }
+        if (previous) SelectObject(dc, previous);
+    }
+    if (dc) ReleaseDC(dialog, dc);
+    RECT window{};
+    GetWindowRect(dialog, &window);
+    if (!directory && longest > 600) {
+        RECT units{0, 0, 4, 8};
+        MapDialogRect(dialog, &units);
+        const int base_width = units.right * 200 / 4;
+        const int extra = longest / 2 - base_width;
+        if (extra > 0) {
+            const HWND message_control = GetDlgItem(dialog, 11);
+            RECT message_rect{};
+            GetClientRect(message_control, &message_rect);
+            SetWindowPos(message_control, nullptr, units.right * 5 / 2, units.bottom * 5 / 8,
+                base_width + extra, message_rect.bottom, SWP_NOACTIVATE | SWP_NOZORDER);
+            window.right += extra;
+        }
+    }
+    RECT work_area{};
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0))
+        GetWindowRect(GetDesktopWindow(), &work_area);
+    RECT bounds = work_area;
+    // DialogBox が選び直した最上位所有者ではなく、呼び出し元の子ウィンドウも基準にする。
+    const HWND owner = g_hwndOwner;
+    if (owner && IsWindowVisible(owner)) GetWindowRect(owner, &bounds);
+    const int width = window.right - window.left, height = window.bottom - window.top;
+    // 原版と同じ個別の整数丸めと作業領域への補正を行う。
+    int target_x = bounds.left + (bounds.right - bounds.left) / 2 - width / 2;
+    int target_y = bounds.top + (bounds.bottom - bounds.top) / 2 - height / 2;
+    target_x = (std::max)(target_x, static_cast<int>(work_area.left));
+    target_y = (std::max)(target_y, static_cast<int>(work_area.top));
+    if (target_x + width > work_area.right) target_x = work_area.right - width;
+    if (target_y + height > work_area.bottom) target_y = work_area.bottom - height;
+    SetWindowPos(dialog, nullptr, target_x, target_y, width, height, SWP_NOACTIVATE | SWP_NOZORDER);
+}
+
+static const wchar_t* FileQuestionLocation(const CommandFileQuestion kind) {
+    return kind == CommandFileQuestion::Directory ? L"CheckDiretory"
+        : kind == CommandFileQuestion::ReadOnly ? L"OWReadOnlyMessage" : L"OverWriteMessage";
+}
+
+static INT_PTR HandleFileQuestionDialog(HWND dialog, const UINT message, const WPARAM wparam,
+                                       const LPARAM lparam, const CommandFileQuestion kind) {
+    if (message == WM_INITDIALOG) {
+        InitializeFileQuestionDialog(dialog, reinterpret_cast<const wchar_t*>(lparam), kind);
+        return FALSE;
+    }
+    if (message == WM_COMMAND || message == WM_CLOSE) {
+        const int action = message == WM_CLOSE ? IDCANCEL : LOWORD(wparam);
+        if (action == IDOK) {
+            int selected = 21;
+            for (int radio = 21; radio <= 24; ++radio)
+                if (IsDlgButtonChecked(dialog, radio) == BST_CHECKED) { selected = radio; break; }
+            if (kind == CommandFileQuestion::Directory) {
+                if (selected == 23) g_command_question_state.create_directory = 1;
+                else if (selected == 24) g_command_question_state.create_directory = 2;
+            } else if (kind == CommandFileQuestion::ReadOnly) {
+                if (selected == 23) g_command_question_state.protected_all = 1;
+                else if (selected == 24) g_command_question_state.protected_all = 2;
+            } else {
+                if (selected == 23) g_command_question_state.overwrite_all = true;
+                else if (selected == 24) g_command_question_state.skip_existing = true;
+            }
+            EndDialog(dialog, selected & 1);
+        } else if (action == IDCANCEL) {
+            g_command_question_state.cancelled_location = FileQuestionLocation(kind);
+            EndDialog(dialog, FALSE);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static std::vector<unsigned char> FileQuestionDialogTemplate() {
+    const HRSRC resource = FindResourceW(g_hModule, MAKEINTRESOURCEW(IDD_UNLHA_OVERWRITE), MAKEINTRESOURCEW(5));
+    const DWORD size = resource ? SizeofResource(g_hModule, resource) : 0;
+    const HGLOBAL loaded = resource ? LoadResource(g_hModule, resource) : nullptr;
+    const auto* bytes = loaded ? static_cast<const unsigned char*>(LockResource(loaded)) : nullptr;
+    if (!bytes || size < sizeof(DLGTEMPLATE)) return {};
+    size_t cursor = sizeof(DLGTEMPLATE);
+    const auto word = [&](const size_t offset) {
+        WORD value = 0;
+        if (offset + sizeof(value) <= size) memcpy(&value, bytes + offset, sizeof(value));
+        return value;
+    };
+    // 自分の標準ダイアログリソースのメニュー・クラス・タイトルを越える。
+    for (int field = 0; field < 3; ++field) {
+        if (cursor + 2 > size) return {};
+        if (word(cursor) == 0xffff) cursor += 4;
+        else {
+            while (cursor + 2 <= size && word(cursor) != 0) cursor += 2;
+            cursor += 2;
+        }
+    }
+    const size_t font_offset = cursor;
+    cursor += 2;
+    while (cursor + 2 <= size && word(cursor) != 0) cursor += 2;
+    cursor = (cursor + 2 + 3) & ~size_t{3};
+    if (cursor > size) return {};
+
+    LOGFONTW font{};
+    WORD points = 10;
+    std::wstring face = L"System";
+    if (GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(font), &font)) {
+        face = font.lfFaceName;
+        HDC dc = GetDC(nullptr);
+        const int dpi = dc ? GetDeviceCaps(dc, LOGPIXELSY) : 96;
+        if (dc) ReleaseDC(nullptr, dc);
+        points = static_cast<WORD>((std::max)(9L, dpi > 0 ? font.lfHeight * 72 / dpi : 9L));
+    }
+    std::vector<unsigned char> result(bytes, bytes + font_offset);
+    result.insert(result.end(), reinterpret_cast<const unsigned char*>(&points),
+        reinterpret_cast<const unsigned char*>(&points) + sizeof(points));
+    const auto* name = reinterpret_cast<const unsigned char*>(face.c_str());
+    result.insert(result.end(), name, name + (face.size() + 1) * sizeof(wchar_t));
+    result.resize((result.size() + 3) & ~size_t{3}, 0);
+    result.insert(result.end(), bytes + cursor, bytes + size);
+    return result;
+}
+
+static bool AskFileQuestion(const std::wstring& body, const CommandFileQuestion kind) {
+    // 原版は DEFAULT_GUI_FONT の実名と、下限9ポイントのサイズをテンプレートへ設定する。
+    const auto resource = FileQuestionDialogTemplate();
+    const DLGPROC callback = kind == CommandFileQuestion::Directory ? MakeDirMsgDlgProc
+        : kind == CommandFileQuestion::ReadOnly ? OWReadOnlyMsgDlgProc : OverWriteMsgDlgProc;
+    const INT_PTR answer = resource.empty() ? -1 : DialogBoxIndirectParamW(g_hModule,
+        reinterpret_cast<const DLGTEMPLATE*>(resource.data()), g_hwndOwner,
+        callback, reinterpret_cast<LPARAM>(body.c_str()));
+    // 画面生成に失敗した場合も、確認を得ていない保存先を変更しない。
+    if (answer < 0 && !g_command_question_state.cancelled_location)
+        g_command_question_state.cancelled_location = FileQuestionLocation(kind);
+    if (g_command_question_state.cancelled_location) {
+        const std::wstring title = std::wstring(UseEnglishDialogResources() ? L"UNLHA32 Error report (on "
+            : L"UNLHA32 エラー報告 (on ") + g_command_question_state.cancelled_location + L")";
+        MessageBoxW(nullptr, CommandCancellationMessage().c_str(), title.c_str(), MB_TASKMODAL | MB_ICONERROR);
+    }
+    return answer == TRUE && !g_command_question_state.cancelled_location;
+}
+
+static constexpr int COMMAND_EXTRACTION_RENAMED = 9;
+
+static bool SelectCommandExtractionName(std::wstring& path) {
+    if (g_command_update_policy.suppress_new_name) return false;
+    const bool english = UseEnglishDialogResources();
+    if (MessageBoxW(g_hwndOwner, english ? L"Change the filename?" : L"ファイル名を変更しますか？",
+        english ? L"Changing filename" : L"ファイル名変更確認",
+        MB_TASKMODAL | MB_ICONQUESTION | MB_YESNO) != IDYES) return false;
+
+    std::wstring initial = path;
+    std::replace(initial.begin(), initial.end(), L'/', L'\\');
+    const size_t slash = initial.find_last_of(L'\\');
+    std::wstring parent = slash == std::wstring::npos ? std::wstring() : initial.substr(0, slash);
+    if (slash == 0 || (parent.size() == 2 && parent[1] == L':')) parent += L'\\';
+    const std::wstring leaf = slash == std::wstring::npos ? initial : initial.substr(slash + 1);
+    wchar_t selected[512]{}, title[512]{}, previous_directory[32768]{};
+    if (leaf.size() >= _countof(selected)) return false;
+    wcscpy_s(selected, leaf.c_str());
+    const DWORD directory_length = GetCurrentDirectoryW(_countof(previous_directory), previous_directory);
+    if (!directory_length || directory_length >= _countof(previous_directory)) return false;
+    OPENFILENAMEW options{};
+    options.lStructSize = OPENFILENAME_SIZE_VERSION_400W;
+    options.hwndOwner = g_hwndOwner;
+    // 原版は表示名だけのフィルターと旧サイズ構造体を渡し、OS標準の保存画面を使う。
+    options.lpstrFilter = L"*.*\0\0";
+    options.nFilterIndex = 1;
+    options.lpstrFile = selected;
+    options.nMaxFile = _countof(selected);
+    options.lpstrFileTitle = title;
+    options.nMaxFileTitle = _countof(title);
+    options.lpstrInitialDir = parent.c_str();
+    options.Flags = OFN_HIDEREADONLY;
+    const BOOL accepted = GetSaveFileNameW(&options);
+    // 保存画面でフォルダーを移動しても、次の項目・命令の基点を変えない。
+    const BOOL restored = SetCurrentDirectoryW(previous_directory);
+    if (!accepted || !restored || !selected[0]) return false;
+    path = selected;
+    return true;
+}
+
+static int PrepareCommandParentDirectory(std::wstring& path, const bool selected_by_dialog = false) {
+    const size_t separator = path.find_last_of(L"/\\");
+    if (separator == std::wstring::npos) return 0;
+    std::wstring parent = path.substr(0, separator);
+    if (parent.size() == 2 && parent[1] == L':') parent += L'/';
+    const DWORD attributes = GetFileAttributesW(parent.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY)) return 0;
+    if (g_command_question_state.create_directory == 2) return 8;
+    if (g_command_question_state.create_directory == 1 || g_command_update_policy.assume_directory ||
+        g_command_update_policy.suppress_errors) return 0;
+    std::wstring displayed = path;
+    if (!selected_by_dialog) std::replace(displayed.begin(), displayed.end(), L'\\', L'/');
+    const std::wstring question = UseEnglishDialogResources()
+        ? L"'" + displayed + L"', Create this directory?"
+        : L"[" + displayed + L"]\r\nディレクトリが存在しません。作成しますか？";
+    if (AskFileQuestion(question, CommandFileQuestion::Directory)) return 0;
+    if (g_command_question_state.cancelled_location) return -1;
+    return SelectCommandExtractionName(path) ? COMMAND_EXTRACTION_RENAMED : 8;
+}
+
+static std::wstring OverwriteTimeText(const FILETIME& value) {
+    FILETIME local{};
+    SYSTEMTIME time{};
+    FileTimeToLocalFileTime(&value, &local);
+    FileTimeToSystemTime(&local, &time);
+    wchar_t formatted[32]{};
+    _snwprintf_s(formatted, _countof(formatted), _TRUNCATE, L"%04u/%02u/%02u %02u:%02u:%02u",
+        time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
+    return formatted;
+}
+
+static int PrepareCommandExtraction(const LzHeader& header, std::wstring& path, bool& existing_approved,
+                                    const bool selected_by_dialog, DWORD& system_error) {
+    existing_approved = false;
     WIN32_FILE_ATTRIBUTE_DATA existing{};
     bool exists = GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &existing) != FALSE;
-    if (exists && !(existing.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        InspectExistingExtractionFile(path);
+    system_error = exists ? ERROR_INVALID_PARAMETER : GetLastError();
+    if (exists && !(existing.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        bool opened = false;
+        system_error = InspectExistingExtractionFile(path, opened);
+        if (!opened) {
+            RecordCommandExtractionFailure(ERROR_FILE_OPEN, path, system_error, L"MyGetFileTimeInfo", true);
+            return -1;
+        }
+    }
     const auto& policy = g_command_update_policy;
     if (exists && policy.new_only) return 1;
     if (exists && policy.overwrite_mode == 2) {
@@ -1794,7 +2183,40 @@ static int PrepareCommandExtraction(const LzHeader& header, std::wstring& path) 
         if (!CommandTimestampMatches(incoming, existing.ftLastWriteTime, header.original_size, size))
             return policy.comparison == 2 ? 3 : (policy.comparison == 3 ? 4 : 2);
     }
-    if ((existing.dwFileAttributes & 7U) != 0 && policy.protected_attributes != 1) return 6;
+    if (g_command_question_state.skip_existing) return 4;
+    std::wstring display_path = path;
+    if (!selected_by_dialog) std::replace(display_path.begin(), display_path.end(), L'\\', L'/');
+    if (!policy.assume_overwrite && !policy.suppress_errors && !g_command_question_state.overwrite_all) {
+        const FILETIME incoming = HeaderTimeToFileTime(header, MemberTimeKind::Write);
+        const std::wstring question = L"LZH : " + OverwriteTimeText(incoming) + L", DISK : " +
+            OverwriteTimeText(existing.ftLastWriteTime) + L"\r\n'" + display_path +
+            (UseEnglishDialogResources() ? L"' is same or newer.\r\nOverwrite?"
+                : L"' は既に存在しています。\r\n上書きしますか？");
+        if (!AskFileQuestion(question, CommandFileQuestion::Overwrite)) {
+            if (g_command_question_state.cancelled_location) return -1;
+            return SelectCommandExtractionName(path) ? COMMAND_EXTRACTION_RENAMED : 4;
+        }
+    }
+    if ((existing.dwFileAttributes & 7U) != 0 && policy.protected_attributes != 1) {
+        if (policy.suppress_errors || policy.protected_attributes == 2) return 6;
+        if (g_command_question_state.protected_all == 2) return 6;
+        if (g_command_question_state.protected_all == 0) {
+            std::wstring attributes = L"---w";
+            if (existing.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE) attributes[0] = L'a';
+            if (existing.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) attributes[1] = L's';
+            if (existing.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) attributes[2] = L'h';
+            if (existing.dwFileAttributes & FILE_ATTRIBUTE_READONLY) attributes[3] = L'r';
+            const std::wstring question = L"'" + display_path + L"' [" + attributes + L"]  : " +
+                (UseEnglishDialogResources() ? L"Special attributes.\r\nOverwrite?"
+                    : L"特殊属性のファイルです。\r\n上書きしますか？");
+            if (!AskFileQuestion(question, CommandFileQuestion::ReadOnly))
+                return g_command_question_state.cancelled_location ? -1 : 6;
+        }
+    }
+    // 特殊属性の上書きを許可した時点で原版は全属性を通常へ戻す。
+    // 後続の容量確認で拒否しても、本文は保持し、この属性変更は残る。
+    if ((existing.dwFileAttributes & 7U) != 0) SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_NORMAL);
+    existing_approved = true;
     return 0;
 }
 
@@ -1804,9 +2226,28 @@ extern "C" int Lha_PrepareCommandExtraction(const LzHeader* header, char* path, 
     g_command_renamed_member.clear();
     g_command_renamed_member_w.clear();
     g_command_metadata_path.clear();
-    const bool unicode_path = UsesUnicodeFilePath(path);
+    bool unicode_path = UsesUnicodeFilePath(path);
     std::wstring wide_path = FilePathToWide(path);
-    const int reason = PrepareCommandExtraction(*header, wide_path);
+    bool existing_approved = false;
+    bool selected_by_dialog = false;
+    int reason = 0;
+    DWORD system_error = ERROR_SUCCESS;
+    do {
+        reason = PrepareCommandExtraction(*header, wide_path, existing_approved, selected_by_dialog, system_error);
+        if (reason == 0) reason = PrepareCommandParentDirectory(wide_path, selected_by_dialog);
+        // 選び直した名前は存在・日時・保護属性・親を再評価する。元の項目を再列挙しない。
+        if (reason == COMMAND_EXTRACTION_RENAMED) unicode_path = selected_by_dialog = true;
+    } while (reason == COMMAND_EXTRACTION_RENAMED);
+    // C++ の一時オブジェクトを破棄してから、C の呼び出し元で共通 cleanup へ移る。
+    if (reason < 0) return -1;
+    if (reason > 0 && g_command_update_policy.stop_on_extract_error == 2) {
+        const int codes[] = {0, ERROR_ALREADY_EXIST, ERROR_MORE_FRESH, ERROR_MORE_FRESH,
+            ERROR_MORE_FRESH, ERROR_NOT_EXIST, ERROR_READ_ONLY, ERROR_UNKNOWN_TYPE, ERROR_USER_SKIP};
+        if (reason < static_cast<int>(_countof(codes))) {
+            RecordCommandExtractionFailure(codes[reason], wide_path, reason == 8 ? ERROR_CANCELLED : system_error);
+            return -1;
+        }
+    }
     if (reason != 0) Lha_RecordHeaderCommandEvent("Skipped", header, reason);
     else {
         const std::string selected = unicode_path ? RegisterUnicodeExtractionPath(wide_path)
@@ -1825,7 +2266,87 @@ extern "C" int Lha_PrepareCommandExtraction(const LzHeader* header, char* path, 
             g_command_metadata_attributes = static_cast<DWORD>(HeaderAttributes(*header));
         }
     }
-    return reason == 0 ? TRUE : FALSE;
+    return reason == 0 ? (existing_approved ? 2 : 1) : 0;
+}
+
+extern "C" int Lha_PrepareCommandDirectoryExtraction(const char* path) {
+    if (!path) return 0;
+    std::wstring requested = FilePathToWide(path);
+    const int reason = PrepareCommandParentDirectory(requested);
+    // 明示ディレクトリ項目では原版も別名を作成せず、この項目の処理を終える。
+    return reason < 0 ? -1 : reason == 0 ? 1 : 0;
+}
+
+extern "C" int Lha_CommandChecksDiskSpace() {
+    return g_command_update_policy.check_disk_space ? TRUE : FALSE;
+}
+
+static std::wstring CommandDiskSpaceErrorMessage() {
+    return UseEnglishDialogResources() ? L"Not enough disk space." : L"ディスクの空きがありません";
+}
+
+extern "C" int Lha_CheckCommandDiskSpace(const LzHeader* header, const char* path) {
+    if (!header || !path || !g_command_update_policy.check_disk_space) return 1;
+    const std::wstring destination = FilePathToWide(path);
+    wchar_t absolute[32768]{};
+    wchar_t* leaf = nullptr;
+    const DWORD length = GetFullPathNameW(destination.c_str(), _countof(absolute), absolute, &leaf);
+    if (!length || length >= _countof(absolute) || !leaf) return 1;
+    *leaf = L'\0';
+    ULARGE_INTEGER available{};
+    // 呼び出し元に利用可能な容量を使う。作業ディレクトリを変更せず、Unicode の親を照会する。
+    if (!GetDiskFreeSpaceExW(absolute, &available, nullptr, nullptr)) return 1;
+    WIN32_FILE_ATTRIBUTE_DATA existing{};
+    ULONGLONG credit = 0;
+    if (GetFileAttributesExW(destination.c_str(), GetFileExInfoStandard, &existing) &&
+        !(existing.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        credit = (static_cast<ULONGLONG>(existing.nFileSizeHigh) << 32) | existing.nFileSizeLow;
+    const ULONGLONG incoming = header->original_size > 0 ? static_cast<ULONGLONG>(header->original_size) : 0;
+    const ULONGLONG required = incoming + g_command_update_policy.reserved_disk_space;
+    const ULONGLONG usable = available.QuadPart + credit;
+    // 加算の桁上がりを保持し、巨大な予約容量を小さな必要量として扱わない。
+    const bool required_carry = required < incoming;
+    const bool usable_carry = usable < available.QuadPart;
+    if (required_carry < usable_carry || (required_carry == usable_carry && required <= usable)) return 1;
+    const bool english = UseEnglishDialogResources();
+    const std::wstring member = HeaderNameToWString(*header, ConfiguredArchiveCodePage());
+    const std::wstring question = english ? L"Not enoough disk space for '" + member + L"'\r\nContinue?"
+        : L"'" + member + L"' を展開するための空きがありません。\r\n処理を続けますか？";
+    const int answer = g_command_update_policy.suppress_errors ? IDNO : MessageBoxW(g_hwndOwner,
+        question.c_str(), english ? L"UNLHA32 Warning report" : L"UNLHA32 警告",
+        MB_TASKMODAL | MB_ICONQUESTION | MB_YESNOCANCEL);
+    if (answer == IDYES) return 1;
+    if (answer != IDCANCEL) {
+        Lha_RecordHeaderCommandEvent("Skipped", header, 10);
+        return 0;
+    }
+    g_command_disk_space_failure_path = destination;
+    std::replace(g_command_disk_space_failure_path.begin(), g_command_disk_space_failure_path.end(), L'\\', L'/');
+    const std::wstring report = CommandDiskSpaceErrorMessage() + L" : '" + g_command_disk_space_failure_path + L"'";
+    MessageBoxW(nullptr, report.c_str(), english ? L"UNLHA32 Error report (on extractsub)"
+        : L"UNLHA32 エラー報告 (on extractsub)", MB_TASKMODAL | MB_ICONERROR);
+    // longjmp は一時オブジェクトの破棄後、C の呼び出し元で行う。
+    return -1;
+}
+
+extern "C" int Lha_HandleCommandCreateFailure(const LzHeader* header, const char* path) {
+    unsigned long system_error = 0;
+    _get_doserrno(&system_error);
+    if (!system_error) system_error = GetLastError();
+    if (!g_command_update_policy.stop_on_extract_error) {
+        Lha_RecordHeaderCommandEvent("Skipped", header, 11);
+        return 0;
+    }
+    RecordCommandExtractionFailure(ERROR_FILE_OPEN, FilePathToWide(path), system_error, L"extractsub", true);
+    // C++ の一時オブジェクトを破棄してから C 側の共通 cleanup で終了する。
+    return 1;
+}
+
+extern "C" void Lha_HandleCommandDirectoryFailure(const char* path) {
+    unsigned long system_error = 0;
+    _get_doserrno(&system_error);
+    if (!system_error) system_error = GetLastError();
+    RecordCommandExtractionFailure(ERROR_MAKEDIRECTORY, FilePathToWide(path), system_error, L"CheckDirectory", true);
 }
 
 extern "C" void Lha_RestoreCommandDirectoryMetadata(const LzHeader* header, const char* path) {
@@ -1921,6 +2442,7 @@ static ProgressMetadata MakeProgressMetadata(const LzHeader* header, const char*
                                               const char* destination, const ULHA_INT64 write_size,
                                               const ULHA_INT64 total_size) {
     ProgressMetadata result;
+    bool source_is_path = false;
     result.write_size = write_size;
     if (header) {
         result.file_size = header->original_size;
@@ -1938,11 +2460,13 @@ static ProgressMetadata MakeProgressMetadata(const LzHeader* header, const char*
         if (source && strcmp(source, header->name) != 0) {
             result.source_a = source;
             result.source_w = FilePathToWide(source);
+            source_is_path = true;
         }
         UnixTimeToDosTime(header->unix_last_modified_stamp, result.date, result.time);
     } else {
         result.source_a = source ? source : "";
         result.source_w = FilePathToWide(source);
+        source_is_path = source && *source;
     }
     result.legacy_file_size = total_size > 0 ? total_size : result.file_size;
     // p/t の列挙情報には仮の展開先名があるが、実ファイルを作らない進捗情報は空欄になる。
@@ -1953,6 +2477,12 @@ static ProgressMetadata MakeProgressMetadata(const LzHeader* header, const char*
     if (g_enum_command == UNLHA_ADD_COMMAND || g_enum_command == UNLHA_FRESH_COMMAND) {
         // 圧縮の通知先は原版と同じ区切りにする。ANSI の多バイト文字内の 0x5c は変更しない。
         std::replace(result.destination_w.begin(), result.destination_w.end(), L'\\', L'/');
+    }
+    if (g_enum_command == UNLHA_JOINT_COMMAND) {
+        // j の SEARCH/OPEN/COPY は、メンバー名ではなく実パスだけを '/' で通知する。
+        if (source_is_path) std::replace(result.source_w.begin(), result.source_w.end(), L'\\', L'/');
+        std::replace(result.destination_w.begin(), result.destination_w.end(), L'\\', L'/');
+        result.source_a = WStringToString(result.source_w);
     }
     result.destination_a = WStringToString(result.destination_w);
     if (g_wide_command_utf8_input) {
@@ -2008,7 +2538,7 @@ extern "C" int Lha_DispatchCompatProgress(const int state, const LzHeader* heade
                                              const char* source, const char* destination,
                                              const __int64 current_size,
                                              const __int64 total_size, const int os_override) {
-    if (g_memory_extracting || !g_command_progress_enabled || (!g_progressWindow && !g_lpArcProc) ||
+    if (!g_command_progress_enabled || (!g_progressWindow && !g_lpArcProc) ||
         g_owner_progress_layout == OwnerProgressLayout::None) {
         return 0;
     }
@@ -2021,7 +2551,7 @@ extern "C" int Lha_DispatchCompatProgress(const int state, const LzHeader* heade
         return (!result && state != ARCEXTRACT_COPY) ? 1 : 0;
     }
 
-    if (state == ARCEXTRACT_INPROCESS && header && current_size == 0 && total_size > 0 &&
+    if (!g_memory_extracting && state == ARCEXTRACT_INPROCESS && header && current_size == 0 && total_size > 0 &&
         (g_enum_command == UNLHA_EXTRACT_COMMAND || g_enum_command == UNLHA_PRINT_COMMAND ||
          g_enum_command == UNLHA_TEST_COMMAND)) {
         const bool stored = memcmp(header->method, LZHUFF0_METHOD, 5) == 0 ||
@@ -2033,6 +2563,13 @@ extern "C" int Lha_DispatchCompatProgress(const int state, const LzHeader* heade
 
     ProgressMetadata metadata = MakeProgressMetadata(header, source, destination,
                                                       current_size, total_size);
+    if (state == 5 /* ARCEXTRACT_SEARCH */ && !header && source &&
+        !g_unicode_mode.load() && !g_wide_command_utf8_input &&
+        (g_enum_command == UNLHA_ADD_COMMAND || g_enum_command == UNLHA_FRESH_COMMAND)) {
+        // 非 Unicode の圧縮入力列挙名だけは FindFirstFileA が返すシステム ACP の生バイトである。
+        // Unicode の GlobUnicode / W の UTF-8 入力を CP_ACP として再解釈してはならない。
+        metadata.source_w = MultiByteStringToWide(source, CP_ACP);
+    }
     // n/y の置換段階だけ、拡張情報のサイズは最後の圧縮本文長になる。
     if ((g_enum_command == UNLHA_RENAME_COMMAND || g_enum_command == UNLHA_CONVERT_COMMAND) &&
         g_rewrite_progress_member_transformed && destination && *destination &&
@@ -2219,6 +2756,7 @@ extern "C" {
     int Lha_GetDictionaryBits() { return g_command_dictionary_bits; }
     HWND Lha_GetHwndOwner() { return g_hwndOwner; }
     HWND Lha_GetProgressWindow() { return g_progressWindow; }
+    BOOL Lha_IsMemoryExtracting() { return g_memory_extracting ? TRUE : FALSE; }
     UINT Lha_GetArchiveCodePage() { return ConfiguredArchiveCodePage(); }
     BYTE Lha_GetCommonHeaderFlags() {
         TIME_ZONE_INFORMATION zone{};
@@ -2564,7 +3102,9 @@ static bool ValidateRawHeaderCrc(FILE* file, const __int64 header_start,
 }
 
 static bool FindValidArchiveHeader(FILE* file, __int64 start, const __int64 file_size,
-                                    const __int64 search_limit, LzHeader& header) {
+                                    const __int64 search_limit, LzHeader& header,
+                                    __int64* header_offset = nullptr) {
+    if (header_offset) *header_offset = -1;
     const __int64 limit = (std::min)(file_size, search_limit);
     if (start < 0 || limit < 2 || start > limit - 2) return false;
     // 原版の探索制限はヘッダー先頭の2バイトまで。残りのヘッダーは制限を越えて読み取れる。
@@ -2574,7 +3114,10 @@ static bool FindValidArchiveHeader(FILE* file, __int64 start, const __int64 file
         const __int64 header_start = _ftelli64(file);
         if (header_start < start || header_start > limit - 2) return false;
         if (ReadArchiveHeaderGuarded(file, header) && MethodNumber(header.method) >= 0 &&
-            ValidateRawHeaderCrc(file, header_start, _ftelli64(file), header.header_level)) return true;
+            ValidateRawHeaderCrc(file, header_start, _ftelli64(file), header.header_level)) {
+            if (header_offset) *header_offset = header_start;
+            return true;
+        }
         start = header_start + 1;
     }
     return false;
@@ -2674,14 +3217,32 @@ extern "C" int Lha_ReadCommandHeader(FILE* file, LzHeader* header, const int fir
 
 extern "C" int Lha_HasCommandHeaderError(void) { return g_command_header_error != 0; }
 
-static bool ArchiveStreamHasForeignTail(FILE* file) {
+static bool InspectArchiveStreamForeignTail(FILE* file, bool& valid_lzh,
+                                            __int64* valid_lzh_header_offset = nullptr) {
+    valid_lzh = false;
+    if (valid_lzh_header_offset) *valid_lzh_header_offset = -1;
+    const __int64 original_position = _ftelli64(file);
     const __int64 file_size = _filelengthi64(_fileno(file));
     DWORD ignored_error = ERROR_SUCCESS;
-    if (!HasForeignArchiveTail(file, file_size, ignored_error)) return false;
-    // 通常書庫はヘッダーを先読みせず、コアのエラー・出力状態を変えない。
-    make_crctable();
-    LzHeader header{};
-    return FindValidArchiveHeader(file, 0, file_size, file_size, header);
+    bool has_foreign_tail = HasForeignArchiveTail(file, file_size, ignored_error);
+    if (has_foreign_tail) {
+        // -jsg0 は LZH 書庫に付いた末尾だけを許可する。ZIP ディレクトリだけの入力は
+        // 常に arccopy の形式エラーとする。
+        make_crctable();
+        LzHeader header{};
+        __int64 header_offset = -1;
+        valid_lzh = FindValidArchiveHeader(file, 0, file_size, file_size, header,
+                                            &header_offset);
+        if (valid_lzh && valid_lzh_header_offset) *valid_lzh_header_offset = header_offset;
+    }
+    // 拒否しない入力は後段の get_header が読み始められる位置を必ず保つ。
+    if (original_position >= 0) _fseeki64(file, original_position, SEEK_SET);
+    return has_foreign_tail;
+}
+
+static bool ArchiveStreamHasForeignTail(FILE* file) {
+    bool valid_lzh = false;
+    return InspectArchiveStreamForeignTail(file, valid_lzh) && valid_lzh;
 }
 
 static bool VerifyArchiveMemberCrc(FILE* file, LzHeader& header,
@@ -3059,8 +3620,8 @@ static void GlobUnicode(const std::wstring& base, const std::wstring& pattern,
 }
 
 static void GlobRecursive(const std::string& baseDir, const std::string& searchPattern, std::vector<std::string>& results) {
-    if (g_unicode_mode.load()) {
-        GlobUnicode(StringToWString(baseDir), StringToWString(searchPattern), results, true);
+    if (g_unicode_mode.load() || g_wide_command_utf8_input) {
+        GlobUnicode(FilePathToWide(baseDir.c_str()), FilePathToWide(searchPattern.c_str()), results, true);
         return;
     }
     std::unordered_set<std::string> matched_files;
@@ -3091,8 +3652,8 @@ static void GlobRecursive(const std::string& baseDir, const std::string& searchP
 }
 
 static void GlobSingle(const std::string& baseDir, const std::string& searchPattern, std::vector<std::string>& results) {
-    if (g_unicode_mode.load()) {
-        GlobUnicode(StringToWString(baseDir), StringToWString(searchPattern), results, false);
+    if (g_unicode_mode.load() || g_wide_command_utf8_input) {
+        GlobUnicode(FilePathToWide(baseDir.c_str()), FilePathToWide(searchPattern.c_str()), results, false);
         return;
     }
     std::string findPath = baseDir + searchPattern;
@@ -3191,7 +3752,7 @@ static bool CopyArchiveBytes(FILE* source, FILE* destination, off_t size,
         const size_t chunk = static_cast<size_t>((std::min)(
             size, static_cast<off_t>(sizeof(buffer))));
         if (fread(buffer, 1, chunk, source) != chunk ||
-            fwrite(buffer, 1, chunk, destination) != chunk) {
+            Lha_WriteCompressionData(buffer, 1, chunk, destination) != chunk) {
             return false;
         }
         size -= static_cast<off_t>(chunk);
@@ -3222,16 +3783,19 @@ static bool OpenArchiveForRewrite(const std::string& path, FILE** file) {
     return true;
 }
 
-static bool CreateRewriteOutput(const std::string& destination,
-                                std::string& full_destination,
-                                std::string& temporary, FILE** output, const wchar_t* prefix = L"ulr") {
+static bool ResolveRewriteDestination(const std::string& destination,
+                                      std::string& full_destination) {
     wchar_t full_path[FILENAME_LENGTH * 2]{};
     const DWORD length = GetFullPathNameW(StringToWString(destination).c_str(),
                                           static_cast<DWORD>(_countof(full_path)),
                                           full_path, nullptr);
     if (length == 0 || length >= _countof(full_path)) return false;
     full_destination = WStringToString(full_path);
+    return true;
+}
 
+static bool CreateRewriteOutput(const std::string& full_destination,
+                                 std::string& temporary, FILE** output, const wchar_t* prefix = L"ulr") {
     const size_t separator = full_destination.find_last_of("\\/");
     const std::wstring directory = separator == std::string::npos
         ? std::wstring(L".") : StringToWString(full_destination.substr(0, separator + 1));
@@ -3248,6 +3812,42 @@ static bool CreateRewriteOutput(const std::string& destination,
         return false;
     }
     return true;
+}
+
+// RewriteArchiveStream 内の get_header/write_header は致命的な I/O 失敗で lha_exit() を
+// 経由し得る。通常の戻り値経路と同じく、出力と一時名を LHa の cleanup() に渡す。
+static void RegisterRewriteOutputForCleanup(FILE* output, const std::string& temporary) {
+    if (!output) return;
+    g_outfp = output;
+    temporary_fd = _fileno(output);
+    if (temporary_fd >= 0) {
+        strcpy_s(temporary_name, _countof(temporary_name), temporary.c_str());
+    }
+}
+
+static void ReleaseRewriteOutputFromCleanup(FILE* output, const int descriptor) {
+    if (g_outfp == output) g_outfp = nullptr;
+    if (temporary_fd == descriptor) temporary_fd = -1;
+}
+
+static void SetRewriteSearchProgressDirectory(const std::string& path) {
+    char full_path[FILENAME_LENGTH * 4]{};
+    if (!Lha_FullPath(full_path, path.c_str(), _countof(full_path))) {
+        Lha_SetProgressDestination("");
+        return;
+    }
+    char* slash = strrchr(full_path, '/');
+    char* backslash = strrchr(full_path, '\\');
+    char* separator = slash;
+    if (!separator || (backslash && backslash > separator)) separator = backslash;
+    if (separator) separator[1] = '\0';
+    else full_path[0] = '\0';
+    Lha_SetProgressDestination(full_path);
+}
+
+static const char* RewriteInputLeafName(const std::string& path) {
+    const size_t separator = path.find_last_of("\\/");
+    return path.c_str() + (separator == std::string::npos ? 0 : separator + 1);
 }
 
 static int RewriteFailure(const int code, const wchar_t* message,
@@ -3587,10 +4187,16 @@ static bool RewriteArchiveStream(FILE* input, FILE* output, const char command,
                                  const std::string& rename_target,
                                  const std::vector<std::string>& exclusions,
                                  const CommandCommentInput* comment, bool& changed) {
+    const __int64 join_source_size = command == 'j' && !existing_join_target
+        ? _filelengthi64(_fileno(input)) : -1;
     while (true) {
         const off_t header_start = ftello(input);
         LzHeader header{};
         if (!get_header(input, &header)) {
+            if (command == 'j' && !existing_join_target) {
+                g_rewrite_join_source_system_error = join_source_size - header_start < 21
+                    ? ERROR_HANDLE_EOF : ERROR_FILE_NOT_FOUND;
+            }
             Lha_RecordProgressHeaderEnd();
             break;
         }
@@ -3598,9 +4204,17 @@ static bool RewriteArchiveStream(FILE* input, FILE* output, const char command,
         const off_t data_start = ftello(input);
         const off_t raw_header_size = data_start - header_start;
         const off_t packed_size = header.packed_size;
-        if (command == 'n' || command == 'y') {
+        const bool notify_rewrite = command == 'n' || command == 'y' || command == 'j';
+        if (notify_rewrite) {
             g_rewrite_progress_member_transformed = false;
-            Lha_SetProgressMember(&header);
+            if (command == 'j' && !existing_join_target) {
+                // 連結元の進捗は末尾名、旧項目の進捗は格納パス。保存用ヘッダーは変えない。
+                LzHeader progress_header = header;
+                StripHeaderDirectory(progress_header);
+                Lha_SetProgressMember(&progress_header);
+            } else {
+                Lha_SetProgressMember(&header);
+            }
             if (Lha_SendCompatProgressMessage(ARCEXTRACT_BEGIN, header.name, 0, header.original_size))
                 return false;
         }
@@ -3622,7 +4236,7 @@ static bool RewriteArchiveStream(FILE* input, FILE* output, const char command,
             std::vector<unsigned char> raw(static_cast<size_t>(raw_header_size));
             if (fread(raw.data(), 1, raw.size(), input) != raw.size() ||
                 !ReplaceRawHeaderComment(raw, header, *comment) ||
-                fwrite(raw.data(), 1, raw.size(), output) != raw.size() ||
+                Lha_WriteCompressionData(raw.data(), 1, raw.size(), output) != raw.size() ||
                 !CopyArchiveBytes(input, output, packed_size)) return false;
             Lha_RecordHeaderCommandEvent("Commented", &header, 0);
             continue;
@@ -3685,7 +4299,7 @@ static bool RewriteArchiveStream(FILE* input, FILE* output, const char command,
                 return false;
             }
         } else {
-            if ((command == 'n' || command == 'y') && packed_size < 100 &&
+            if (notify_rewrite && packed_size < 100 && (command != 'y' || packed_size != 0) &&
                 Lha_SendCompatProgressMessage(ARCEXTRACT_INPROCESS, nullptr, 0, header.original_size))
                 return false;
             if (fseeko(input, data_start, SEEK_SET) != 0) return false;
@@ -3734,10 +4348,11 @@ static bool RewriteArchiveStream(FILE* input, FILE* output, const char command,
             }
             write_header(output, &header);
             header.packed_size = packed_size;
-            if (!CopyArchiveBytes(input, output, packed_size, command == 'n' || command == 'y')) return false;
+            if (!CopyArchiveBytes(input, output, packed_size, notify_rewrite)) return false;
             changed = true;
             if (command == 'n' || command == 'y') g_rewrite_progress_member_transformed = true;
-            if (command == 'n' &&
+            // 空本文の改名・結合項目はコピー前の 0 通知だけを送る。
+            if ((command == 'n' || command == 'j') && packed_size != 0 &&
                 Lha_SendCompatProgressMessage(ARCEXTRACT_INPROCESS, nullptr, packed_size, header.original_size))
                 return false;
         }
@@ -3759,6 +4374,7 @@ static int ExecuteRewriteCommand(const char command,
                                  const int requested_header_level,
                                  const bool strip_directories,
                                  const std::string& rename_target,
+                                 const bool reject_foreign_data,
                                  const CommandCommentInput* comment = nullptr) {
     make_crctable();
     if (operands.empty()) {
@@ -3773,14 +4389,33 @@ static int ExecuteRewriteCommand(const char command,
     std::string full_destination;
     std::string temporary;
     FILE* output = nullptr;
-    if (!CreateRewriteOutput(operands[0], full_destination, temporary, &output,
-            command == 'n' || command == 'y' ? L"LHT" : L"ulr")) {
+    if (!ResolveRewriteDestination(operands[0], full_destination)) {
         return RewriteFailure(ERROR_TMP_OPEN, L"一時書庫を作成できません。", GetLastError());
     }
 
+    const bool existing_join_target = command == 'j' &&
+        Lha_GetFileAttributes(full_destination.c_str()) != INVALID_FILE_ATTRIBUTES;
+    const bool new_join_progress = command == 'j' && !existing_join_target;
+    bool direct_new_join = false;
+    if (new_join_progress) {
+        const int direct_output = Lha_BeginNewCompressionArchive(full_destination.c_str(), &output);
+        if (direct_output < 0) {
+            return RewriteFailure(ERROR_TMP_OPEN, L"一時書庫を作成できません。", GetLastError());
+        }
+        if (direct_output > 0) {
+            temporary = full_destination;
+            direct_new_join = true;
+        }
+    }
+    if (!output && !CreateRewriteOutput(full_destination, temporary, &output,
+            command == 'n' || command == 'y' || existing_join_target ? L"LHT" : L"ulr")) {
+        return RewriteFailure(ERROR_TMP_OPEN, L"一時書庫を作成できません。", GetLastError());
+    }
+    RegisterRewriteOutputForCleanup(output, temporary);
     bool ok = true;
     bool changed = false;
-    const bool notify_rewrite = command == 'n' || command == 'y';
+    // 通知の有無と出力の公開方法を分離し、既存 j は置換成功まで元書庫を保持する。
+    const bool notify_rewrite = command == 'n' || command == 'y' || command == 'j';
     struct RewriteProgressCleanup final {
         bool enabled;
         ~RewriteProgressCleanup() {
@@ -3792,12 +4427,56 @@ static int ExecuteRewriteCommand(const char command,
     } progress_cleanup{notify_rewrite};
     if (notify_rewrite) {
         Lha_ClearProgressMember();
-        ok = !Lha_SendCompatProgressMessage(ARCEXTRACT_OPEN, full_destination.c_str(), 0, 0);
+        if (command == 'j') {
+            for (size_t index = 1; ok && index < operands.size(); ++index) {
+                const std::string leaf = RewriteInputLeafName(operands[index]);
+                bool excluded = false;
+                for (const std::string& pattern : exclude_patterns) {
+                    if (fnmatch(pattern.c_str(), leaf.c_str(), FNM_NOESCAPE | FNM_PERIOD) == 0) {
+                        excluded = true;
+                        break;
+                    }
+                }
+                if (!excluded) {
+                    SetRewriteSearchProgressDirectory(operands[index]);
+                    ok = !Lha_SendCompatProgressMessage(5 /* ARCEXTRACT_SEARCH */, leaf.c_str(), 0, 0);
+                }
+            }
+            Lha_ClearProgressMember();
+        }
+        if (ok) ok = !Lha_SendCompatProgressMessage(ARCEXTRACT_OPEN, full_destination.c_str(), 0, 0);
     }
     auto append_archive = [&](const std::string& path, const bool existing_join_target,
                               const std::vector<std::string>& patterns) {
         FILE* input = nullptr;
         if (!OpenArchiveForRewrite(path, &input)) return false;
+        g_update_archive_fp = input;
+        // 新規・既存とも連結元を Processing 前に末尾判定する。
+        // 既存の出力先そのものは対象外とし、拒否時は未公開の一時出力だけを解放する。
+        if (command == 'j' && !existing_join_target) {
+            bool foreign_source_is_lzh = false;
+            __int64 foreign_source_header_offset = -1;
+            if (InspectArchiveStreamForeignTail(input, foreign_source_is_lzh,
+                                                &foreign_source_header_offset)) {
+                if (reject_foreign_data || !foreign_source_is_lzh) {
+                    g_rewrite_foreign_source_path = CompressionInputAbsolutePath(path.c_str());
+                    if (g_rewrite_foreign_source_path.empty())
+                        g_rewrite_foreign_source_path = FilePathToWide(path.c_str());
+                    g_rewrite_foreign_source_rejected = true;
+                    if (g_update_archive_fp == input) g_update_archive_fp = nullptr;
+                    fclose(input);
+                    return false;
+                }
+                // 原版は先頭の非 SFX プレフィックスを越えて、有効な LZH ヘッダーから連結する。
+                // 末尾検査は読み取り位置を戻すため、許可した入力だけ実ヘッダー位置へ戻す。
+                if (foreign_source_header_offset < 0 ||
+                    _fseeki64(input, foreign_source_header_offset, SEEK_SET) != 0) {
+                    if (g_update_archive_fp == input) g_update_archive_fp = nullptr;
+                    fclose(input);
+                    return false;
+                }
+            }
+        }
         if (command == 'j' && !existing_join_target) {
             const std::wstring source = CompressionInputAbsolutePath(path.c_str());
             g_command_events.push_back({"Processing", {}, 0, source});
@@ -3807,12 +4486,13 @@ static int ExecuteRewriteCommand(const char command,
                                                  requested_header_level,
                                                  strip_directories, rename_target,
                                                  exclude_patterns, comment, changed);
+        if (g_update_archive_fp == input) g_update_archive_fp = nullptr;
         fclose(input);
         return result;
     };
 
     if (command == 'j') {
-        if (Lha_GetFileAttributes(full_destination.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        if (ok && existing_join_target) {
             ok = append_archive(full_destination, true, {});
         }
         for (size_t index = 1; ok && index < operands.size(); ++index) {
@@ -3833,24 +4513,57 @@ static int ExecuteRewriteCommand(const char command,
     }
 
     if (ok && fputc(0, output) == EOF) ok = false;
-    const off_t rewritten_size = ftello(output);
-    if (fflush(output) != 0) ok = false;
+    const off_t rewritten_size = static_cast<off_t>(Lha_TellCompressionFile(output));
+    if (rewritten_size < 0) ok = false;
+    if (direct_new_join) {
+        // 新規 j は原版同様、SEARCH 前に作った出力先を COPY の直前で実サイズへ確定する。
+        if (ok && Lha_FinishNewCompressionArchive(output, rewritten_size) != 0) ok = false;
+    } else if (fflush(output) != 0) ok = false;
+    const int output_descriptor = _fileno(output);
     if (fclose(output) != 0) ok = false;
+    ReleaseRewriteOutputFromCleanup(output, output_descriptor);
+    if (direct_new_join) {
+        // 圧縮器外の j 経路でも、次の命令へ閉じた descriptor や書込み状態を残さない。
+        ClearNewCompressionArchiveState(output);
+    }
     output = nullptr;
 
     if (!ok) {
-        Lha_UnlinkFile(temporary.c_str());
-        if (notify_rewrite && Lha_CheckAbort())
-            return RewriteFailure(ERROR_USER_CANCEL, L"ユーザーによって中断されました。", ERROR_CANCELLED);
+        const bool output_removed = Lha_UnlinkFile(temporary.c_str()) == 0;
+        if (g_rewrite_foreign_source_rejected && output_removed) return ERROR_FILE_STYLE;
+        if (g_rewrite_foreign_source_rejected) {
+            g_rewrite_foreign_source_rejected = false;
+            g_rewrite_foreign_source_path.clear();
+        }
+        if (notify_rewrite && Lha_CheckAbort()) {
+            const DWORD system_error = new_join_progress &&
+                (g_command_progress_cancel_state == ARCEXTRACT_BEGIN ||
+                 g_command_progress_cancel_state == ARCEXTRACT_INPROCESS)
+                ? ERROR_FILE_NOT_FOUND : ERROR_CANCELLED;
+            return RewriteFailure(ERROR_USER_CANCEL, L"ユーザーによって中断されました。", system_error);
+        }
         return RewriteFailure(ERROR_CANNOT_WRITE, L"書庫を再構築できません。",
                               ERROR_WRITE_FAULT);
     }
+    bool published_new_join = direct_new_join;
+    if (new_join_progress && changed && !published_new_join) {
+        if (!MoveFileExW(StringToWString(temporary).c_str(), StringToWString(full_destination).c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            const DWORD system_error = GetLastError();
+            Lha_UnlinkFile(temporary.c_str());
+            return RewriteFailure(ERROR_CANNOT_WRITE, L"書庫を置換できません。", system_error);
+        }
+        published_new_join = true;
+    }
     if (notify_rewrite && changed) {
         Lha_SetProgressDestination(full_destination.c_str());
-        Lha_SendCompatProgressMessage(ARCEXTRACT_COPY, temporary.c_str(), 0, rewritten_size);
+        Lha_SendCompatProgressMessage(ARCEXTRACT_COPY,
+                                      published_new_join ? full_destination.c_str() : temporary.c_str(),
+                                      0, rewritten_size);
     }
     if (notify_rewrite && Lha_SendCompatProgressMessage(ARCEXTRACT_INPROCESS,
-            changed ? temporary.c_str() : nullptr, rewritten_size, changed ? rewritten_size : 0)) {
+            changed ? (published_new_join ? full_destination.c_str() : temporary.c_str()) : nullptr,
+            rewritten_size, changed ? rewritten_size : 0)) {
         if (!changed) {
             Lha_UnlinkFile(temporary.c_str());
             return RewriteFailure(ERROR_USER_CANCEL, L"ユーザーによって中断されました。", ERROR_CANCELLED);
@@ -3858,8 +4571,8 @@ static int ExecuteRewriteCommand(const char command,
         // COPY 段階の通知拒否は原版同様に置換を継続する。
         Lha_ResetAbort();
     }
-    if (!MoveFileExW(StringToWString(temporary).c_str(), StringToWString(full_destination).c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    if (!published_new_join && !MoveFileExW(StringToWString(temporary).c_str(), StringToWString(full_destination).c_str(),
+                                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         const DWORD system_error = GetLastError();
         Lha_UnlinkFile(temporary.c_str());
         return RewriteFailure(ERROR_CANNOT_WRITE, L"書庫を置換できません。", system_error);
@@ -3919,6 +4632,14 @@ static bool CommandPathHasExtension(const std::string& path) {
     const size_t extension = path.find_last_of('.');
     return extension != std::string::npos &&
            (separator == std::string::npos || extension > separator);
+}
+
+static bool UsesExtendedWindowsPathPrefix(const std::string& path) {
+    return path.size() >= 4 &&
+        ((path[0] == '\\' && path[1] == '\\' && path[2] == '?' &&
+          (path[3] == '\\' || path[3] == '/')) ||
+         (path[0] == '/' && path[1] == '/' && path[2] == '?' &&
+          (path[3] == '\\' || path[3] == '/')));
 }
 
 static CommandArchiveSnapshot SnapshotCommandArchivePath(const std::string& requested,
@@ -4091,9 +4812,20 @@ static std::string BuildCompatibleActionOutput(const char command,
                 : event.value == 3 ? L"古いファイルが存在"
                 : event.value == 4 ? L"同じファイルがあります"
                 : event.value == 5 ? L"ファイルが存在しません"
-                : event.value == 7 ? L"特殊な属性のファイル" : L"書き込み禁止";
+                : event.value == 7 ? L"特殊な属性のファイル"
+                : event.value == 8 ? L"ユーザによりスキップ"
+                : event.value == 10 ? L"ディスクが満杯"
+                : event.value == 11 ? L"ファイルが開けません" : L"書き込み禁止";
+            if (UseEnglishDialogResources()) {
+                static const wchar_t* reasons[] = {L"already exists.", L"newer or same file exists.",
+                    L"older or same file exists.", L"same file exists.", L"no file exists.",
+                    L"read only file.", L"special attributes.", L"skipped by user."};
+                reason = event.value == 11 ? L"can't open." : event.value == 10 ? L"disk full."
+                    : reasons[event.value >= 1 && event.value <= 8 ? event.value - 1 : 5];
+            }
             output += ": " + WideStringToMultiByte(reason, CommandOutputCodePage()) + "\r\n";
-        } else if ((command == 'p' || command == 't') && CommandEventActionIs(event, "UnsupportedMethod")) {
+        } else if ((command == 'p' || command == 't' || command == 'e' || command == 'x') &&
+                   CommandEventActionIs(event, "UnsupportedMethod")) {
             const std::wstring name = event.wide_name.empty() ? StringToWString(event.name) : event.wide_name;
             output += UnsupportedCommandMethodOutput(name, event.value == 2 ? PMARC2_METHOD : PMARC0_METHOD);
         } else if (command == 't' && CommandEventActionIs(event, "Tested")) {
@@ -4411,8 +5143,9 @@ static bool ReadCommandOutputArchive(const std::string& requested,
     struct _stat64 status{};
     std::string native_path = result.path;
     std::replace(native_path.begin(), native_path.end(), '/', '\\');
-    if ((g_unicode_mode.load() ? _wstat64(StringToWString(native_path).c_str(), &status)
-                              : _stat64(native_path.c_str(), &status)) == 0)
+    if ((UsesUnicodeFilePath(native_path.c_str())
+             ? _wstat64(FilePathToWide(native_path.c_str()).c_str(), &status)
+             : _stat64(native_path.c_str(), &status)) == 0)
         result.write_time = status.st_mtime;
 
     LzHeader header{};
@@ -4544,6 +5277,16 @@ static std::string BuildForeignArchiveCommandOutput(const char command, const st
     return output + "\r\n" + WideStringToMultiByte(
         L"指定された書庫ファイルは LZH 形式ではありません (on execute_cmd (inithdr)) : '", code_page)
         + error_path + "'\r\n";
+}
+
+static std::string BuildRewriteForeignSourceOutput(const CommandArchiveSnapshot& archive,
+                                                   const std::vector<CommandEvent>& events,
+                                                   std::wstring source_path) {
+    std::replace(source_path.begin(), source_path.end(), L'\\', L'/');
+    return BuildCompatibleActionOutput('j', archive, events) + "\r\n" +
+        WideStringToMultiByte(L"指定された書庫ファイルは LZH 形式ではありません (on arccopy) : '",
+                              CommandOutputCodePage()) +
+        WideStringToMultiByte(source_path, CommandOutputCodePage()) + "'\r\n";
 }
 
 static DWORD ForeignArchiveCommandSystemError(const char command) {
@@ -4750,7 +5493,7 @@ static std::vector<std::string> SplitCompatibleSwitches(const std::string& argum
                 if (string_value) {
                     append(sub, content.substr(index));
                     index = content.size();
-                } else if (sub == "jso") {
+                } else if (sub == "jso" || sub == "jse") {
                     // 真偽値は 1 文字。残りの数字も次の js サブスイッチとして扱う。
                     std::string value;
                     if (index < content.size() && (content[index] == '+' || content[index] == '-' ||
@@ -4780,6 +5523,11 @@ static std::vector<std::string> SplitCompatibleSwitches(const std::string& argum
                 if (isdigit(static_cast<unsigned char>(method)) || method == 'a' || method == 'm')
                     value += content[index++];
             }
+            append(name, value);
+        } else if (name == "jd") {
+            std::string value = numeric_value();
+            // 予約容量の K は次の拡張スイッチではなく、10進の1000倍接尾辞。
+            if (index < content.size() && LowerCharacter(content[index]) == 'k') value += content[index++];
             append(name, value);
         } else if (name == "jw" || name == "gw") {
             std::string value;
@@ -4891,7 +5639,50 @@ static void ApplyCommandUpdateSwitch(CommandUpdatePolicy& policy, const std::str
     } else if (option.rfind("jn", 0) == 0) {
         policy.new_only = CommandSwitchValue(option, 2, policy.new_only ? 1 : 0, 1) != 0;
     } else if (option[0] == 'm') {
-        policy.overwrite_mode = CommandSwitchValue(option, 1, policy.overwrite_mode, 2);
+        policy.overwrite_mode = option.size() > 1 && option[1] == '2' ? 2 :
+            option.size() > 1 && (option[1] == '0' || option[1] == '-') ? 0 : 1;
+        policy.assume_overwrite = policy.assume_directory = policy.overwrite_mode != 0;
+    } else if (option[0] == 'f') {
+        policy.reserved_disk_space = 0;
+        policy.check_disk_space = option.size() > 1 && (option[1] == '0' || option[1] == '-');
+    } else if (option.rfind("jd", 0) == 0) {
+        policy.check_disk_space = option.size() <= 2 || option[2] != '-';
+        policy.reserved_disk_space = 0;
+        size_t index = 2;
+        // +/- は有効・無効指定であり、数値の符号としては扱わない。
+        if (index < option.size() && option[index] != '+' && option[index] != '-') {
+            for (; index < option.size() && option[index] >= '0' && option[index] <= '9'; ++index) {
+                const ULONGLONG digit = option[index] - '0';
+                policy.reserved_disk_space = policy.reserved_disk_space > (ULLONG_MAX - digit) / 10
+                    ? ULLONG_MAX : policy.reserved_disk_space * 10 + digit;
+            }
+            if (index < option.size() && option[index] == 'k')
+                policy.reserved_disk_space = policy.reserved_disk_space > ULLONG_MAX / 1000
+                    ? ULLONG_MAX : policy.reserved_disk_space * 1000;
+        }
+    } else if (option[0] == 'y') {
+        policy.assume_overwrite = policy.assume_directory = policy.suppress_new_name =
+            !(option.size() > 1 && (option[1] == '0' || option[1] == '-'));
+    } else if (option.rfind("jy", 0) == 0) {
+        for (size_t index = 2; index < option.size();) {
+            const char kind = option[index++];
+            if (std::string("cdkno").find(kind) == std::string::npos) break;
+            int value = -1;
+            if (index < option.size()) {
+                const char digit = option[index];
+                if ((digit >= '0' && digit <= '9') || digit == '+' || digit == '-') {
+                    ++index;
+                    if (digit == '0' || digit == '-') value = 0;
+                    else if (digit == '1' || digit == '+') value = 1;
+                }
+            }
+            bool* assumed = kind == 'c' ? &policy.assume_directory : kind == 'o' ? &policy.assume_overwrite :
+                kind == 'n' ? &policy.suppress_new_name : kind == 'k' ? &policy.check_disk_space : nullptr;
+            if (assumed) *assumed = value < 0 ? !*assumed : value != 0;
+        }
+    } else if (option.rfind("jse", 0) == 0) {
+        const char value = option.size() > 3 ? option[3] : '\0';
+        policy.stop_on_extract_error = value == '0' || value == '-' ? 0 : value == '2' ? 2 : 1;
     } else if (option.rfind("ga", 0) == 0) {
         policy.protected_attributes = CommandSwitchValue(option, 2, policy.protected_attributes, 2);
     } else if (option.rfind("gm", 0) == 0) {
@@ -5142,6 +5933,7 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
     g_command_update_policy = CommandUpdatePolicy{};
     g_command_update_policy.command = cmd_char;
     g_command_update_policy.overwrite_mode = cmd_char == 'x' ? 1 : 0;
+    g_command_update_policy.assume_overwrite = g_command_update_policy.assume_directory = cmd_char == 'x';
     g_command_existing_members.clear();
 
     // スイッチの解析
@@ -5260,14 +6052,17 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
     g_new_compression_allocation = 0;
 
     // LhaCore のグローバル変数に適用
-    if (is_y_val || g_command_update_policy.overwrite_mode != 0 || g_command_update_policy.suppress_errors) {
+    const bool assume_extraction_overwrite = (cmd_char == 'e' || cmd_char == 'x')
+        ? g_command_update_policy.assume_overwrite || g_command_update_policy.overwrite_mode == 2
+        : is_y_val || g_command_update_policy.overwrite_mode != 0;
+    if (assume_extraction_overwrite || g_command_update_policy.suppress_errors) {
         force = TRUE;
     } else {
         force = FALSE;
     }
     freshen_only = (cmd_char == 'f') ? TRUE : FALSE;
 
-    if (cmd_char == 'e' || cmd_char == 'x')
+    if (cmd_char == 'e' || cmd_char == 'x' || cmd_char == 'p' || cmd_char == 't')
         ignore_directory = (is_x_specified ? is_x_val : cmd_char == 'x') ? FALSE : TRUE;
 
     if (recursive_mode > 0) {
@@ -5427,6 +6222,13 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
             ? expanded_file_list.size() - first_input : 0;
     }
 
+    // 原版の j は Win32 の拡張名前空間を通常の書庫名として解釈しない。ここで止めれば、
+    // 新規直接出力を作成してから失敗する経路にも入らない。
+    if (cmd_char == 'j' && !expanded_file_list.empty() &&
+        UsesExtendedWindowsPathPrefix(expanded_file_list.front())) {
+        return FinishCommandFailure(ERROR_NOT_FIND_ARC_FILE, ERROR_FILE_NOT_FOUND, ERROR_INVALID_NAME);
+    }
+
     const CommandArchiveSnapshot command_archive = expanded_file_list.empty()
         ? CommandArchiveSnapshot() : SnapshotCommandArchivePath(expanded_file_list[0], reject_foreign_data);
     if (!command_archive.existed && cmd_char != 'a' && cmd_char != 'u' &&
@@ -5584,7 +6386,13 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
     g_command_read_member = CommandEvent{};
     g_command_test_crc_errors.clear();
     g_command_crc_stopped = false;
+    g_command_question_state = CommandQuestionState{};
     g_command_crc_failure_path.clear();
+    g_command_disk_space_failure_path.clear();
+    g_command_extraction_failure = CommandExtractionFailure{};
+    g_rewrite_foreign_source_rejected = false;
+    g_rewrite_foreign_source_path.clear();
+    g_rewrite_join_source_system_error = ERROR_SUCCESS;
     g_command_read_failure = CommandReadFailure::None;
     g_command_header_error = 0;
     g_command_header_warning = 0;
@@ -5628,7 +6436,8 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
             } else {
                 result = ExecuteRewriteCommand(cmd_char, operands, exclude_patterns,
                                                requested_header_level, !is_x_val,
-                                               rename_target, cmd_char == 'c' ? &comment : nullptr);
+                                               rename_target, reject_foreign_data,
+                                               cmd_char == 'c' ? &comment : nullptr);
             }
         } else if (lha_parse_option(argc, argv_ptr) == 0) {
             if (cmd_char == 'a' || cmd_char == 'u' || cmd_char == 'f' || cmd_char == 'm') {
@@ -5645,6 +6454,8 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
 #pragma warning(pop)
     g_lha_exit_jmp_enabled = 0;
     g_new_compression_file = nullptr;
+    g_new_compression_mapped = false;
+    g_new_compression_allocation = 0;
     g_compression_write_buffer = CompressionWriteBuffer{};
     if (cmd_char == 'a' || cmd_char == 'u' || cmd_char == 'f' || cmd_char == 'm')
         Lha_PumpCommandMessages();
@@ -5685,16 +6496,50 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
     const bool command_read_failure =
         (cmd_char == 't' || cmd_char == 'p') &&
         g_command_read_failure != CommandReadFailure::None;
-    if (result == ERROR_USER_CANCEL && (cmd_char == 'n' || cmd_char == 'y')) {
+    const bool rewrite_progress_cancelled = result == ERROR_USER_CANCEL &&
+        (cmd_char == 'n' || cmd_char == 'y' ||
+         (cmd_char == 'j' && g_command_progress_cancel_state >= 0));
+    if (g_command_extraction_failure.code) {
+        result = g_command_extraction_failure.code;
+        g_last_error.clear();
+        const std::string output = BuildCompatibleActionOutput(cmd_char, command_archive, g_command_events) +
+            WideStringToMultiByte(CommandExtractionErrorMessage(result) + CommandExtractionFailureLocation() + L" : '" +
+                g_command_extraction_failure.path + L"'\r\n", CommandOutputCodePage());
+        CopyCompatibleCommandOutput(switch_warnings + output, _szOutput, _dwSize);
+        compatible_output_copied = true;
+        g_last_system_error = g_command_extraction_failure.system_error;
+        SetLastError(ERROR_SUCCESS);
+    } else if (!g_command_disk_space_failure_path.empty()) {
+        result = ERROR_DISK_SPACE;
+        g_last_error.clear();
+        const std::string output = BuildCompatibleActionOutput(cmd_char, command_archive, g_command_events) +
+            WideStringToMultiByte(CommandDiskSpaceErrorMessage() + L" (on extractsub) : '" +
+                g_command_disk_space_failure_path + L"'\r\n", CommandOutputCodePage());
+        CopyCompatibleCommandOutput(switch_warnings + output, _szOutput, _dwSize);
+        compatible_output_copied = true;
+        g_last_system_error = ERROR_CANCELLED;
+        SetLastError(ERROR_SUCCESS);
+    } else if (g_command_question_state.cancelled_location) {
+        result = ERROR_USER_CANCEL;
+        g_last_error.clear();
+        const std::string output = BuildCompatibleActionOutput(cmd_char, command_archive, g_command_events) +
+            WideStringToMultiByte(CommandCancellationMessage() + L" (on " +
+                g_command_question_state.cancelled_location + L")\r\n", CommandOutputCodePage());
+        CopyCompatibleCommandOutput(switch_warnings + output, _szOutput, _dwSize);
+        compatible_output_copied = true;
+        g_last_system_error = ERROR_CANCELLED;
+        SetLastError(ERROR_SUCCESS);
+    } else if (rewrite_progress_cancelled) {
         const wchar_t* location = g_command_progress_cancel_state == ARCEXTRACT_OPEN ? L"SetDlgArcName"
-            : g_command_progress_cancel_state == ARCEXTRACT_BEGIN ? L"SetDlgFileName" : L"SetParcent";
+            : (g_command_progress_cancel_state == ARCEXTRACT_BEGIN ||
+               (cmd_char == 'j' && g_command_progress_cancel_state == 5)) ? L"SetDlgFileName" : L"SetParcent";
         std::string output = BuildCompatibleActionOutput(cmd_char, command_archive, g_command_events);
         output += "\r\n" + WideStringToMultiByte(std::wstring(L"ユーザーによって中断されました (on ") +
             location + L")\r\n", CommandOutputCodePage());
         g_last_error.clear();
         CopyCompatibleCommandOutput(switch_warnings + output, _szOutput, _dwSize);
         compatible_output_copied = true;
-        g_last_system_error = ERROR_CANCELLED;
+        if (cmd_char != 'j') g_last_system_error = ERROR_CANCELLED;
         SetLastError(ERROR_SUCCESS);
     } else if (HasExtractCommandCancellation(cmd_char) || HasCompressionCommandCancellation(cmd_char)) {
         result = ERROR_USER_CANCEL;
@@ -5707,6 +6552,14 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
         CopyCompatibleCommandOutput(switch_warnings + output, _szOutput, _dwSize);
         compatible_output_copied = true;
         g_last_system_error = ERROR_CANCELLED;
+        SetLastError(ERROR_SUCCESS);
+    } else if (g_rewrite_foreign_source_rejected) {
+        g_last_error.clear();
+        CopyCompatibleCommandOutput(switch_warnings + BuildRewriteForeignSourceOutput(
+            command_archive, g_command_events, g_rewrite_foreign_source_path), _szOutput, _dwSize);
+        compatible_output_copied = true;
+        // 原版の診断値を保つが、その値を生む元書庫の消失・一時書庫残存は再現しない。
+        g_last_system_error = command_archive.existed ? ERROR_SHARING_VIOLATION : ERROR_FILE_NOT_FOUND;
         SetLastError(ERROR_SUCCESS);
     } else if (foreign_archive) {
         CopyCompatibleCommandOutput(switch_warnings + BuildForeignArchiveCommandOutput(
@@ -5860,11 +6713,13 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
         }
         CopyCompatibleCommandOutput(switch_warnings + compatible_output, _szOutput, _dwSize);
         compatible_output_copied = true;
-        g_last_system_error = g_command_events.empty() &&
-            (command_system_error == ERROR_FILE_NOT_FOUND || command_system_error == ERROR_PATH_NOT_FOUND)
-                ? command_system_error
-                : (cmd_char == 'm' && g_compression_deleted_file ? ERROR_NO_MORE_FILES
-                    : source_compression ? g_compression_terminal_error : ERROR_HANDLE_EOF);
+        g_last_system_error = cmd_char == 'j' && g_rewrite_join_source_system_error != ERROR_SUCCESS
+                ? g_rewrite_join_source_system_error
+                : g_command_events.empty() &&
+                    (command_system_error == ERROR_FILE_NOT_FOUND || command_system_error == ERROR_PATH_NOT_FOUND)
+                    ? command_system_error
+                    : (cmd_char == 'm' && g_compression_deleted_file ? ERROR_NO_MORE_FILES
+                        : source_compression ? g_compression_terminal_error : ERROR_HANDLE_EOF);
         if (source_compression && g_compression_inputs_explicit && compression_selected_count == 0)
             g_last_system_error = command_archive.existed ? ERROR_HANDLE_EOF : compression_search_error;
         if (!compression_read_failures.empty() && !command_archive.existed && g_command_events.empty())
@@ -5917,10 +6772,13 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
     g_capture_buffer_size = 0;
     g_capture_buffer_written = 0;
 
-    g_last_error_code = result == ERROR_USER_CANCEL && (cmd_char == 'n' || cmd_char == 'y')
+    g_last_error_code = g_command_extraction_failure.code ? g_command_extraction_failure.code
+        : !g_command_disk_space_failure_path.empty() ? ERROR_DISK_SPACE
+        : g_command_question_state.cancelled_location || rewrite_progress_cancelled
         ? ERROR_USER_CANCEL : HasExtractCommandCancellation(cmd_char) || HasCompressionCommandCancellation(cmd_char)
         ? ERROR_USER_CANCEL
-        : foreign_archive ? ERROR_FILE_STYLE : g_command_crc_stopped ? ERROR_FILE_CRC : g_command_header_error != 0
+        : g_rewrite_foreign_source_rejected || foreign_archive ? ERROR_FILE_STYLE
+        : g_command_crc_stopped ? ERROR_FILE_CRC : g_command_header_error != 0
         ? g_command_header_error : g_command_read_failure != CommandReadFailure::None
         ? ERROR_CANNOT_READ : g_command_header_warning != 0
         ? g_command_header_warning : !g_compression_delete_failure.first.empty()
@@ -5930,6 +6788,7 @@ int WINAPI Unlha(HWND _hwnd, LPCSTR _szCmdLine, LPSTR _szOutput, DWORD _dwSize) 
 }
 
 static constexpr int WIDE_COMMAND_NOT_HANDLED = INT_MIN;
+static char ParsedWideCommandCharacter(LPCWSTR command_line);
 static int ExecuteWideUnicodeCommand(HWND hwnd, LPCWSTR command_line,
                                      LPWSTR output, DWORD output_size);
 
@@ -5955,9 +6814,11 @@ int WINAPI UnlhaW(HWND _hwnd, LPCWSTR _szCmdLine, LPWSTR _szOutput, DWORD _dwSiz
         }
         
         if (!errorFile.empty()) {
-            const wchar_t command = arguments[0].empty() ? 0 : towlower(arguments[0][0]);
-            if (command == L'j' || command == L'n' || command == L'y') {
-                // W の引数だけを UTF-8 で運ぶ。保存コードページと公開 UnicodeMode は変更しない。
+            const char command = ParsedWideCommandCharacter(_szCmdLine);
+            if (command == 'd' || command == 'j' || command == 'l' || command == 'm' ||
+                command == 'n' || command == 'p' || command == 't' || command == 'v' ||
+                command == 'y') {
+                // W の引数だけを UTF-8 で共通処理へ運ぶ。保存コードページと公開 UnicodeMode は変更しない。
                 g_wide_command_utf8_input = true;
             } else {
             const int wide_result = ExecuteWideUnicodeCommand(
@@ -7198,6 +8059,8 @@ static void GetConfiguredCommandDefaults(const bool use_registry, std::wstring& 
     else if (g_config_state.overwriteMode == IDC_CONFIG_OVERWRITE_NEVER) switches.push_back("-jn1");
     if (g_config_state.junkDirectory) switches.push_back("-x0");
     if (g_config_state.extractAttributes) switches.push_back("-a1");
+    if (g_config_state.makeDirectoryMode) switches.push_back("-jyc1");
+    if (!g_config_state.diskSpaceCheck) switches.push_back("-f1");
 }
 
 static bool SaveConfigDword(const wchar_t* section, const wchar_t* name, const DWORD value,
@@ -7953,7 +8816,255 @@ struct MemoryExtractCommand {
     int recursive_mode = 0;
     bool preserve_directories = false;
     bool reject_foreign_data = true;
+    bool suppress_progress = false;
 };
+
+extern "C++" {
+
+static constexpr int kMemoryProgressDialogResource = 203;
+// 原版の進捗画面は IDOK (1) を「取消」ボタンとして使う。
+static constexpr int kMemoryProgressCancelControl = IDOK;
+
+static std::wstring MemoryProgressNumber(const __int64 value) {
+    std::wstring digits = std::to_wstring(static_cast<unsigned long long>((std::max)(value, __int64{0})));
+    for (ptrdiff_t index = static_cast<ptrdiff_t>(digits.size()) - 3; index > 0; index -= 3)
+        digits.insert(static_cast<size_t>(index), 1, L',');
+    return digits;
+}
+
+class MemoryProgressDialog final {
+public:
+    MemoryProgressDialog(const HWND owner, const bool suppressed, std::wstring archive)
+        : owner_(owner), suppressed_(suppressed), archive_(std::move(archive)) {}
+
+    ~MemoryProgressDialog() {
+        if (dialog_) DestroyWindow(dialog_);
+    }
+
+    void Create() {
+        if (suppressed_ || !EnsureBarWindowClass()) return;
+        dialog_ = CreateDialogParamW(g_hModule, MAKEINTRESOURCEW(kMemoryProgressDialogResource), owner_, DialogProc,
+                                      reinterpret_cast<LPARAM>(this));
+        if (!dialog_) return;
+
+        RECT client{};
+        GetClientRect(dialog_, &client);
+        const int bar_left = MulDiv(8, client.right, 333);
+        const int top = MulDiv(73, client.bottom, 123);
+        const int bar_right = MulDiv(323, client.right, 333);
+        const int bottom = MulDiv(91, client.bottom, 123);
+        bar_ = CreateWindowExW(0, L"BarWindow", L"", WS_CHILD | WS_VISIBLE | WS_BORDER,
+                               bar_left, top, bar_right - bar_left, bottom - top, dialog_,
+                               reinterpret_cast<HMENU>(608), g_hModule, this);
+        if (!bar_) {
+            DestroyWindow(dialog_);
+            dialog_ = nullptr;
+            return;
+        }
+        ShowWindow(dialog_, SW_SHOW);
+        UpdateWindow(dialog_);
+    }
+
+    void Begin(const LzHeader& header) {
+        member_ = HeaderNameToWString(header, ConfiguredArchiveCodePage());
+        total_ = (std::max)(header.original_size, off_t{0});
+        current_ = 0;
+        populated_ = false;
+    }
+
+    int Dispatch(const int state, const __int64 current_size, const __int64 total_size) {
+        if (!dialog_) return 0;
+        if (state == ARCEXTRACT_BEGIN || state == ARCEXTRACT_INPROCESS) {
+            if (total_size > 0) total_ = total_size;
+            if (current_size >= 0) current_ = current_size;
+            if (!populated_ && !member_.empty()) {
+                SetDlgItemTextW(dialog_, 603, CompactArchivePath().c_str());
+                SetDlgItemTextW(dialog_, 604, member_.c_str());
+                populated_ = true;
+            }
+            SetDlgItemTextW(dialog_, 606, MemoryProgressNumber(current_).c_str());
+            InvalidateRect(bar_, nullptr, FALSE);
+        }
+        PumpMessages();
+        return cancelled_ ? 1 : 0;
+    }
+
+    bool Cancelled() const { return cancelled_; }
+    DWORD CurrentSize() const {
+        return static_cast<DWORD>((std::min)((std::max)(current_, __int64{0}), static_cast<__int64>(MAXDWORD)));
+    }
+
+private:
+    static bool EnsureBarWindowClass() {
+        static const bool registered = [] {
+            WNDCLASSW existing{};
+            if (GetClassInfoW(g_hModule, L"BarWindow", &existing)) return true;
+            WNDCLASSW window_class{};
+            window_class.lpfnWndProc = BarProc;
+            window_class.hInstance = g_hModule;
+            window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+            window_class.lpszClassName = L"BarWindow";
+            return RegisterClassW(&window_class) != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+        }();
+        return registered;
+    }
+
+    static std::wstring CompactPath(HWND control, const std::wstring& path) {
+        if (!control || path.empty()) return path;
+        std::vector<wchar_t> compact(path.begin(), path.end());
+        compact.push_back(L'\0');
+        RECT client{};
+        HDC dc = GetDC(control);
+        GetClientRect(control, &client);
+        if (dc && client.right > 0) PathCompactPathW(dc, compact.data(), client.right);
+        if (dc) ReleaseDC(control, dc);
+        return compact.data();
+    }
+
+    std::wstring CompactArchivePath() const {
+        std::wstring display = archive_;
+        std::replace(display.begin(), display.end(), L'/', L'\\');
+        return CompactPath(GetDlgItem(dialog_, 603), display);
+    }
+
+    void Initialize() {
+        const bool english = UseEnglishDialogResources();
+        // 原版は言語リソースごとに、3 行の値欄を同じ左端へ揃える。
+        const int value_left = english ? 78 : 83;
+        SetWindowTextW(dialog_, english ? L"Melting..." : L"展開状況");
+        SetProgressLabel(601, english ? L"Archive :" : L"書庫ファイル：", 603, value_left);
+        SetProgressLabel(602, english ? L"Stored file :" : L"格納ファイル：", 604, value_left);
+        SetProgressLabel(609, english ? L"Restore :" : L"展開先：", 610, value_left);
+        SetProgressLabel(605, english ? L"Size :" : L"書込サイズ：", 0);
+        SetDlgItemTextW(dialog_, 611, L"[1/-]");
+        SetDlgItemTextW(dialog_, kMemoryProgressCancelControl, english ? L"&Cancel" : L"取消(&C)");
+    }
+
+    void SetProgressLabel(const int label_id, const wchar_t* label_text, const int value_id,
+                          const int fixed_value_left = 0) {
+        SetDlgItemTextW(dialog_, label_id, label_text);
+        const HWND label = GetDlgItem(dialog_, label_id);
+        if (!label) return;
+        HDC dc = GetDC(label);
+        if (!dc) return;
+        const HFONT font = reinterpret_cast<HFONT>(SendMessageW(label, WM_GETFONT, 0, 0));
+        const HGDIOBJ previous = font ? SelectObject(dc, font) : nullptr;
+        SIZE extent{};
+        const bool measured = GetTextExtentPoint32W(dc, label_text, static_cast<int>(wcslen(label_text)), &extent) != FALSE;
+        if (previous) SelectObject(dc, previous);
+        ReleaseDC(label, dc);
+        if (!measured) return;
+
+        RECT label_rect{};
+        GetWindowRect(label, &label_rect);
+        MapWindowPoints(nullptr, dialog_, reinterpret_cast<POINT*>(&label_rect), 2);
+        const int width = extent.cx + 5;
+        SetWindowPos(label, nullptr, label_rect.left, label_rect.top, width,
+                     label_rect.bottom - label_rect.top, SWP_NOACTIVATE | SWP_NOZORDER);
+        if (value_id == 0) return;
+
+        const HWND value = GetDlgItem(dialog_, value_id);
+        if (!value) return;
+        RECT value_rect{};
+        GetWindowRect(value, &value_rect);
+        MapWindowPoints(nullptr, dialog_, reinterpret_cast<POINT*>(&value_rect), 2);
+        const int value_left = fixed_value_left ? fixed_value_left : label_rect.left + width + 5;
+        SetWindowPos(value, nullptr, value_left, value_rect.top, value_rect.right - value_left,
+                     value_rect.bottom - value_rect.top, SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+
+    void PumpMessages() {
+        MSG message{};
+        // 原版と同じく、WM_QUIT を含む呼び出し元スレッド全体のキューを取得する。
+        while (dialog_ && PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (!IsDialogMessageW(dialog_, &message)) {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+        }
+    }
+
+    void PaintBar(HDC dc, const RECT& client) const {
+        FillRect(dc, &client, GetSysColorBrush(COLOR_WINDOW));
+        FrameRect(dc, &client, GetSysColorBrush(COLOR_WINDOWFRAME));
+        RECT fill = client;
+        InflateRect(&fill, -1, -1);
+        if (fill.right <= fill.left || fill.bottom <= fill.top) return;
+        if (total_ > 0 && current_ > 0) {
+            const __int64 bounded = (std::min)(current_, total_);
+            fill.right = fill.left + MulDiv(fill.right - fill.left, static_cast<int>(bounded * 100 / total_), 100);
+            if (fill.right > fill.left) FillRect(dc, &fill, GetSysColorBrush(COLOR_HIGHLIGHT));
+        }
+    }
+
+    static LRESULT CALLBACK BarProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+        if (message == WM_NCCREATE) {
+            const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lparam);
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+        } else if (message == WM_PAINT) {
+            PAINTSTRUCT paint{};
+            const HDC dc = BeginPaint(window, &paint);
+            RECT client{};
+            GetClientRect(window, &client);
+            if (auto* self = reinterpret_cast<MemoryProgressDialog*>(GetWindowLongPtrW(window, GWLP_USERDATA)))
+                self->PaintBar(dc, client);
+            else
+                FillRect(dc, &client, GetSysColorBrush(COLOR_WINDOW));
+            EndPaint(window, &paint);
+            return 0;
+        }
+        return DefWindowProcW(window, message, wparam, lparam);
+    }
+
+    static INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wparam, LPARAM lparam) {
+        auto* self = reinterpret_cast<MemoryProgressDialog*>(GetWindowLongPtrW(dialog, DWLP_USER));
+        if (message == WM_INITDIALOG) {
+            self = reinterpret_cast<MemoryProgressDialog*>(lparam);
+            SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(self));
+            if (!self) return FALSE;
+            self->dialog_ = dialog;
+            self->Initialize();
+            return TRUE;
+        }
+        if (!self) return FALSE;
+        if (message == WM_COMMAND && LOWORD(wparam) == kMemoryProgressCancelControl) {
+            self->cancelled_ = true;
+            EnableWindow(GetDlgItem(dialog, kMemoryProgressCancelControl), FALSE);
+            return TRUE;
+        }
+        if (message == WM_CLOSE) {
+            self->cancelled_ = true;
+            EnableWindow(GetDlgItem(dialog, kMemoryProgressCancelControl), FALSE);
+            return TRUE;
+        }
+        if (message == WM_NCDESTROY) self->dialog_ = nullptr;
+        return FALSE;
+    }
+
+    HWND owner_{};
+    HWND dialog_{};
+    HWND bar_{};
+    bool suppressed_{};
+    bool cancelled_{};
+    bool populated_{};
+    std::wstring archive_;
+    std::wstring member_;
+    __int64 current_{};
+    __int64 total_{};
+};
+
+struct MemoryProgressDialogScope final {
+    MemoryProgressDialog* previous = g_memory_progress_dialog;
+    explicit MemoryProgressDialogScope(MemoryProgressDialog& dialog) { g_memory_progress_dialog = &dialog; }
+    ~MemoryProgressDialogScope() { g_memory_progress_dialog = previous; }
+};
+
+extern "C" int Lha_DispatchMemoryProgress(const int state, const LzHeader*, const char*, const char*,
+                                            const __int64 current_size, const __int64 total_size) {
+    return g_memory_progress_dialog ? g_memory_progress_dialog->Dispatch(state, current_size, total_size) : 0;
+}
+
+} // extern "C++"
 
 extern "C++" {
 static std::wstring MemoryBaseDirectory(std::wstring directory) {
@@ -8003,6 +9114,8 @@ static int ParseMemoryExtractCommand(const std::wstring& command_line,
                 if (command.path_mode == 2) command.recursive_mode = 2;
             } else if (option[0] == 'r') command.recursive_mode = CommandSwitchValue(option, 1, command.recursive_mode, 2);
             else if (option[0] == 'x') command.preserve_directories = CommandSwitchValue(option, 1, command.preserve_directories, 1) != 0;
+            else if (option[0] == 'n') command.suppress_progress =
+                CommandSwitchValue(option, 1, command.suppress_progress ? 1 : 0, 2) != 0;
             else if (option.rfind("jx", 0) == 0 && arg.value.size() > 3) command.exclusions.push_back(arg.value.substr(3));
             else if (option.rfind("jsg", 0) == 0)
                 command.reject_foreign_data = CommandSwitchValue(option, 3, command.reject_foreign_data, 1) != 0;
@@ -8057,9 +9170,14 @@ static int ExtractMemFromStream(HWND hwnd, FILE* archive,
     g_hwndOwner = hwnd;
     g_running = true;
     g_memory_extracting = true;
+    // メモリ API は -n1/-n2 のときだけ登録済みの外部進捗を送る。
+    CommandProgressMode memory_progress_mode(command.suppress_progress);
     g_enum_command = UNLHA_TEST_COMMAND;
     g_enum_invoked_count = g_enum_selected_count = 0;
     g_enum_selection_results.clear();
+    MemoryProgressDialog progress_dialog(hwnd, command.suppress_progress, command.archive);
+    progress_dialog.Create();
+    MemoryProgressDialogScope progress_dialog_scope(progress_dialog);
 
     DWORD total_written = 0;
     int result = 0;
@@ -8070,7 +9188,12 @@ static int ExtractMemFromStream(HWND hwnd, FILE* archive,
     const __int64 file_size = _ftelli64(archive);
     bool first_header = true;
     LzHeader header{};
-    while (true) {
+    const std::string progress_archive = WideStringToUtf8(command.archive);
+    if (Lha_SendProgressMessage(ARCEXTRACT_OPEN, progress_archive.c_str(), 0, 0)) {
+        result = ERROR_USER_CANCEL;
+        system_error = ERROR_CANCELLED;
+    }
+    while (result == 0) {
         __int64 header_start;
         if (first_header) {
             if (!FindValidArchiveHeader(archive, 0, file_size, file_size, header)) {
@@ -8178,7 +9301,26 @@ static int ExtractMemFromStream(HWND hwnd, FILE* archive,
                     system_error = GetLastError();
                     break;
                 }
+                Lha_SetProgressMember(&header);
+                progress_dialog.Begin(header);
                 const int decode_result = DecodeArchiveMemberGuarded(archive, output, header, method);
+                if (progress_dialog.Cancelled() || Lha_CheckAbort()) {
+                    // 原版は取消時に、これまでに出力済みの量を残りバッファー量として返す。
+                    fflush(output);
+                    __int64 partial_size = 0;
+                    if (_fseeki64(output, 0, SEEK_END) == 0) partial_size = _ftelli64(output);
+                    const DWORD remaining = size - total_written;
+                    const DWORD amount = static_cast<DWORD>((std::min)(
+                        static_cast<__int64>(remaining), (std::max)(partial_size, __int64{0})));
+                    rewind(output);
+                    total_written += static_cast<DWORD>(fread(buffer + total_written, 1, amount, output));
+                    fclose(output);
+                    result = ERROR_USER_CANCEL;
+                    // 項目を出し終えた後の取消は原版どおり終端到達の system error を残す。
+                    system_error = partial_size >= static_cast<__int64>(header.original_size)
+                        ? ERROR_NO_MORE_FILES : ERROR_CANCELLED;
+                    break;
+                }
                 if (decode_result != 0) {
                     fclose(output);
                     result = decode_result;
@@ -8211,6 +9353,8 @@ static int ExtractMemFromStream(HWND hwnd, FILE* archive,
             break;
         }
     }
+    Lha_ClearProgressMember();
+    Lha_SendProgressMessage(ARCEXTRACT_END, nullptr, 0, 0);
     fclose(archive);
     g_enum_command = 0;
     g_memory_extracting = false;
@@ -8401,6 +9545,11 @@ static bool ParseWideCommand(const wchar_t* command_line, WideCommandParts& resu
         }
     }
     return !result.operands.empty();
+}
+
+static char ParsedWideCommandCharacter(const wchar_t* command_line) {
+    WideCommandParts command;
+    return ParseWideCommand(command_line, command) ? command.command : '\0';
 }
 
 static bool IsWideAbsolutePath(const std::wstring& path) {
@@ -8955,8 +10104,14 @@ LRESULT CALLBACK UnlhaBarWindProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM
 INT_PTR CALLBACK GetWinSFXParamDlgProc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
 INT_PTR CALLBACK GetFileNameDlgProc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
 INT_PTR CALLBACK GetCommentDlgProc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
-INT_PTR CALLBACK OverWriteMsgDlgProc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
-INT_PTR CALLBACK MakeDirMsgDlgProc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
-INT_PTR CALLBACK OWReadOnlyMsgDlgProc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
+INT_PTR CALLBACK OverWriteMsgDlgProc(HWND dialog, UINT message, WPARAM wparam, LPARAM lparam) {
+    return HandleFileQuestionDialog(dialog, message, wparam, lparam, CommandFileQuestion::Overwrite);
+}
+INT_PTR CALLBACK MakeDirMsgDlgProc(HWND dialog, UINT message, WPARAM wparam, LPARAM lparam) {
+    return HandleFileQuestionDialog(dialog, message, wparam, lparam, CommandFileQuestion::Directory);
+}
+INT_PTR CALLBACK OWReadOnlyMsgDlgProc(HWND dialog, UINT message, WPARAM wparam, LPARAM lparam) {
+    return HandleFileQuestionDialog(dialog, message, wparam, lparam, CommandFileQuestion::ReadOnly);
+}
 
 } // extern "C"

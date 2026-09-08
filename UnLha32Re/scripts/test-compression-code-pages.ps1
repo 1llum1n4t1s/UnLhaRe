@@ -12,7 +12,9 @@ param(
     [ValidateSet(0,64)][int]$InputBytes=64,
     [ValidateSet('日本語.txt','Ā.txt','日本語/source.txt','Ā/source.txt','日本語/Ā.txt','Ā/日本語.txt')]
     [string]$MemberName='日本語.txt',
-    [ValidateSet(1033,1041)][int]$Locale=1041
+    [ValidateSet(1033,1041)][int]$Locale=1041,
+    [string]$ArchiveFileName='日本語書庫.lzh',
+    [switch]$UseSourceWildcard
 )
 $ErrorActionPreference='Stop'
 $TestProgram=(Resolve-Path -LiteralPath $TestProgram).Path
@@ -20,6 +22,9 @@ $Oracle=(Resolve-Path -LiteralPath $Oracle).Path
 $Candidate=(Resolve-Path -LiteralPath $Candidate).Path
 $root=[IO.Path]::GetFullPath($Workspace)
 if(Test-Path -LiteralPath $root){throw 'Fresh workspace required'}
+if([string]::IsNullOrWhiteSpace($ArchiveFileName) -or
+   [IO.Path]::GetFileName($ArchiveFileName) -cne $ArchiveFileName){throw 'ArchiveFileName must be a file name'}
+if($UseSourceWildcard -and $MemberName.Contains('/')){throw 'UseSourceWildcard requires a leaf member name'}
 New-Item -ItemType Directory -Path $root | Out-Null
 $runner=Join-Path (Split-Path -Parent $TestProgram) 'DesktopRunner.exe'
 $binaryHashes=@{}
@@ -94,13 +99,18 @@ foreach($utf8 in $UnicodeModes){foreach($api in $Apis){foreach($cp in $CodePages
     foreach($side in 'oracle','reimpl'){
         $folder=Join-Path $root "$utf8-$api-$cp-h$level-$layout-$side"
         New-Item -ItemType Directory -Path $folder | Out-Null
-        $source=Join-Path $folder $MemberName
-        if($MemberName.Contains('/')){New-Item -ItemType Directory -Path (Split-Path -Parent $source) | Out-Null}
+        $sourceRoot=if($UseSourceWildcard){Join-Path $folder 'source'}else{$folder}
+        $source=Join-Path $sourceRoot $MemberName
+        if($UseSourceWildcard -or $MemberName.Contains('/')){New-Item -ItemType Directory -Path (Split-Path -Parent $source) | Out-Null}
         New-CompressionSource $source
         if([IO.File]::GetLastAccessTimeUtc($source).ToFileTimeUtc() -ne $expectedFileTime){throw 'Source timestamp not initialized'}
-        $archive=Join-Path $folder '日本語書庫.lzh'
+        $archive=Join-Path $folder $ArchiveFileName
         $command='a -gm1 -y1 -n1 -jm0 -h'+$level+' "'+$archive+'" "'+$source+'"'
-        if($MemberName.Contains('/')){
+        if($UseSourceWildcard){
+            # 英語ロケールの ANSI 命令では、日本語のフルパスを引数にせず、
+            # システム ACP の列挙結果を圧縮コアへ渡す。
+            $command='a -gm1 -y1 -n1 -jm0 -h'+$level+' "'+$archive+'" "'+$sourceRoot+'\" *'
+        }elseif($MemberName.Contains('/')){
             $command='a -gm1 -y1 -n1 -jm0 -x1 -h'+$level+' "'+$archive+'" "'+$folder+'\" "'+$MemberName+'"'
         }
         $dll=if($side -eq 'oracle'){$Oracle}else{$Candidate}

@@ -105,6 +105,23 @@ foreach ($commandName in $Commands) { foreach ($selection in $Selections) { fore
             $destination = Join-Path $root 'out'
             $extracted = @(& $TestProgram --registry '' --command-probe-a $Oracle "x -+ -n1 -gm1 -y1 `"$archive`" `"$destination\`"" A)
             if ($LASTEXITCODE -ne 0 -or $extracted -notcontains 'result=0') { throw "生成書庫を原版で展開できません: $label/$side" }
+            # 原版での展開だけでなく、候補が生成した書庫を候補自身のメモリ展開 API でも読み戻す。
+            $contents = @(& $TestProgram --registry '' --command-probe-a $Oracle "p -+ `"$archive`"" A)
+            if ($LASTEXITCODE -ne 0 -or $contents -notcontains 'result=0') { throw "生成書庫の内容を原版で読み戻せません: $label/$side" }
+            # finish がない既存書庫は Oracle seed のままなので、候補生成書庫の自己読戻し対象外。
+            if ($side -eq 'reimpl' -and $finishCount -gt 0) {
+                $candidateContents = @(& $TestProgram --registry '' --command-probe-a $Candidate "p -+ `"$archive`"" A)
+                $candidateContentsExit = $LASTEXITCODE
+                [IO.File]::WriteAllLines((Join-Path $root 'candidate-payload.txt'),[string[]](@("probe-exit=$candidateContentsExit") + $candidateContents))
+                if ($candidateContentsExit -ne 0 -or $candidateContents -notcontains 'result=0') {
+                    throw "生成書庫の内容を候補自身で読み戻せません: $label/$side (exit $candidateContentsExit)`n$($candidateContents -join "`n")"
+                }
+                $contentsDifference = @(Compare-Object $contents $candidateContents -CaseSensitive -SyncWindow 0)
+                if ($contentsDifference.Count) {
+                    $details = $contentsDifference | Select-Object -First 12 | Out-String -Width 2000
+                    throw "候補生成書庫の本文読み戻しが原版と不一致です: $label`n$details"
+                }
+            }
             if ($safeOlderMove) {
                 $expectedNames = @('a.txt','m.txt','z.txt')
                 if ($storedNewInput) { $expectedNames += 'b.txt' }

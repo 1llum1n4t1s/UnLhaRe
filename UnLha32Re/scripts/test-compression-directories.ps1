@@ -109,6 +109,23 @@ foreach ($case in $cases) { foreach ($command in 'a','u','m') { foreach ($mode i
             foreach ($file in $files) {
                 if (-not $expectedPayloads.ContainsKey($file.Name) -or [IO.File]::ReadAllText($file.FullName) -cne $expectedPayloads[$file.Name]) { throw "書庫に選択外の入力または不正な内容が含まれます: $label/$side/$($file.Name)" }
             }
+            # 原版での展開だけでなく、候補が生成した書庫を候補自身のメモリ展開 API でも読み戻す。
+            $contents = @(& $TestProgram --registry '' --command-probe-a $Oracle "p -+ `"$archive`"" A)
+            if ($LASTEXITCODE -ne 0 -or $contents -notcontains 'result=0') { throw "生成書庫の内容を原版で読み戻せません: $label/$side" }
+            # 入力が一つも選ばれない既存書庫ケースは、候補が生成していない Oracle seed を保持する。
+            if ($side -eq 'reimpl' -and $case.Files.Count -gt 0) {
+                $candidateContents = @(& $TestProgram --registry '' --command-probe-a $Candidate "p -+ `"$archive`"" A)
+                $candidateContentsExit = $LASTEXITCODE
+                [IO.File]::WriteAllLines((Join-Path $root 'candidate-payload.txt'),[string[]](@("probe-exit=$candidateContentsExit") + $candidateContents))
+                if ($candidateContentsExit -ne 0 -or $candidateContents -notcontains 'result=0') {
+                    throw "生成書庫の内容を候補自身で読み戻せません: $label/$side (exit $candidateContentsExit)`n$($candidateContents -join "`n")"
+                }
+                $contentsDifference = @(Compare-Object $contents $candidateContents -CaseSensitive -SyncWindow 0)
+                if ($contentsDifference.Count) {
+                    $details = $contentsDifference | Select-Object -First 12 | Out-String -Width 2000
+                    throw "候補生成書庫の本文読み戻しが原版と不一致です: $label`n$details"
+                }
+            }
         }
         [IO.File]::WriteAllLines((Join-Path $root 'command.log'),[string[]]$rows)
         if ($NewArchive) {

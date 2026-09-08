@@ -1,11 +1,14 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName='Run')]
 param(
-    [Parameter(Mandatory)][string]$TestProgram,
-    [Parameter(Mandatory)][string]$RunnerPath,
-    [Parameter(Mandatory)][string]$Oracle,
-    [Parameter(Mandatory)][string]$Candidate,
-    [Parameter(Mandatory)][string]$Workspace,
-    [Parameter(Mandatory)][string]$BodyDirectory,
+    [Parameter(Mandatory,ParameterSetName='Run')][string]$TestProgram,
+    [Parameter(Mandatory,ParameterSetName='Run')][string]$RunnerPath,
+    [Parameter(Mandatory,ParameterSetName='Run')][string]$Oracle,
+    [Parameter(Mandatory,ParameterSetName='Run')][string]$Candidate,
+    [Parameter(Mandatory,ParameterSetName='Run')][string]$Workspace,
+    [Parameter(Mandatory,ParameterSetName='Run')][string]$BodyDirectory,
+    [Parameter(Mandatory,ParameterSetName='Plan')][switch]$PlanOnly,
+    [ValidateSet('Full','Focused')][string]$Coverage='Full',
+    [string[]]$CaseLabels=@(),
     [ValidateSet('ascii','japanese')][string[]]$Families=@('ascii','japanese'),
     [ValidateSet(0,2)][int[]]$Methods=@(0,2),
     [ValidateSet('e','x','p','t')][string[]]$Commands=@('e','x','p','t'),
@@ -21,6 +24,32 @@ param(
     [switch]$AuditRelease
 )
 $ErrorActionPreference='Stop'
+# 計画と実行は同じ選択結果を使う。重点確認の成功を全組合せの成功とは扱わない。
+foreach($axis in 'Families','Methods','Commands','Variants','Policies','Profiles','Languages'){
+    $values=@(Get-Variable -Name $axis -ValueOnly)
+    if(!$values.Count -or @($values | Select-Object -Unique).Count -ne $values.Count){throw "空または重複した検証軸です: $axis"}
+}
+$axisPolicy=if('keep-continue' -in $Policies){'keep-continue'}else{$Policies[0]}
+$allCases=@(foreach($family in $Families){foreach($method in $Methods){foreach($variant in $Variants){
+    foreach($command in $Commands){foreach($policy in $Policies){foreach($profile in $Profiles){foreach($language in $Languages){
+        $core=$family -ceq $Families[0] -and $method -eq $Methods[0] -and $profile -ceq $Profiles[0] -and $language -eq $Languages[0]
+        $axes=$command -ceq $Commands[0] -and $policy -ceq $axisPolicy
+        [pscustomobject]@{Label="$family-jm$method-$variant-$command-$policy-$profile-$language"
+            Family=$family;Method=$method;Variant=$variant;Command=$command;Policy=$policy;Profile=$profile;Language=$language
+            Selected=($Coverage -eq 'Full' -or $core -or $axes)}
+    }}}}
+}}})
+foreach($label in $CaseLabels){if($label -cnotin $allCases.Label){throw "未知のケースです: $label"}}
+# 明示ラベルは重点確認の対象外だった失敗ケースもそのまま再現できる。
+$plan=@($allCases | Where-Object {if($CaseLabels.Count){$_.Label -cin $CaseLabels}else{$_.Selected}} |
+    Select-Object Label,Family,Method,Variant,Command,Policy,Profile,Language)
+if(!$plan.Count){throw '実行対象の比較がありません'}
+$selection=if($CaseLabels.Count){'Explicit'}else{$Coverage}
+if($PlanOnly){
+    Write-Host "CRC dialog plan only: $selection, $($plan.Count)/$($allCases.Count) cases; NOT RUN"
+    $plan; return
+}
+$runWatch=[Diagnostics.Stopwatch]::StartNew()
 $workspace=[IO.Path]::GetFullPath($Workspace)
 if(Test-Path -LiteralPath $workspace){throw '既存の検証領域は上書きしません'}
 if([IO.Path]::GetFileName($DestinationName) -cne $DestinationName -or $DestinationName -in '','.','..'){throw '出力先は単一のディレクトリ名に限定します'}
@@ -33,9 +62,10 @@ $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot
 $helper=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-EnumProbe'},$true)
 if(!$helper){throw '隔離・時間制限付きプローブがありません'}
 . ([scriptblock]::Create($helper.Extent.Text))
-$fixtures=@(foreach($family in $Families){foreach($method in $Methods){foreach($variant in $Variants){
-    [pscustomobject]@{Family=$family;Method=$method;Variant=$variant;Path=(Resolve-Path -LiteralPath (Join-Path $BodyDirectory "$family-jm$method/$variant.lzh")).Path}
-}}})
+$fixtures=@($plan | Select-Object Family,Method,Variant -Unique | ForEach-Object {
+    [pscustomobject]@{Family=$_.Family;Method=$_.Method;Variant=$_.Variant
+        Path=(Resolve-Path -LiteralPath (Join-Path $BodyDirectory "$($_.Family)-jm$($_.Method)/$($_.Variant).lzh")).Path}
+})
 $hashes=@{}
 $stamps=@{}
 foreach($path in @($TestProgram,$runner,$oracle,$candidate)+@($fixtures.Path)){
@@ -44,8 +74,19 @@ foreach($path in @($TestProgram,$runner,$oracle,$candidate)+@($fixtures.Path)){
 }
 New-Item -ItemType Directory -Path $workspace | Out-Null
 Write-Host "Command CRC dialogs: candidate SHA256=$($hashes[$candidate]), oracle SHA256=$($hashes[$oracle])"
+$plan | Export-Csv -LiteralPath (Join-Path $workspace 'plan.tsv') -Delimiter "`t" -NoTypeInformation
+[pscustomobject]@{Selection=$selection;Planned=$plan.Count;Full=$allCases.Count;UnicodeMode=$UnicodeMode;NameMode=$NameMode
+    DestinationName=$DestinationName;ExistingFiles=[bool]$ExistingFiles;AuditRelease=[bool]$AuditRelease
+    PowerShell=$PSVersionTable.PSVersion.ToString();ScriptHash=(Get-FileHash -LiteralPath $PSCommandPath).Hash
+    HelperHash=(Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'test-enum-state.ps1')).Hash;Inputs=$hashes} |
+    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $workspace 'plan.json') -Encoding utf8
+Write-Host "Command CRC dialogs: $selection selection, $($plan.Count)/$($allCases.Count) comparisons planned"
+$selectedLabels=[Collections.Generic.HashSet[string]]::new([string[]]$plan.Label,[StringComparer]::Ordinal)
 $observations=[Collections.Generic.List[object]]::new()
 foreach($fixture in $fixtures){foreach($command in $Commands){foreach($policy in $Policies){foreach($profile in $Profiles){foreach($language in $Languages){
+    $label="$($fixture.Family)-jm$($fixture.Method)-$($fixture.Variant)-$command-$policy-$profile-$language"
+    if(!$selectedLabels.Contains($label)){continue}
+    $caseWatch=[Diagnostics.Stopwatch]::StartNew()
     $responses=switch($policy){
         'silent'{'6'}
         'delete-continue'{'6,6,6,6,6,6'}
@@ -57,7 +98,6 @@ foreach($fixture in $fixtures){foreach($command in $Commands){foreach($policy in
     $switches=if($policy -eq 'silent'){'-gm1 -y1'}elseif($policy -eq 'jy-continue'){'-gm0 -y1 -jyd1'}else{'-gm0 -y1'}
     $api=if($profile -in 'w64','w32','W-A32','none'){'W'}elseif($profile -eq 'legacy'){'legacy'}else{'A'}
     $layout=if($profile -in 'legacy','W-A32'){'a32'}else{$profile}
-    $label="$($fixture.Family)-jm$($fixture.Method)-$($fixture.Variant)-$command-$policy-$profile-$language"
     $snapshots=@()
     $bad=$fixture.Variant -ne 'good'
     $stopping=$bad -and $command -ne 't' -and $policy -in 'delete-stop','keep-stop'
@@ -101,14 +141,20 @@ foreach($fixture in $fixtures){foreach($command in $Commands){foreach($policy in
     }
     $difference=@(Compare-Object $snapshots[0] $snapshots[1] -SyncWindow 0)
     if($difference.Count){$difference | Export-Csv -LiteralPath (Join-Path $workspace "$label-diff.tsv") -Delimiter "`t" -NoTypeInformation}
-    $observations.Add([pscustomobject]@{Case=$observations.Count;Label=$label;Differences=$difference.Count})
+    $observations.Add([pscustomobject]@{Case=$observations.Count;Label=$label;Differences=$difference.Count;ElapsedSeconds=$caseWatch.Elapsed.TotalSeconds})
+    if($difference.Count){
+        $observations | Export-Csv -LiteralPath (Join-Path $workspace 'observations.tsv') -Delimiter "`t" -NoTypeInformation
+        throw "CRC 比較が不一致のため後続を停止しました: $label（-CaseLabels で単独再実行できます）"
+    }
 }}}}
     $observations | Export-Csv -LiteralPath (Join-Path $workspace 'observations.tsv') -Delimiter "`t" -NoTypeInformation
     Write-Host "$($fixture.Family)-jm$($fixture.Method)-$($fixture.Variant) comparisons=$($observations.Count)"
 }
 foreach($path in $hashes.Keys){if((Get-FileHash -LiteralPath $path).Hash -cne $hashes[$path] -or [IO.File]::GetLastWriteTimeUtc($path) -ne $stamps[$path]){throw "検証入力・バイナリーが変更されました: $path"}}
-$expected=$fixtures.Count*$Commands.Count*$Policies.Count*$Profiles.Count*$Languages.Count
+$expected=$plan.Count
 if(!$expected -or $observations.Count -ne $expected){throw '比較件数が不足しています'}
-$failures=@($observations | Where-Object Differences -ne 0)
-if($failures.Count){$failures | Format-Table -AutoSize | Out-String -Width 200 | Write-Host; throw 'CRC の確認内容・出力・通知・状態・ファイルが一致しません'}
-Write-Host "Command CRC dialogs: $($observations.Count) exact comparisons and immutable-input guards passed"
+$runWatch.Stop()
+[pscustomobject]@{Status='Passed';Selection=$selection;Comparisons=$observations.Count;Full=$allCases.Count
+    ElapsedSeconds=$runWatch.Elapsed.TotalSeconds} | ConvertTo-Json |
+    Set-Content -LiteralPath (Join-Path $workspace 'summary.json') -Encoding utf8
+Write-Host "Command CRC dialogs: $($observations.Count) exact comparisons and immutable-input guards passed ($selection, $([Math]::Round($runWatch.Elapsed.TotalSeconds,2)) seconds)"

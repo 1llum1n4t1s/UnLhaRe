@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$CompareUpdatePolicyOracle,
+    [ValidateSet('Full','Focused')][string]$CrcDialogCoverage = 'Full',
+    [ValidateSet('Normal','Focused')][string]$CodecPayloadDisplay = 'Focused',
     [string]$WorkspaceRoot = '',
     [switch]$IsolatedChild
 )
@@ -16,6 +18,8 @@ if (-not $IsolatedChild) {
     $childArguments = @('-NoProfile', '-File', $PSCommandPath, '-IsolatedChild')
     if ($CompareUpdatePolicyOracle) { $childArguments += '-CompareUpdatePolicyOracle' }
     if ($WorkspaceRoot) { $childArguments += @('-WorkspaceRoot', $WorkspaceRoot) }
+    $childArguments += @('-CrcDialogCoverage', $CrcDialogCoverage)
+    $childArguments += @('-CodecPayloadDisplay', $CodecPayloadDisplay)
     Write-Host 'Tests run on a separate, non-visible desktop.'
     & $desktopRunner $shell @childArguments
     if ($LASTEXITCODE -ne 0) { throw "隔離した検証に失敗しました (exit $LASTEXITCODE)。" }
@@ -341,6 +345,20 @@ try {
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-code-pages-english') `
             -UnicodeModes 1 -Locale 1033
         & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-code-pages-english-unicode-wildcard') `
+            -UnicodeModes 1 -Locale 1033 -Apis W -Layouts w64 -CodePages 932 -HeaderLevels 2 `
+            -ArchiveFileName 'archive.lzh' -UseSourceWildcard
+        & (Join-Path $PSScriptRoot 'test-unicode-total-progress.ps1') -TestProgram $testProgram `
+            -Runner $desktopRunner -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'unicode-total-progress')
+        & (Join-Path $PSScriptRoot 'test-wide-noncp932-commands.ps1') -TestProgram $testProgram `
+            -Runner $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'wide-noncp932-commands')
+        & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-code-pages-english-ansi') `
+            -UnicodeModes 0 -Locale 1033 -Layouts none -CodePages 932,65001,1252 -HeaderLevels 0,1,2 `
+            -ArchiveFileName 'archive.lzh' -UseSourceWildcard
+        & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-code-pages-wide-name') `
             -UnicodeModes 1 -MemberName 'Ā.txt'
         & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
@@ -398,6 +416,9 @@ try {
             -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'command-name-width')
         & (Join-Path $PSScriptRoot 'test-decode-progress-state.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'decode-progress-state')
+        & (Join-Path $PSScriptRoot 'test-memory-progress-dialog.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'memory-progress-dialog')
         & (Join-Path $PSScriptRoot 'test-ratio-width.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'ratio-width')
         & (Join-Path $PSScriptRoot 'test-legacy-methods.ps1') -TestProgram $testProgram `
@@ -411,6 +432,9 @@ try {
         & (Join-Path $PSScriptRoot 'test-command-methods.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Fixtures $pmarcCheckRoot `
             -Workspace (Join-Path $integrationRoot 'command-methods')
+        & (Join-Path $PSScriptRoot 'test-pmarc-extraction.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -Fixtures $pmarcCheckRoot `
+            -Workspace (Join-Path $integrationRoot 'pmarc-extraction')
         & (Join-Path $PSScriptRoot 'test-command-initial-headers.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Seed (Join-Path $pmarcCheckRoot 'literal\lh0-9.lzh') `
             -Workspace (Join-Path $integrationRoot 'command-initial-headers')
@@ -536,9 +560,78 @@ try {
                 -Archive (Join-Path $extractionBodyRoot 'ascii-jm0/good.lzh') `
                 -Workspace (Join-Path $integrationRoot "jy-warnings-$category")
         }
+        & (Join-Path $PSScriptRoot 'test-overwrite-dialogs.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'overwrite-dialogs')
+        & (Join-Path $PSScriptRoot 'test-directory-dialogs.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'directory-dialogs')
+        & (Join-Path $PSScriptRoot 'test-directory-member-dialogs.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'directory-member-dialogs')
+        & (Join-Path $PSScriptRoot 'test-disk-space-dialogs.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'disk-space-dialogs')
+        & (Join-Path $PSScriptRoot 'test-create-failure.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'create-failure')
+        foreach ($unicodeMode in 0,1) {
+            & (Join-Path $PSScriptRoot 'test-create-failure.ps1') -TestProgram $testProgram `
+                -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W `
+                -EnumLayout w32 -UnicodeMode $unicodeMode -DestinationSuffix '-Ā' `
+                -CaseNames skip,stop1,x-stop,injected-skip,injected-stop,injected-new `
+                -Workspace (Join-Path $integrationRoot "create-failure-wide-$unicodeMode")
+        }
+        & (Join-Path $PSScriptRoot 'test-create-failure.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W -EnumLayout none `
+            -CaseNames skip,stop1 -Workspace (Join-Path $integrationRoot 'create-failure-noenum')
+        & (Join-Path $PSScriptRoot 'test-preparation-failure.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'preparation-failure')
+        foreach ($unicodeMode in 0,1) {
+            & (Join-Path $PSScriptRoot 'test-preparation-failure.ps1') -TestProgram $testProgram `
+                -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W `
+                -EnumLayout w32 -UnicodeMode $unicodeMode -DestinationSuffix '-Ā' `
+                -CaseNames newer,missing,parent-no,parent-file,directory-file,metadata-open,newer-last `
+                -Workspace (Join-Path $integrationRoot "preparation-failure-wide-$unicodeMode")
+        }
+        & (Join-Path $PSScriptRoot 'test-preparation-failure.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W -EnumLayout none `
+            -CaseNames newer,parent-file -Workspace (Join-Path $integrationRoot 'preparation-failure-noenum')
+        & (Join-Path $PSScriptRoot 'test-filename-dialogs.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'filename-dialogs')
+        & (Join-Path $PSScriptRoot 'test-filename-dialogs.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W -NativeFileDialog `
+            -CaseNames overwrite-new,overwrite-existing,overwrite-cancel-save,directory-new,member-new `
+            -Workspace (Join-Path $integrationRoot 'filename-dialogs-native')
+        & (Join-Path $PSScriptRoot 'test-overwrite-dialog-layout.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -SeedArchive (Join-Path $integrationRoot 'overwrite-dialogs/seed.lzh') `
+            -Workspace (Join-Path $integrationRoot 'overwrite-dialog-layout')
+        & (Join-Path $PSScriptRoot 'test-overwrite-dialog-layout.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Directory `
+            -SeedArchive (Join-Path $integrationRoot 'overwrite-dialogs/seed.lzh') `
+            -Workspace (Join-Path $integrationRoot 'directory-dialog-layout')
+        foreach ($mode in 0,1) {
+            & (Join-Path $PSScriptRoot 'test-filename-dialogs.ps1') -TestProgram $testProgram `
+                -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+                -Apis W -CaseNames overwrite-new,overwrite-existing,directory-new -EnumLayout w32 `
+                -UnicodeMode $mode -SelectionSuffix '-Ā' `
+                -Workspace (Join-Path $integrationRoot "filename-dialogs-wide-$mode")
+            & (Join-Path $PSScriptRoot 'test-overwrite-dialogs.ps1') -TestProgram $testProgram `
+                -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+                -Apis W -CaseNames yes,skip-all-new,ro-both-skip,cancel,ro-yes `
+                -EnumLayout w32 -UnicodeMode $mode -DestinationSuffix '-Ā' `
+                -Workspace (Join-Path $integrationRoot "overwrite-dialogs-wide-$mode")
+            & (Join-Path $PSScriptRoot 'test-directory-dialogs.ps1') -TestProgram $testProgram `
+                -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+                -Apis W -CaseNames yes,skip-all,cancel -EnumLayout w32 -UnicodeMode $mode `
+                -DestinationSuffix '-Ā' -Workspace (Join-Path $integrationRoot "directory-dialogs-wide-$mode")
+        }
         & (Join-Path $PSScriptRoot 'test-command-crc-dialogs.ps1') -TestProgram $testProgram `
             -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -BodyDirectory $extractionBodyRoot `
-            -Workspace (Join-Path $integrationRoot 'command-crc-dialogs')
+            -Coverage $CrcDialogCoverage -Workspace (Join-Path $integrationRoot 'command-crc-dialogs')
         & (Join-Path $PSScriptRoot 'test-command-crc-dialogs.ps1') -TestProgram $testProgram `
             -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -BodyDirectory $extractionBodyRoot `
             -Families ascii -Commands x,p -Variants good,crc-first,crc-all -Profiles w64 -Languages 1041 `
@@ -593,9 +686,11 @@ try {
             -Oracle $oracle -Candidate $candidate -Fixtures $pmarcCheckRoot `
             -Level2Fixtures $headerCrcCommandsRoot -Workspace (Join-Path $integrationRoot 'command-filter-progress')
         & (Join-Path $PSScriptRoot 'test-lz5-compression.ps1') -TestProgram $testProgram `
-            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'lz5-compression')
+            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'lz5-compression') `
+            -PayloadDisplay $CodecPayloadDisplay
         & (Join-Path $PSScriptRoot 'test-lh3-compression.ps1') -TestProgram $testProgram `
-            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'lh3-compression')
+            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'lh3-compression') `
+            -PayloadDisplay $CodecPayloadDisplay
         & (Join-Path $PSScriptRoot 'test-lh3-abort-recovery.ps1') -TestProgram $testProgram `
             -Candidate $candidate -Workspace (Join-Path $integrationRoot 'lh3-abort-recovery')
 
@@ -753,6 +848,19 @@ try {
         & (Join-Path $PSScriptRoot 'test-rewrite-join-existing.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -FixturesRoot (Join-Path $integrationRoot 'rewrite-levels') `
             -Workspace (Join-Path $integrationRoot 'rewrite-join-existing')
+        & (Join-Path $PSScriptRoot 'test-existing-join-cancel.ps1') -TestProgram $testProgram `
+            -Candidate $candidate -FixturesRoot (Join-Path $integrationRoot 'rewrite-levels') `
+            -Workspace (Join-Path $integrationRoot 'existing-join-cancel')
+        & (Join-Path $PSScriptRoot 'test-rewrite-join-existing.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -FixturesRoot (Join-Path $integrationRoot 'rewrite-levels') `
+            -SeedNames seed-l2.lzh -Modes @(1,2) -Apis @('legacy','A') -Layouts w64 `
+            -Workspace (Join-Path $integrationRoot 'existing-join-ansi-progress')
+        & (Join-Path $PSScriptRoot 'test-join-progress.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -FixturesRoot (Join-Path $integrationRoot 'rewrite-levels') `
+            -Workspace (Join-Path $integrationRoot 'join-progress')
+        & (Join-Path $PSScriptRoot 'test-rewrite-progress.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -InputBytes 0 `
+            -Workspace (Join-Path $integrationRoot 'rewrite-progress-empty')
         foreach ($rewriteSize in 64,99,100,262143,262144,262145,1048577) {
             & (Join-Path $PSScriptRoot 'test-rewrite-progress.ps1') -TestProgram $testProgram `
                 -Oracle $oracle -Candidate $candidate -InputBytes $rewriteSize `
@@ -1013,6 +1121,10 @@ try {
         & (Join-Path $PSScriptRoot 'test-archive-tails.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'archive-tails') `
             -EmptyArchive (Join-Path $fixtureRoot 'lha-test16-l1.lzh') -DataArchive $memorySelectionArchive
+        & (Join-Path $PSScriptRoot 'test-existing-join-foreign.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'existing-join-foreign') `
+            -Seed (Join-Path $integrationRoot 'rewrite-levels/seed-l2.lzh') `
+            -ForeignFixtures (Join-Path $integrationRoot 'archive-tails')
         & (Join-Path $PSScriptRoot 'test-archive-paths.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'archive-paths') `
             -Archive $memorySelectionArchive
@@ -1389,4 +1501,11 @@ try {
     }
 }
 
-Write-Host 'All compatibility and integration tests passed.'
+if ($CodecPayloadDisplay -eq 'Focused') {
+    Write-Host 'Codec payload coverage: all payload/guard checks passed; normal-display comparisons are representative, not all-input coverage.'
+}
+if ($CrcDialogCoverage -eq 'Full' -and $CodecPayloadDisplay -eq 'Normal') {
+    Write-Host 'All compatibility and integration tests passed.'
+} else {
+    Write-Host "Selected compatibility and integration tests passed (CRC dialogs: $CrcDialogCoverage; codec payload display: $CodecPayloadDisplay). Focused coverage is not a full-matrix result."
+}

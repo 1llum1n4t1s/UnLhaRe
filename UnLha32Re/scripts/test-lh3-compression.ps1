@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$Candidate,
     [Parameter(Mandatory)][string]$Workspace,
     [ValidateSet('legacy','A','W')][string[]]$CommandApis = @('legacy','A','W'),
-    [string[]]$CaseNames = @()
+    [string[]]$CaseNames = @(),
+    [ValidateSet('Normal','Focused')][string]$PayloadDisplay = 'Normal'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,7 @@ foreach ($path in $TestProgram,$runner,$Oracle,$Candidate) {
     Write-Host "LH3 environment: $path, SHA256=$($hashes[$path])"
 }
 Write-Host "LH3 compression workspace: $Workspace"
+Write-Host "LH3 payload display: $PayloadDisplay (Focused keeps all payload/guard checks and representative normal-display comparisons)"
 
 function New-TestData([string]$Pattern,[int]$Size) {
     $data = [byte[]]::new($Size)
@@ -361,6 +363,8 @@ $repairCount = 0
 $exactLh3Count = 0
 $multiBlockCount = 0
 $payloadChecks = 0
+$normalPayloadKeys = [Collections.Generic.HashSet[string]]::new()
+$normalPayloadChecks = 0
 foreach ($api in $CommandApis) {
     for ($index=0; $index -lt $specifications.Count; $index++) {
         $oracleFixture = $sets["$api/oracle"][$index]
@@ -375,8 +379,9 @@ foreach ($api in $CommandApis) {
         $candidateArchiveHash = (Get-FileHash -LiteralPath $candidateFixture.Archive -Algorithm SHA256).Hash
         foreach ($readerName in 'oracle','candidate') {
             $reader = if ($readerName -eq 'oracle') { $Oracle } else { $Candidate }
-            $rows = @(& $runner --timeout-seconds 120 $TestProgram --registry '' --legacy-payload-probe `
-                $reader $candidateFixture.Archive $candidateFixture.Input 2>&1 | ForEach-Object { "$_" })
+            $payloadArguments = @('--registry','','--legacy-payload-probe',$reader,$candidateFixture.Archive,$candidateFixture.Input)
+            if ($PayloadDisplay -eq 'Focused') { $payloadArguments += 'quiet' }
+            $rows = @(& $runner --timeout-seconds 120 $TestProgram @payloadArguments 2>&1 | ForEach-Object { "$_" })
             $payloadExit = $LASTEXITCODE
             [IO.File]::WriteAllLines((Join-Path (Split-Path -Parent $candidateFixture.Archive) "payload-$readerName.txt"),[string[]]$rows)
             if ($payloadExit -ne 0 -or $rows.Count -ne 3 -or
@@ -384,6 +389,17 @@ foreach ($api in $CommandApis) {
                 throw "LH3 の安全書庫を相互展開できません: $api/$($specification.Name)/$readerName (exit $payloadExit)`n$($rows -join "`n")"
             }
             $payloadChecks += 3
+            $normalKey = "$readerName/$($candidateMember.Method)/repair=$([bool]$specification.Repair)/multiblock=$([bool]$specification.MultiBlock)"
+            if ($PayloadDisplay -eq 'Focused' -and $normalPayloadKeys.Add($normalKey)) {
+                $normalRows = @(& $runner --timeout-seconds 120 $TestProgram --registry '' --legacy-payload-probe `
+                    $reader $candidateFixture.Archive $candidateFixture.Input 2>&1 | ForEach-Object { "$_" })
+                $normalExit = $LASTEXITCODE
+                [IO.File]::WriteAllLines((Join-Path (Split-Path -Parent $candidateFixture.Archive) "payload-$readerName.normal.txt"),[string[]]$normalRows)
+                if ($normalExit -ne 0 -or @(Compare-Object $rows $normalRows -SyncWindow 0).Count) {
+                    throw "LH3 の通常表示と表示抑止で本文・状態が違います: $normalKey"
+                }
+                $normalPayloadChecks += 3
+            }
         }
         if ((Get-FileHash -LiteralPath $candidateFixture.Archive -Algorithm SHA256).Hash -cne $candidateArchiveHash) {
             throw 'LH3 の相互展開で候補書庫が変更されました'
@@ -461,3 +477,4 @@ foreach ($path in $hashes.Keys) {
     }
 }
 Write-Host "LH3 compression: $pairCount method/body/token pairs, $repairCount safe singleton-tree cases, $exactLh3Count exact dynamic-tree bodies, $multiBlockCount multiblock cases, and $payloadChecks cross-reader payload/guard records passed"
+if ($PayloadDisplay -eq 'Focused') { Write-Host "LH3 display coverage: $normalPayloadChecks normal/quiet API comparisons; normal display is representative, not all-input coverage" }

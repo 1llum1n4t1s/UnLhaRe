@@ -52,7 +52,7 @@ foreach($leaf in 'nested.txt','other.txt'){
     $offset+=$headerSize+$packed
 }
 if($offset -ne $seedBytes.Length-1 -or $seedBytes[$offset] -ne 0){throw '種書庫の終端が不正です。'}
-$hasMemberProgress=@($selectedPacked | Where-Object {$_ -lt 100 -or $_ -gt 262144}).Count -gt 0
+$hasMemberProgress=@($selectedPacked | Where-Object {($_ -gt 0 -and $_ -lt 100) -or $_ -gt 262144}).Count -gt 0
 $cases=@()
 foreach($mode in 0,1,2){foreach($selected in 0,1){$cases+=@{Mode=$mode;Selected=$selected;Abort=-1}}}
 if(!$NormalOnly){

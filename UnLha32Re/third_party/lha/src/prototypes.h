@@ -124,7 +124,16 @@ void* Lha_OpenMetadataFile(const char* path, unsigned long access);
 int Lha_CommandShouldAddMember(const LzHeader* header);
 int Lha_HasExplicitCompressionInputs(void);
 int Lha_ShouldDiscardCompressionUpdate(void);
+/* -1: 中断、0: 除外、1: 新規保存先、2: 確認済みの既存保存先。 */
 int Lha_PrepareCommandExtraction(const LzHeader* header, char* path, size_t path_size);
+/* -1: 中断、0: 作成を見送る、1: 作成を継続する。 */
+int Lha_PrepareCommandDirectoryExtraction(const char* path);
+int Lha_CommandChecksDiskSpace(void);
+/* 親作成後、既存ファイルの削除前。-1: 中断、0: 除外、1: 続行。 */
+int Lha_CheckCommandDiskSpace(const LzHeader* header, const char* path);
+/* ファイル作成失敗の直後に呼ぶ。1: 中断、0: 除外して継続。 */
+int Lha_HandleCommandCreateFailure(const LzHeader* header, const char* path);
+void Lha_HandleCommandDirectoryFailure(const char* path);
 void Lha_RestoreCommandDirectoryMetadata(const LzHeader* header, const char* path);
 void Lha_ClearProgressMember(void);
 int Lha_CheckAbort();

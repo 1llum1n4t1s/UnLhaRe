@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory)][string]$Oracle,
     [Parameter(Mandatory)][string]$Candidate,
     [Parameter(Mandatory)][string]$Workspace,
-    [string[]]$CaseNames = @()
+    [string[]]$CaseNames = @(),
+    [string[]]$Commands = @(),
+    [string[]]$Apis = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +35,37 @@ if ($CaseNames.Count) {
     }
     $cases = @($cases | Where-Object { $_.Name -cin $CaseNames })
 }
+$requestedCommands = @($Commands | ForEach-Object { $_ -split ',' | Where-Object { $_ } })
+$selectedCommands = @('a','u','f','m')
+if ($requestedCommands.Count) {
+    foreach ($command in $requestedCommands) {
+        if ($command -cnotin $selectedCommands) { throw "未知の順序試験コマンドです: $command" }
+    }
+    $selectedCommands = @($selectedCommands | Where-Object { $_ -cin $requestedCommands })
+}
+$requestedApis = @($Apis | ForEach-Object { $_ -split ',' | Where-Object { $_ } })
+$selectedApis = @('legacy','A','W')
+if ($requestedApis.Count) {
+    foreach ($api in $requestedApis) {
+        if ($api -cnotin $selectedApis) { throw "未知の順序試験 API です: $api" }
+    }
+    $selectedApis = @($selectedApis | Where-Object { $_ -cin $requestedApis })
+}
+$runMetadataPath = Join-Path $Workspace 'compression-order-run.tsv'
+$completedCellsPath = Join-Path $Workspace 'compression-order-comparisons.tsv'
+foreach ($path in $runMetadataPath,$completedCellsPath) {
+    if (Test-Path -LiteralPath $path) { throw "既存の圧縮順序試験記録を上書きできません: $path" }
+}
+@(
+    "field`tvalue"
+    "test-program-sha256`t$((Get-FileHash -LiteralPath $TestProgram -Algorithm SHA256).Hash)"
+    "oracle-sha256`t$((Get-FileHash -LiteralPath $Oracle -Algorithm SHA256).Hash)"
+    "candidate-sha256`t$((Get-FileHash -LiteralPath $Candidate -Algorithm SHA256).Hash)"
+    "cases`t$($cases.Name -join ',')"
+    "commands`t$($selectedCommands -join ',')"
+    "apis`t$($selectedApis -join ',')"
+) | Set-Content -LiteralPath $runMetadataPath -Encoding utf8
+"case`tcommand`tapi" | Set-Content -LiteralPath $completedCellsPath -Encoding utf8
 $count = 0
 $originalRetryCount = 0
 $when = [DateTime]::new(2024,1,2,3,4,6,[DateTimeKind]::Utc)
@@ -47,8 +80,8 @@ function Test-OriginalMoveAccessDenied([string[]]$Rows) {
         @($Rows -like '*on execute_cmd (MoveFile)*').Count -ne 0
 }
 foreach ($case in $cases) {
- foreach ($command in 'a','u','f','m') {
-  foreach ($api in 'legacy','A','W') {
+ foreach ($command in $selectedCommands) {
+  foreach ($api in $selectedApis) {
     $label = "$($case.Name)-$command-$api"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
@@ -116,6 +149,31 @@ foreach ($case in $cases) {
             if ($contentsExit -ne 0 -or $contents -notcontains 'result=0') {
                 throw "順序試験の内容を原版で展開できません: $label / $side (exit $contentsExit)`n$($contents -join "`n")"
             }
+            if ($side -eq 'reimpl') {
+                # 候補が生成した順序・置換後の書庫を、候補自身の全列挙 API とメモリ展開 API でも読み返す。
+                $candidateMetadata = @(& $TestProgram --registry '' --attribute-probe $Candidate $archive)
+                $candidateMetadataExit = $LASTEXITCODE
+                [IO.File]::WriteAllLines((Join-Path $root 'candidate-metadata.txt'),[string[]](@("probe-exit=$candidateMetadataExit") + $candidateMetadata))
+                if ($candidateMetadataExit -ne 0) {
+                    throw "順序試験の結果を候補自身で列挙できません: $label / $side"
+                }
+                $metadataDifference = @(Compare-Object $metadata $candidateMetadata -CaseSensitive -SyncWindow 0)
+                if ($metadataDifference.Count) {
+                    $details = $metadataDifference | Select-Object -First 12 | Out-String -Width 2000
+                    throw "候補が生成した書庫の列挙・メモリ展開が原版と不一致です: $label`n$details"
+                }
+                $candidateContents = @(& $TestProgram --registry '' --command-probe-a $Candidate "p -+ `"$archive`"" A)
+                $candidateContentsExit = $LASTEXITCODE
+                [IO.File]::WriteAllLines((Join-Path $root 'candidate-payload.txt'),[string[]](@("probe-exit=$candidateContentsExit") + $candidateContents))
+                if ($candidateContentsExit -ne 0 -or $candidateContents -notcontains 'result=0') {
+                    throw "順序試験の内容を候補自身で展開できません: $label / $side (exit $candidateContentsExit)`n$($candidateContents -join "`n")"
+                }
+                $contentsDifference = @(Compare-Object $contents $candidateContents -CaseSensitive -SyncWindow 0)
+                if ($contentsDifference.Count) {
+                    $details = $contentsDifference | Select-Object -First 12 | Out-String -Width 2000
+                    throw "候補が生成した書庫の本文展開が原版と不一致です: $label`n$details"
+                }
+            }
             $rows += @($contents | ForEach-Object { "data.$_" })
             foreach ($name in 'a.txt','b.txt','m.txt','z.txt') {
                 $rows += "source=$name,exists=$(Test-Path -LiteralPath (Join-Path $root $name))"
@@ -133,10 +191,11 @@ foreach ($case in $cases) {
         $details = $difference | Select-Object -First 12 | Out-String -Width 2000
         throw "圧縮時の既存順・置換対象・通知順が不一致です: $label`n$details"
     }
+    "$($case.Name)`t$command`t$api" | Add-Content -LiteralPath $completedCellsPath -Encoding utf8
     $count++
   }
  }
  Write-Host "Compression order: $($case.Name), $count comparisons passed"
 }
-Write-Host "Compression order: $count A/W/legacy add/update/freshen/move existing order, replacement, callback order/metadata/path, content, and deletion comparisons passed"
+Write-Host "Compression order: $count selected API/command existing-order, replacement, callback order/metadata/path, content, and deletion comparisons passed"
 Write-Host "Compression order: $originalRetryCount original MoveFile access-denied retries (cause unconfirmed; failure logs retained)"

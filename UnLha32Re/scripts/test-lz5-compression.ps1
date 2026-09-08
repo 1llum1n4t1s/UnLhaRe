@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$Candidate,
     [Parameter(Mandatory)][string]$Workspace,
     [ValidateSet('legacy','A','W')][string[]]$CommandApis = @('legacy','A','W'),
-    [ValidateSet('enum','progress')][string[]]$Profiles = @('enum','progress')
+    [ValidateSet('enum','progress')][string[]]$Profiles = @('enum','progress'),
+    [ValidateSet('Normal','Focused')][string]$PayloadDisplay = 'Normal'
 )
 $ErrorActionPreference = 'Stop'
 $TestProgram = (Resolve-Path -LiteralPath $TestProgram).Path
@@ -22,6 +23,7 @@ foreach ($path in $TestProgram,$runner,$Oracle,$Candidate) {
     Write-Host "LZ5 environment: $path, SHA256=$($hashes[$path])"
 }
 Write-Host "LZ5 compression workspace: $Workspace"
+Write-Host "LZ5 payload display: $PayloadDisplay (Focused keeps all payload/guard checks and representative normal-display comparisons)"
 
 function Assert-Lz5Packets([byte[]]$Body,[byte[]]$Payload,[bool]$RequireZeroInitialPadding) {
     # 製品の復号器と独立して、辞書参照・8 トークン境界・未使用領域を検査する。
@@ -125,6 +127,8 @@ $paddingCount = 0
 $priorCount = 0
 $lz5Count = 0
 $payloadCount = 0
+$normalPayloadKeys = [Collections.Generic.HashSet[string]]::new()
+$normalPayloadCount = 0
 foreach ($api in $CommandApis) { foreach ($profile in $Profiles) {
     $specifications = @($reuse)
     if ($profile -eq 'enum') { $specifications += $boundaries }
@@ -188,7 +192,9 @@ foreach ($api in $CommandApis) { foreach ($profile in $Profiles) {
             $readers = @()
             foreach ($readerSide in 'oracle','candidate') {
                 $reader = if ($readerSide -eq 'oracle') { $Oracle } else { $Candidate }
-                $rows = @(& $runner --timeout-seconds 30 $TestProgram --registry '' --legacy-payload-probe $reader $fixture.Archive $fixture.Input 2>&1 | ForEach-Object { "$_" })
+                $payloadArguments = @('--registry','','--legacy-payload-probe',$reader,$fixture.Archive,$fixture.Input)
+                if ($PayloadDisplay -eq 'Focused') { $payloadArguments += 'quiet' }
+                $rows = @(& $runner --timeout-seconds 30 $TestProgram @payloadArguments 2>&1 | ForEach-Object { "$_" })
                 $code = $LASTEXITCODE
                 [IO.File]::WriteAllLines((Join-Path $fixture.Root "memory-$readerSide.txt"),[string[]]$rows,[Text.UTF8Encoding]::new($false))
                 if ($code -ne 0 -or $rows.Count -ne 3 -or @($rows -notmatch ',payload=1,prefix=1,tail=1,guard=1$').Count) {
@@ -196,6 +202,18 @@ foreach ($api in $CommandApis) { foreach ($profile in $Profiles) {
                 }
                 $readers += ,$rows
                 $payloadCount += 3
+                # API ごとの新規 DLL ロードと全本文検査は維持し、表示との同値対照だけを方式・空入力でまとめる。
+                $normalKey = "$side/$readerSide/$($member.Method)/empty=$($fixture.Data.Length -eq 0)"
+                if ($PayloadDisplay -eq 'Focused' -and $normalPayloadKeys.Add($normalKey)) {
+                    $normalRows = @(& $runner --timeout-seconds 30 $TestProgram --registry '' --legacy-payload-probe `
+                        $reader $fixture.Archive $fixture.Input 2>&1 | ForEach-Object { "$_" })
+                    $normalExit = $LASTEXITCODE
+                    [IO.File]::WriteAllLines((Join-Path $fixture.Root "memory-$readerSide.normal.txt"),[string[]]$normalRows,[Text.UTF8Encoding]::new($false))
+                    if ($normalExit -ne 0 -or @(Compare-Object $rows $normalRows -SyncWindow 0).Count) {
+                        throw "LZ5 の通常表示と表示抑止で本文・状態が違います: $normalKey"
+                    }
+                    $normalPayloadCount += 3
+                }
             }
             if (@(Compare-Object $readers[0] $readers[1] -SyncWindow 0).Count) { throw "LZ5 の展開結果・メタデータが違います: $api/$profile/$step/$side" }
             if ((Get-FileHash -LiteralPath $fixture.Archive -Algorithm SHA256).Hash -cne $archiveHash -or
@@ -227,3 +245,4 @@ foreach ($path in $hashes.Keys) {
     if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $hashes[$path]) { throw "検証中に実行ファイルが変更されました: $path" }
 }
 Write-Host "LZ5 compression: $pairCount body pairs ($exactCount exact, $($pairCount-$exactCount) with only initial unused slots excluded), $lz5Count independent LZ5 decodes per DLL, $paddingCount zero initial slots, $priorCount previous-packet slots, $payloadCount full-payload/guard API checks passed"
+if ($PayloadDisplay -eq 'Focused') { Write-Host "LZ5 display coverage: $normalPayloadCount normal/quiet API comparisons; normal display is representative, not all-input coverage" }

@@ -9,6 +9,10 @@
 /* ------------------------------------------------------------------------ */
 #include "lha.h"
 
+#ifdef LHA_LIBRARY
+extern int Lha_IsMemoryExtracting(void);
+#endif
+
 #define MAX_INDICATOR_COUNT     58
 
 static off_t reading_size;
@@ -60,6 +64,16 @@ start_indicator(char *name, off_t size, char *msg, long def_indicator_threshold)
     int m;
 #endif
 
+#ifdef LHA_LIBRARY
+#ifdef NEED_INCREMENTAL_INDICATOR
+    /* 原版のメモリ API は本文サイズをおよそ 100 分割した間隔で更新する。 */
+    if (Lha_IsMemoryExtracting() && size > 0 && def_indicator_threshold > 0) {
+        indicator_threshold = (long)(ALIGN(size, 100 * def_indicator_threshold) * def_indicator_threshold);
+        next_msg_size = indicator_threshold;
+    }
+#endif
+#endif
+
     if (quiet)
         return;
 
@@ -93,6 +107,15 @@ start_indicator(char *name, off_t size, char *msg, long def_indicator_threshold)
     }
 #else
     printf("%s\t- ", name);
+#endif
+#ifdef LHA_LIBRARY
+#ifdef NEED_INCREMENTAL_INDICATOR
+    /* quiet_mode=0 の表示初期化が通常のしきい値を上書きするため、ここで戻す。 */
+    if (Lha_IsMemoryExtracting() && size > 0 && def_indicator_threshold > 0) {
+        indicator_threshold = (long)(ALIGN(size, 100 * def_indicator_threshold) * def_indicator_threshold);
+        next_msg_size = indicator_threshold;
+    }
+#endif
 #endif
     fflush(stdout);
 }

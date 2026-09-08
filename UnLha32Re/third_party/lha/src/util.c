@@ -15,19 +15,30 @@
  */
 #include <errno.h>
 
+#ifdef LHA_LIBRARY
+extern int Lha_IsMemoryExtracting(void);
+#endif
+
 off_t
 copyfile(FILE *f1, FILE *f2, off_t size,
          int text_flg,        /* 0: binary, 1: read text, 2: write text */
          unsigned int *crcp)  /* return: size of source file */
 {
     unsigned short  xsize;
+    unsigned short  buffer_size = BUFFERSIZE;
     char *buf;
     off_t rsize = 0;
+
+#ifdef LHA_LIBRARY
+    /* 原版のメモリ API の格納方式は 4 KiB ごとの読取境界を進捗へ反映する。 */
+    if (Lha_IsMemoryExtracting())
+        buffer_size = 4096;
+#endif
 
     if (!text_mode)
         text_flg = 0;
 
-    buf = (char *)xmalloc(BUFFERSIZE);
+    buf = (char *)xmalloc(buffer_size);
     if (crcp)
         INITIALIZE_CRC(*crcp);
     if (text_flg)
@@ -35,7 +46,7 @@ copyfile(FILE *f1, FILE *f2, off_t size,
     while (size > 0) {
         /* read */
         if (text_flg & 1) {
-            xsize = fread_txt(buf, BUFFERSIZE, f1);
+            xsize = fread_txt(buf, buffer_size, f1);
             if (xsize == 0)
                 break;
             if (ferror(f1)) {
@@ -43,7 +54,7 @@ copyfile(FILE *f1, FILE *f2, off_t size,
             }
         }
         else {
-            xsize = (unsigned short)((size > BUFFERSIZE) ? BUFFERSIZE : size);
+            xsize = (unsigned short)((size > buffer_size) ? buffer_size : size);
             if (fread(buf, 1, xsize, f1) != xsize) {
                 fatal_error("file read error");
             }

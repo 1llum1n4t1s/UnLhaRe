@@ -70,6 +70,21 @@ foreach ($family in $families) {
             New-Item -ItemType Directory -Path $extractRoot | Out-Null
             $extracted = @(& $TestProgram --registry '' --base-command-probe $Oracle "x -gm1 -y1 `"$archive`" `"$extractRoot\`"" 1041 1 W none 0)
             if ($LASTEXITCODE -ne 0 -or $extracted -notcontains 'result=0' -or @(Get-ChildItem -LiteralPath $extractRoot -File -Recurse).Count -ne $names.Count) { throw "更新後の原版展開に失敗しました: $label/$side" }
+            # 原版での CRC 検査・展開だけでなく、候補が生成した書庫を候補自身のメモリ展開 API でも読み戻す。
+            $contents = @(& $TestProgram --registry '' --command-probe-a $Oracle "p -+ `"$archive`"" A)
+            if ($LASTEXITCODE -ne 0 -or $contents -notcontains 'result=0') { throw "更新後の書庫内容を原版で読み戻せません: $label/$side" }
+            if ($side -eq 'reimpl') {
+                $candidateContents = @(& $TestProgram --registry '' --command-probe-a $Candidate "p -+ `"$archive`"" A)
+                $candidateContentsExit = $LASTEXITCODE
+                if ($candidateContentsExit -ne 0 -or $candidateContents -notcontains 'result=0') {
+                    throw "更新後の書庫内容を候補自身で読み戻せません: $label/$side (exit $candidateContentsExit)`n$($candidateContents -join "`n")"
+                }
+                $contentsDifference = @(Compare-Object $contents $candidateContents -CaseSensitive -SyncWindow 0)
+                if ($contentsDifference.Count) {
+                    $details = $contentsDifference | Select-Object -First 12 | Out-String -Width 2000
+                    throw "候補生成書庫の本文読み戻しが原版と不一致です: $label`n$details"
+                }
+            }
             foreach ($name in $names) {
                 $prefix = if ($selected -contains $name) { 'incoming' } else { 'seed' }
                 $expected = if ($prefix -eq 'incoming' -and $name -eq $names[1]) { '' } else { "$prefix-$name-value" }

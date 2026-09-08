@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <commdlg.h>
 #include <psapi.h>
 #include <intrin.h>
 #include "UNLHA32.H"
@@ -6,6 +7,7 @@
 #include "isolated_desktop.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -639,7 +641,11 @@ BOOL CALLBACK progress_probe(HWND hwnd, UINT message, UINT state, LPVOID raw_inf
         }
         std::ostringstream out;
         out << "msg=" << (message != 0) << ",state=" << state
-            << ",file=" << info.llFileSize << ",write=" << info.llWriteSize << ',';
+            << ",file=" << info.llFileSize << ",write=" << info.llWriteSize
+            << ",total=" << info.llTotalBytes << ",processed=" << info.llTotalProcessed
+            << ",files=" << info.dwFilesProcessed << '/' << info.dwTotalFiles
+            << ",source=" << quote_wide(info.szSourceFileName)
+            << ",dest=" << quote_wide(info.szDestFileName) << ',';
         progress_records.push_back(out.str());
         if (progress_abort_after_start && state == ARCEXTRACT_INPROCESS && info.llWriteSize > 0)
             return FALSE;
@@ -855,13 +861,14 @@ std::string dictionary_command_utf8(const std::wstring& command) {
 }
 
 int run_legacy_payload_probe(const wchar_t* dll_path, const wchar_t* archive_path,
-                             const wchar_t* expected_path) {
+                             const wchar_t* expected_path, const bool quiet = false) {
     const auto expected = read_file(expected_path);
     // LH3 の単一文字木は約 15 MiB の反復入力で次ブロックに到達する。
     if (expected.size() > 16U * 1024U * 1024U)
         throw std::runtime_error("legacy payload exceeds sixteen MiB");
     const DWORD capacity = static_cast<DWORD>(expected.size()) + 17;
-    const std::wstring command = L"-gm1 " + quote_argument(archive_path) + L" *";
+    const std::wstring command = std::wstring(quiet ? L"-gm1 -n1 " : L"-gm1 ") +
+        quote_argument(archive_path) + L" *";
     const std::string encoded = dictionary_command_utf8(command);
     for (const char* api : {"legacy", "A", "W"}) {
         // API 間の持越しを避け、本文・未使用領域・両端のガードを独立に観測する。
@@ -2585,6 +2592,7 @@ int run_memory_failure_probe(const wchar_t* dll_path, const wchar_t* archive_pat
 
 int run_memory_failure_stress(const wchar_t* dll_path, const wchar_t* archive_path) {
     Module module(dll_path);
+    const ULONGLONG started = GetTickCount64();
     const auto extract = proc<FnExtractMemW>(module.handle, "UnlhaExtractMemW");
     const std::wstring command = L"-gm1 " + quote_argument(archive_path) + L" *";
     const auto invoke = [&]() {
@@ -2609,11 +2617,19 @@ int run_memory_failure_stress(const wchar_t* dll_path, const wchar_t* archive_pa
         return total;
     };
     for (unsigned index = 0; index < 32; ++index) invoke();
+    // 通常表示を含む反復が時間上限に達しても、完了した回数を特定できるようにする。
+    // 出力系の初期化は資源量の基準採取より前に済ませる。
+    std::cout << "memory.stress.warmup=32,elapsed-ms=" << GetTickCount64() - started << std::endl;
     const size_t before = heap_bytes();
     DWORD handles_before = 0, handles_after = 0;
     if (!GetProcessHandleCount(GetCurrentProcess(), &handles_before))
         throw std::runtime_error("memory stress: handle count failed");
-    for (unsigned index = 0; index < 512; ++index) invoke();
+    for (unsigned index = 0; index < 512; ++index) {
+        invoke();
+        if ((index + 1) % 64 == 0)
+            std::cout << "memory.stress.progress=" << index + 1
+                      << ",elapsed-ms=" << GetTickCount64() - started << std::endl;
+    }
     const size_t after = heap_bytes();
     if (!GetProcessHandleCount(GetCurrentProcess(), &handles_after))
         throw std::runtime_error("memory stress: handle count failed");
@@ -3938,12 +3954,12 @@ int run_config_dialog_probe(const wchar_t* dll_path, const wchar_t* mode_text,
     return 0;
 }
 
-int run_command_probe(const wchar_t* dll_path, const wchar_t* command) {
+int run_command_probe(const wchar_t* dll_path, const wchar_t* command, const HWND owner = nullptr) {
     Module module(dll_path);
     std::vector<wchar_t> output(65536);
     SetLastError(0x12345678U);
     const int result = proc<FnUnlhaW>(module.handle, "UnlhaW")(
-        nullptr, command, output.data(), static_cast<DWORD>(output.size()));
+        owner, command, output.data(), static_cast<DWORD>(output.size()));
     const DWORD win32_error = GetLastError();
     DWORD system_error = 0x87654321U;
     const int compat_error = proc<FnLastError>(module.handle, "UnlhaGetLastError")(&system_error);
@@ -4006,7 +4022,7 @@ int run_command_raw_probe(const wchar_t* dll_path, const wchar_t* command, const
 }
 
 int run_command_probe_a(const wchar_t* dll_path, const wchar_t* command, const char* api = "Unlha",
-                         const UINT code_page = 932) {
+                         const UINT code_page = 932, const HWND owner = nullptr) {
     Module module(dll_path);
     const DWORD conversion_flags = code_page == CP_UTF8 ? 0 : WC_NO_BEST_FIT_CHARS;
     const int command_size = WideCharToMultiByte(code_page, conversion_flags, command, -1,
@@ -4020,7 +4036,7 @@ int run_command_probe_a(const wchar_t* dll_path, const wchar_t* command, const c
     std::vector<char> output(65536, static_cast<char>(0xcc));
     SetLastError(0x12345678U);
     const int result = proc<FnUnlhaA>(module.handle, api)(
-        nullptr, command_a.data(), output.data(), static_cast<DWORD>(output.size()));
+        owner, command_a.data(), output.data(), static_cast<DWORD>(output.size()));
     const DWORD win32_error = GetLastError();
     DWORD system_error = 0x87654321U;
     const int compat_error = proc<FnLastError>(module.handle, "UnlhaGetLastError")(&system_error);
@@ -4038,7 +4054,7 @@ int run_command_enum_probe(const wchar_t* dll_path, const wchar_t* command,
                            const wchar_t* layout, const BOOL selected,
                            const wchar_t* replacement, const LCID locale,
                            const bool utf8, const wchar_t* api, const bool with_progress,
-                           const int abort_state = -1) {
+                           const int abort_state = -1, const HWND owner = nullptr) {
     const LCID previous_locale = GetThreadLocale();
     struct RestoreEnumLocale final {
         LCID value;
@@ -4112,9 +4128,9 @@ int run_command_enum_probe(const wchar_t* dll_path, const wchar_t* command,
         if (!owner_set) throw std::runtime_error("cannot register enum progress callback");
     }
     const bool wide_command = api ? std::wcscmp(api, L"W") == 0 : wide;
-    const int result = wide_command ? run_command_probe(dll_path, command)
+    const int result = wide_command ? run_command_probe(dll_path, command, owner)
         : run_command_probe_a(dll_path, command, api && std::wcscmp(api, L"A") == 0 ? "UnlhaA" : "Unlha",
-                              utf8 ? CP_UTF8 : 932);
+                              utf8 ? CP_UTF8 : 932, owner);
     if (with_progress) {
         std::cout << "progress.kill=" << proc<FnKillOwnerEx>(retained.handle, "UnlhaKillOwnerWindowEx64")(
             window.handle) << '\n'
@@ -4147,12 +4163,36 @@ struct CommandDialogProbeContext final {
     int step_count;
     wchar_t** steps;
     const wchar_t* progress_kind;
+    int owner_mode;
     std::string failure;
 };
 
 DWORD WINAPI command_dialog_probe_thread(LPVOID raw_context) {
     auto& context = *static_cast<CommandDialogProbeContext*>(raw_context);
     try {
+        struct ProbeOwnerWindow final {
+            HWND handle = nullptr;
+            ~ProbeOwnerWindow() { if (handle) DestroyWindow(handle); }
+        } window;
+        HWND owner = nullptr;
+        if (context.owner_mode) {
+            const DWORD visibility = context.owner_mode == 1 ? 0 : WS_VISIBLE;
+            window.handle = CreateWindowExW(0, L"STATIC", L"Dialog probe owner",
+                WS_OVERLAPPEDWINDOW | visibility, 160, 120, 700, 480, nullptr, nullptr, nullptr, nullptr);
+            if (!window.handle) throw std::runtime_error("cannot create dialog probe owner");
+            owner = window.handle;
+            if (context.owner_mode == 3) {
+                owner = CreateWindowExW(0, L"STATIC", L"Dialog probe child", WS_CHILD | WS_VISIBLE,
+                    40, 50, 180, 90, window.handle, nullptr, nullptr, nullptr);
+                if (!owner) throw std::runtime_error("cannot create dialog probe child");
+            } else if (context.owner_mode == 4) {
+                RECT work_area{};
+                if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0))
+                    throw std::runtime_error("cannot read dialog probe work area");
+                SetWindowPos(owner, nullptr, work_area.right - 20, work_area.bottom - 20,
+                    700, 480, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
         Module retained(context.dll_path);
         if (context.language != 0xffff) {
             using FnLanguage = BOOL(WINAPI*)(LANGID);
@@ -4164,7 +4204,7 @@ DWORD WINAPI command_dialog_probe_thread(LPVOID raw_context) {
                 context.utf8, context.api, context.step_count, context.steps, context.progress_kind);
         } else {
             run_command_enum_probe(context.dll_path, context.command, context.layout, TRUE,
-                L"", context.locale, context.utf8, context.api, true);
+                L"", context.locale, context.utf8, context.api, true, -1, owner);
         }
         if (context.audit_archive) {
             // DLL を保持したまま、CRC 分岐後と次の正常呼び出し後のハンドル解放を確認する。
@@ -4212,32 +4252,266 @@ BOOL CALLBACK find_command_dialog(HWND window, LPARAM raw_snapshot) {
     return progress_window ? TRUE : find_config_dialog(window, raw_snapshot);
 }
 
+static std::string snapshot_window_text(HWND window) {
+    wchar_t text[1024]{};
+    DWORD_PTR ignored = 0;
+    if (!SendMessageTimeoutW(window, WM_GETTEXT, _countof(text), reinterpret_cast<LPARAM>(text),
+                             SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, &ignored)) return "<timeout>";
+    return quote_wide(text);
+}
+
+static std::string snapshot_window_check(HWND window) {
+    DWORD_PTR value = 0;
+    if (!SendMessageTimeoutW(window, BM_GETCHECK, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, &value))
+        return "<timeout>";
+    return std::to_string(value);
+}
+
+BOOL CALLBACK snapshot_memory_progress_child(HWND window, LPARAM raw_snapshot) {
+    auto& snapshot = *reinterpret_cast<DialogWindowSnapshot*>(raw_snapshot);
+    wchar_t class_name[128]{};
+    GetClassNameW(window, class_name, _countof(class_name));
+    RECT rect{};
+    GetWindowRect(window, &rect);
+    MapWindowPoints(nullptr, snapshot.dialog, reinterpret_cast<POINT*>(&rect), 2);
+    std::ostringstream line;
+    line << "control." << snapshot.lines.size()
+         << ".id=" << GetDlgCtrlID(window)
+         << ",class=" << quote_wide(class_name)
+         << ",text=" << snapshot_window_text(window)
+         << ",check=" << snapshot_window_check(window)
+         << ",enabled=" << IsWindowEnabled(window)
+         << ",visible=" << IsWindowVisible(window)
+         << ",style=" << static_cast<unsigned long>(GetWindowLongPtrW(window, GWL_STYLE))
+         << ",rect=" << rect.left << ',' << rect.top << ',' << rect.right << ',' << rect.bottom;
+    snapshot.lines.push_back(line.str());
+    return TRUE;
+}
+
+BOOL CALLBACK find_memory_progress_dialog(HWND window, LPARAM raw_snapshot) {
+    auto& snapshot = *reinterpret_cast<DialogWindowSnapshot*>(raw_snapshot);
+    wchar_t class_name[64]{};
+    GetClassNameW(window, class_name, _countof(class_name));
+    if (std::wcscmp(class_name, L"#32770") != 0 || !IsWindowVisible(window) ||
+        !IsWindowEnabled(window)) return TRUE;
+    // 原版の -n0 メモリ展開画面は、書庫名・項目名・進捗を示すこの 3 つの Static を持つ。
+    for (const int id : {601, 603, 604}) {
+        HWND control = GetDlgItem(window, id);
+        wchar_t control_class[64]{};
+        if (!control || !GetClassNameW(control, control_class, _countof(control_class)) ||
+            _wcsicmp(control_class, L"Static") != 0) return TRUE;
+    }
+    snapshot.dialog = window;
+    return FALSE;
+}
+
+static void snapshot_memory_progress_dialog(HWND dialog, DialogWindowSnapshot& snapshot) {
+    snapshot.dialog = dialog;
+    snapshot.lines.push_back("dialog.title=" + snapshot_window_text(dialog));
+    RECT client{};
+    GetClientRect(dialog, &client);
+    snapshot.lines.push_back("dialog.client=" + std::to_string(client.right) + "x" + std::to_string(client.bottom) +
+                             ",style=" + std::to_string(static_cast<unsigned long>(GetWindowLongPtrW(dialog, GWL_STYLE))) +
+                             ",exstyle=" + std::to_string(static_cast<unsigned long>(GetWindowLongPtrW(dialog, GWL_EXSTYLE))));
+    EnumChildWindows(dialog, snapshot_memory_progress_child, reinterpret_cast<LPARAM>(&snapshot));
+}
+
+struct MemoryProgressDialogProbeContext final {
+    HMODULE module{};
+    std::wstring command;
+    LANGID language{0xffff};
+    std::vector<BYTE> buffer;
+    int result{};
+    DWORD written{};
+    time_t timestamp{};
+    WORD attributes{};
+    int error{};
+    DWORD system_error{};
+    bool inspect_quit{};
+    bool quit_pending{};
+    std::string failure;
+};
+
+enum class MemoryProgressDialogProbeAction {
+    Observe,
+    Complete,
+    Cancel,
+    Quit
+};
+
+static constexpr unsigned long long kMemoryProgressDialogProbeMaximumCapacity = 4ULL * 1024 * 1024;
+
+DWORD WINAPI memory_progress_dialog_probe_thread(LPVOID raw_context) {
+    auto& context = *reinterpret_cast<MemoryProgressDialogProbeContext*>(raw_context);
+    try {
+        if (context.language != 0xffff) {
+            using FnLanguage = BOOL(WINAPI*)(LANGID);
+            if (!proc<FnLanguage>(context.module, "UnlhaSetLangueSpecified")(context.language))
+                throw std::runtime_error("cannot set memory progress dialog language");
+        }
+        context.result = proc<FnExtractMemW>(context.module, "UnlhaExtractMemW")(
+            nullptr, context.command.c_str(), context.buffer.data(), static_cast<DWORD>(context.buffer.size()),
+            &context.timestamp, &context.attributes, &context.written);
+        context.error = proc<FnLastError>(context.module, "UnlhaGetLastError")(&context.system_error);
+        if (context.inspect_quit) {
+            MSG message{};
+            context.quit_pending = PeekMessageW(&message, nullptr, WM_QUIT, WM_QUIT, PM_NOREMOVE) != FALSE;
+        }
+    } catch (const std::exception& problem) {
+        context.failure = problem.what();
+    }
+    return 0;
+}
+
+int run_memory_progress_dialog_probe(const wchar_t* dll_path, const wchar_t* archive_path,
+                                      const wchar_t* switches, const DWORD capacity,
+                                      const MemoryProgressDialogProbeAction action,
+                                      const LANGID language = 0xffff) {
+    if (!isolated_desktop::is_isolated())
+        throw std::runtime_error("memory progress dialog probe requires the isolated desktop");
+    Module module(dll_path);
+    MemoryProgressDialogProbeContext context{};
+    context.module = module.handle;
+    context.command = std::wstring(switches) + L" " + quote_argument(archive_path) + L" *";
+    context.language = language;
+    context.inspect_quit = action == MemoryProgressDialogProbeAction::Quit;
+    context.buffer.resize(capacity);
+    DWORD thread_id = 0;
+    const HANDLE thread = CreateThread(nullptr, 0, memory_progress_dialog_probe_thread, &context, 0, &thread_id);
+    if (!thread) throw std::runtime_error("cannot start memory progress dialog thread");
+
+    std::vector<std::string> records;
+    bool observed = false;
+    // 軽い展開でも作成直後のモデルレス画面を取り逃さないよう、10 秒の観測枠を細かく刻む。
+    for (int attempt = 0; attempt < 10000; ++attempt) {
+        const DWORD wait = WaitForSingleObject(thread, 1);
+        if (wait == WAIT_OBJECT_0) {
+            CloseHandle(thread);
+            if (!context.failure.empty()) throw std::runtime_error(context.failure);
+            for (const auto& record : records) std::cout << record << '\n';
+            std::cout << "memory-dialog.complete=" << observed << ",result=" << context.result
+                      << ",error=" << context.error << ",system=" << context.system_error
+                      << ",written=" << context.written << '\n';
+            if (context.inspect_quit)
+                std::cout << "memory-dialog.quit-pending=" << context.quit_pending << '\n';
+            return 0;
+        }
+        if (wait != WAIT_TIMEOUT) {
+            CloseHandle(thread);
+            throw std::runtime_error("memory progress dialog wait failed: " + std::to_string(GetLastError()));
+        }
+        DialogWindowSnapshot snapshot{};
+        EnumThreadWindows(thread_id, find_memory_progress_dialog, reinterpret_cast<LPARAM>(&snapshot));
+        if (!snapshot.dialog || observed) continue;
+        if (!IsWindow(snapshot.dialog)) continue;
+        snapshot_memory_progress_dialog(snapshot.dialog, snapshot);
+        records.push_back("memory-dialog.present=1");
+        records.insert(records.end(), snapshot.lines.begin(), snapshot.lines.end());
+        observed = true;
+        if (action == MemoryProgressDialogProbeAction::Observe) {
+            CloseHandle(thread);
+            stop_command_dialog_probe(125, "memory progress dialog observation completed", records);
+        }
+        if (action == MemoryProgressDialogProbeAction::Cancel &&
+            !PostMessageW(snapshot.dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED),
+                          reinterpret_cast<LPARAM>(GetDlgItem(snapshot.dialog, IDOK)))) {
+            CloseHandle(thread);
+            throw std::runtime_error("cannot cancel memory progress dialog: " + std::to_string(GetLastError()));
+        }
+        if (action == MemoryProgressDialogProbeAction::Quit &&
+            !PostThreadMessageW(thread_id, WM_QUIT, 0, 0)) {
+            CloseHandle(thread);
+            throw std::runtime_error("cannot post memory progress dialog quit: " + std::to_string(GetLastError()));
+        }
+    }
+    CloseHandle(thread);
+    stop_command_dialog_probe(124, "memory progress dialog probe timed out", records);
+}
+
 int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
                              const wchar_t* responses, const wchar_t* layout,
                              const bool utf8, const wchar_t* api, const LCID locale,
                              const LANGID language, const wchar_t* audit_archive,
                              const int step_count = 0, wchar_t** steps = nullptr,
-                             const wchar_t* progress_kind = nullptr) {
+                             const wchar_t* progress_kind = nullptr, const bool settle_filename_dialog = false) {
     if (!isolated_desktop::is_isolated())
         throw std::runtime_error("command dialogs require the isolated desktop");
     std::wstring dialog_audit_archive;
+    LANGID initial_language = language;
+    bool initial_language_set = false;
+    std::vector<wchar_t*> command_steps;
     for (int index = 0; index < step_count; ++index) {
+        if (std::wcsncmp(steps[index], L"@initial-language:", 18) == 0) {
+            const std::wstring value = steps[index] + 18;
+            if (initial_language_set || (value != L"0" && value != L"1033" && value != L"1041"))
+                throw std::runtime_error("invalid initial dialog language");
+            initial_language = static_cast<LANGID>(std::wcstoul(value.c_str(), nullptr, 10));
+            initial_language_set = true;
+            continue;
+        }
+        command_steps.push_back(steps[index]);
         if (std::wcsncmp(steps[index], L"@audit-dialog-archive:", 22) != 0) continue;
         dialog_audit_archive = steps[index] + 22;
         if (dialog_audit_archive.size() < 3 || dialog_audit_archive[1] != L':' ||
             (dialog_audit_archive[2] != L'\\' && dialog_audit_archive[2] != L'/'))
             throw std::runtime_error("dialog archive audit requires an absolute path");
     }
-    std::vector<int> buttons;
-    const bool inspect = std::wcscmp(responses, L"inspect") == 0;
+    if (steps && command_steps.empty())
+        throw std::runtime_error("dialog command sequence required after initial language");
+    struct DialogResponse final { int radio; int button; std::wstring file; };
+    std::vector<DialogResponse> buttons;
+    int owner_mode = 0;
+    if (std::wcsncmp(responses, L"inspect-layout:", 15) == 0) {
+        const std::wstring mode = responses + 15;
+        owner_mode = mode == L"hidden" ? 1 : mode == L"visible" ? 2 :
+            mode == L"child" ? 3 : mode == L"offscreen" ? 4 : 0;
+        if (!owner_mode || steps) throw std::runtime_error("invalid standalone dialog owner inspection");
+    }
+    const bool inspect_geometry = std::wcscmp(responses, L"inspect-layout") == 0 || owner_mode != 0;
+    const bool inspect = std::wcscmp(responses, L"inspect") == 0 || inspect_geometry;
     if (!inspect) {
         const wchar_t* cursor = responses;
         while (*cursor) {
+            std::wstring selected_file;
+            if (std::wcsncmp(cursor, L"file:", 5) == 0) {
+                cursor += 5;
+                const wchar_t* hex_end = std::wcschr(cursor, L':');
+                if (!hex_end || hex_end == cursor || (hex_end - cursor) % 4 != 0 ||
+                    (hex_end - cursor) / 4 >= 512)
+                    throw std::runtime_error("invalid dialog filename encoding");
+                while (cursor < hex_end) {
+                    unsigned value = 0;
+                    for (int digit = 0; digit < 4; ++digit, ++cursor) {
+                        const wchar_t character = *cursor;
+                        const int number = character >= L'0' && character <= L'9' ? character - L'0' :
+                            character >= L'A' && character <= L'F' ? character - L'A' + 10 :
+                            character >= L'a' && character <= L'f' ? character - L'a' + 10 : -1;
+                        if (number < 0) throw std::runtime_error("invalid dialog filename encoding");
+                        value = value * 16 + static_cast<unsigned>(number);
+                    }
+                    if (value < 32) throw std::runtime_error("invalid dialog filename character");
+                    selected_file.push_back(static_cast<wchar_t>(value));
+                }
+                if (selected_file.size() < 4 || selected_file[1] != L':' ||
+                    (selected_file[2] != L'\\' && selected_file[2] != L'/'))
+                    throw std::runtime_error("dialog filename requires an absolute path");
+                ++cursor;
+            }
             wchar_t* end = nullptr;
-            const long button = std::wcstol(cursor, &end, 10);
-            if (end == cursor || button < 1 || button > 65535 || (*end && *end != L','))
+            long button = std::wcstol(cursor, &end, 10);
+            if (end == cursor || button < 1 || button > 65535)
                 throw std::runtime_error("invalid dialog button sequence");
-            buttons.push_back(static_cast<int>(button));
+            int radio = 0;
+            if (*end == L':') {
+                if (!selected_file.empty()) throw std::runtime_error("filename cannot select a radio");
+                radio = static_cast<int>(button);
+                cursor = end + 1;
+                button = std::wcstol(cursor, &end, 10);
+                if (end == cursor || button < 1 || button > 65535)
+                    throw std::runtime_error("invalid dialog radio response");
+            }
+            if (*end && *end != L',') throw std::runtime_error("invalid dialog button sequence");
+            buttons.push_back({radio, static_cast<int>(button), std::move(selected_file)});
             cursor = *end ? end + 1 : end;
         }
         if (buttons.empty()) throw std::runtime_error("dialog response required");
@@ -4245,14 +4519,19 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
     if (audit_archive && (wcslen(audit_archive) < 3 || audit_archive[1] != L':' ||
         (audit_archive[2] != L'\\' && audit_archive[2] != L'/')))
         throw std::runtime_error("command dialog release audit requires an absolute path");
-    CommandDialogProbeContext context{dll_path, command, layout, api, locale, language, utf8,
-        audit_archive, step_count, steps, progress_kind, {}};
+    // 単発プローブと同じく、通知登録前の言語指定も選べる。通常の @language は系列内に残す。
+    CommandDialogProbeContext context{dll_path, command, layout, api, locale, initial_language, utf8,
+        audit_archive, static_cast<int>(command_steps.size()), steps ? command_steps.data() : nullptr,
+        progress_kind, owner_mode, {}};
     std::vector<std::string> records;
     DWORD thread_id = 0;
     const HANDLE thread = CreateThread(nullptr, 0, command_dialog_probe_thread, &context, 0, &thread_id);
     if (!thread) throw std::runtime_error("cannot start command dialog thread");
     const ULONGLONG started = GetTickCount64();
     HWND answered = nullptr;
+    HWND settling_dialog = nullptr;
+    ULONGLONG settling_started = 0, stable_since = 0;
+    std::vector<std::string> settling_lines;
     size_t count = 0;
     for (;;) {
         const DWORD wait = WaitForSingleObject(thread, 20);
@@ -4263,9 +4542,57 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
         // この DLL を呼んだスレッドだけが対象。他のデスクトップやウィンドウは探索しない。
         EnumThreadWindows(thread_id, find_command_dialog, reinterpret_cast<LPARAM>(&snapshot));
         if (!snapshot.dialog || snapshot.dialog == answered) continue;
+        bool native_file_edit = false;
+        if (settle_filename_dialog) EnumChildWindows(snapshot.dialog, [](HWND child, LPARAM data) -> BOOL {
+            wchar_t class_name[64]{};
+            if (GetDlgCtrlID(child) == 1001 && IsWindowVisible(child) && IsWindowEnabled(child) &&
+                GetClassNameW(child, class_name, _countof(class_name)) && _wcsicmp(class_name, L"Edit") == 0)
+                *reinterpret_cast<bool*>(data) = true;
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&native_file_edit));
+        if (native_file_edit) {
+            // 保存画面のShellツリーは表示後も構築されるため、入力前に部品全体の安定を確認する。
+            const ULONGLONG now = GetTickCount64();
+            if (settling_dialog != snapshot.dialog) {
+                settling_dialog = snapshot.dialog;
+                settling_started = stable_since = now;
+                settling_lines = snapshot.lines;
+            } else if (settling_lines != snapshot.lines) {
+                stable_since = now;
+                settling_lines = snapshot.lines;
+            }
+            if (now - settling_started > 3000)
+                stop_command_dialog_probe(124, "native filename dialog did not settle", records);
+            if (now - settling_started < 500 || now - stable_since < 300) continue;
+        } else {
+            settling_dialog = nullptr;
+        }
         // DLL 呼び出し側と同時に ostream へ書かず、終了後に観測順で出力する。
         records.push_back("command-dialog.begin=" + std::to_string(count));
         records.insert(records.end(), snapshot.lines.begin(), snapshot.lines.end());
+        if (inspect_geometry) {
+            RECT outer{}, client{};
+            GetWindowRect(snapshot.dialog, &outer);
+            GetClientRect(snapshot.dialog, &client);
+            records.push_back("dialog.position=" + std::to_string(outer.left) + "," +
+                std::to_string(outer.top));
+            records.push_back("dialog.geometry=" + std::to_string(outer.right - outer.left) + "," +
+                std::to_string(outer.bottom - outer.top) + ",client=" + std::to_string(client.right) + "," +
+                std::to_string(client.bottom));
+            LOGFONTW font{};
+            const HFONT handle = reinterpret_cast<HFONT>(SendMessageW(snapshot.dialog, WM_GETFONT, 0, 0));
+            if (handle && GetObjectW(handle, sizeof(font), &font))
+                records.push_back("dialog.font=" + quote_wide(font.lfFaceName) + ",height=" +
+                    std::to_string(font.lfHeight) + ",weight=" + std::to_string(font.lfWeight));
+            for (HWND child = GetWindow(snapshot.dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+                RECT rect{};
+                GetWindowRect(child, &rect);
+                MapWindowPoints(nullptr, snapshot.dialog, reinterpret_cast<POINT*>(&rect), 2);
+                records.push_back("control.geometry=" + std::to_string(GetDlgCtrlID(child)) + "," +
+                    std::to_string(rect.left) + "," + std::to_string(rect.top) + "," +
+                    std::to_string(rect.right - rect.left) + "," + std::to_string(rect.bottom - rect.top));
+            }
+        }
         if (!dialog_audit_archive.empty()) {
             const HANDLE file = CreateFileW(dialog_audit_archive.c_str(), GENERIC_READ, 0, nullptr,
                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -4278,12 +4605,54 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
         if (inspect) stop_command_dialog_probe(125, "command dialog observation completed", records);
         if (count >= buttons.size())
             stop_command_dialog_probe(126, "command dialog response sequence exhausted", records);
-        const int button = buttons[count];
+        if (!buttons[count].file.empty()) {
+            struct FileEdit final { HWND window = nullptr; unsigned count = 0; } edit;
+            EnumChildWindows(snapshot.dialog, [](HWND child, LPARAM data) -> BOOL {
+                auto& found = *reinterpret_cast<FileEdit*>(data);
+                wchar_t class_name[64]{};
+                if (GetDlgCtrlID(child) == 1001 && IsWindowVisible(child) && IsWindowEnabled(child) &&
+                    GetClassNameW(child, class_name, _countof(class_name)) &&
+                    _wcsicmp(class_name, L"Edit") == 0) {
+                    found.window = child;
+                    ++found.count;
+                }
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&edit));
+            DWORD_PTR delivered = 0;
+            wchar_t actual[512]{};
+            if (edit.count != 1 ||
+                !SendMessageTimeoutW(edit.window, EM_SETSEL, 0, -1,
+                    SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &delivered) ||
+                !SendMessageTimeoutW(edit.window, EM_REPLACESEL, TRUE,
+                    reinterpret_cast<LPARAM>(buttons[count].file.c_str()), SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &delivered) ||
+                !SendMessageTimeoutW(edit.window, WM_GETTEXT, _countof(actual),
+                    reinterpret_cast<LPARAM>(actual), SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &delivered) ||
+                buttons[count].file != actual)
+                stop_command_dialog_probe(126, "cannot enter the selected dialog filename", records);
+            records.push_back("command-dialog.file=" + quote_wide(actual));
+        }
+        const int button = buttons[count].button;
         const HWND control = GetDlgItem(snapshot.dialog, button);
         wchar_t class_name[64]{};
         if (control) GetClassNameW(control, class_name, _countof(class_name));
         if (!control || !IsWindowEnabled(control) || _wcsicmp(class_name, L"Button") != 0)
             stop_command_dialog_probe(126, "requested dialog button is not available", records);
+        if (buttons[count].radio != 0) {
+            const int radio_id = buttons[count].radio;
+            const HWND radio = GetDlgItem(snapshot.dialog, radio_id);
+            wchar_t radio_class[64]{};
+            if (radio) GetClassNameW(radio, radio_class, _countof(radio_class));
+            if (!radio || !IsWindowEnabled(radio) || _wcsicmp(radio_class, L"Button") != 0 ||
+                (GetWindowLongPtrW(radio, GWL_STYLE) & BS_TYPEMASK) != BS_AUTORADIOBUTTON)
+                stop_command_dialog_probe(126, "requested dialog radio is not available", records);
+            // 利用者の選択と同じクリックを送り、チェックされたことを確認してから確定する。
+            DWORD_PTR checked = 0;
+            if (!SendMessageTimeoutW(radio, BM_CLICK, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &checked) ||
+                !SendMessageTimeoutW(radio, BM_GETCHECK, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &checked) ||
+                checked != BST_CHECKED)
+                stop_command_dialog_probe(126, "cannot select dialog radio", records);
+            records.push_back("command-dialog.radio=" + std::to_string(radio_id) + ",check=1");
+        }
         records.push_back("command-dialog.response=" + std::to_string(button));
         answered = snapshot.dialog;
         ++count;
@@ -4440,10 +4809,405 @@ struct ScopedImportOverride final {
         }
         if (!allow_missing) throw std::runtime_error(std::string(function_name) + " import missing");
     }
+    void install_data_pointer(HMODULE module, DWORD expected, DWORD replacement, bool allow_missing = false) {
+        if (slot) throw std::runtime_error("API override already installed");
+        const auto base = reinterpret_cast<BYTE*>(module);
+        const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+        const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(base + dos->e_lfanew);
+        if (nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+            throw std::runtime_error("API override requires PE32");
+        DWORD* found = nullptr;
+        const auto sections = IMAGE_FIRST_SECTION(nt);
+        for (WORD index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+            const auto& section = sections[index];
+            if (!(section.Characteristics & IMAGE_SCN_MEM_WRITE) ||
+                !(section.Characteristics & IMAGE_SCN_CNT_INITIALIZED_DATA)) continue;
+            if (section.VirtualAddress >= nt->OptionalHeader.SizeOfImage ||
+                section.Misc.VirtualSize > nt->OptionalHeader.SizeOfImage - section.VirtualAddress)
+                throw std::runtime_error("invalid API pointer section");
+            auto values = reinterpret_cast<DWORD*>(base + section.VirtualAddress);
+            for (DWORD offset = 0; offset < section.Misc.VirtualSize / sizeof(DWORD); ++offset) {
+                if (values[offset] != expected) continue;
+                if (found) throw std::runtime_error("ambiguous dynamic API pointer");
+                found = values + offset;
+            }
+        }
+        if (!found) {
+            if (allow_missing) return;
+            throw std::runtime_error("dynamic API pointer missing");
+        }
+        slot = found;
+        original = *slot;
+        assign(replacement);
+    }
     ~ScopedImportOverride() {
         if (slot) { try { assign(original); } catch (...) { std::terminate(); } }
     }
 };
+
+using SaveFileNameWFunction = BOOL(WINAPI*)(LPOPENFILENAMEW);
+static SaveFileNameWFunction filename_dialog_real = nullptr;
+static std::vector<std::wstring> filename_dialog_selections;
+static size_t filename_dialog_used = 0;
+static std::string filename_dialog_failure;
+
+static std::wstring normalized_absolute_filename(const wchar_t* path) {
+    wchar_t full[32768]{};
+    const DWORD length = GetFullPathNameW(path, _countof(full), full, nullptr);
+    if (!length || length >= _countof(full)) throw std::runtime_error("cannot normalize selected filename");
+    std::wstring value = full;
+    std::replace(value.begin(), value.end(), L'/', L'\\');
+    return value;
+}
+
+static BOOL WINAPI audited_save_filename(LPOPENFILENAMEW options) {
+    const DWORD previous_error = GetLastError();
+    try {
+        if (!options || options->lStructSize < OPENFILENAME_SIZE_VERSION_400W ||
+            !options->lpstrFile || !options->nMaxFile || options->nMaxFile > 32768)
+            throw std::runtime_error("invalid save filename request");
+        std::wstring filter;
+        if (options->lpstrFilter) {
+            const wchar_t* part = options->lpstrFilter;
+            size_t used = 0;
+            while (*part && used < 1024) {
+                const size_t size = wcsnlen_s(part, 1024 - used);
+                if (size >= 1024 - used) throw std::runtime_error("unterminated save filename filter");
+                filter.append(part, size);
+                filter += L'|';
+                part += size + 1;
+                used += size + 1;
+            }
+        }
+        std::cout << "filename-dialog.request=size=" << options->lStructSize << ",flags=" << options->Flags
+                  << ",owner=" << (options->hwndOwner != nullptr) << ",file=" << quote_wide(options->lpstrFile)
+                  << ",capacity=" << options->nMaxFile << ",title-capacity=" << options->nMaxFileTitle
+                  << ",filter=" << quote_wide(filter.c_str()) << ",filter-index=" << options->nFilterIndex
+                  << ",initial=" << quote_wide(options->lpstrInitialDir ? options->lpstrInitialDir : L"")
+                  << ",title=" << quote_wide(options->lpstrTitle ? options->lpstrTitle : L"")
+                  << ",extension=" << quote_wide(options->lpstrDefExt ? options->lpstrDefExt : L"") << '\n';
+        if (filename_dialog_used >= filename_dialog_selections.size())
+            throw std::runtime_error("save filename responses exhausted");
+        const auto& choice = filename_dialog_selections[filename_dialog_used++];
+        if (choice == L"cancel") { SetLastError(previous_error); return FALSE; }
+        const bool native = choice.rfind(L"native:", 0) == 0;
+        const std::wstring path = native ? choice.substr(7) : choice;
+        if (native) {
+            const BOOL accepted = filename_dialog_real(options);
+            if (path == L"cancel") {
+                if (accepted) throw std::runtime_error("native filename cancellation unexpectedly accepted a path");
+                return FALSE;
+            }
+            if (!accepted) throw std::runtime_error("native filename selection was not accepted");
+            // 名前入力が反映されなかった場合、元 DLL が想定外の場所へ書く前に拒否する。
+            if (_wcsicmp(normalized_absolute_filename(options->lpstrFile).c_str(),
+                         normalized_absolute_filename(path.c_str()).c_str()) != 0) {
+                std::cout << "filename-dialog.unexpected=" << quote_wide(options->lpstrFile) << '\n';
+                throw std::runtime_error("native filename selection differed from the audited path");
+            }
+        } else {
+            if (path.size() >= options->nMaxFile) throw std::runtime_error("selected filename exceeds the caller buffer");
+            wcscpy_s(options->lpstrFile, options->nMaxFile, path.c_str());
+            const size_t slash = path.find_last_of(L"/\\");
+            std::wstring parent = path.substr(0, slash);
+            while (GetFileAttributesW(parent.c_str()) == INVALID_FILE_ATTRIBUTES && parent.size() > 3) {
+                const size_t separator = parent.find_last_of(L"/\\");
+                if (separator == std::wstring::npos) break;
+                parent.resize(separator == 2 ? 3 : separator);
+            }
+            if (!SetCurrentDirectoryW(parent.c_str())) throw std::runtime_error("cannot exercise filename working-directory restoration");
+            // フォルダーを移動して保存した場合と同様に、呼び出し元によるCWD復元を検査する。
+            SetLastError(previous_error);
+        }
+        std::cout << "filename-dialog.selected=" << quote_wide(options->lpstrFile) << '\n';
+        return TRUE;
+    } catch (const std::exception& problem) {
+        filename_dialog_failure = problem.what();
+        SetLastError(previous_error);
+        return FALSE;
+    }
+}
+
+int run_filename_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
+                              const wchar_t* responses, const wchar_t* layout,
+                              const bool utf8, const wchar_t* api, const LCID locale,
+                              const LANGID language, const wchar_t* selections,
+                              const int step_count = 0, wchar_t** steps = nullptr,
+                              const wchar_t* progress_kind = nullptr) {
+    filename_dialog_selections.clear();
+    filename_dialog_failure.clear();
+    filename_dialog_used = 0;
+    std::wistringstream stream(std::wcscmp(selections, L"none") == 0 ? L"" : selections);
+    std::wstring selected;
+    while (std::getline(stream, selected, L'|')) {
+        const auto path = selected.rfind(L"native:", 0) == 0 ? selected.substr(7) : selected;
+        if (path != L"cancel" && (path.size() < 4 || path.size() >= 512 || path[1] != L':' ||
+            (path[2] != L'\\' && path[2] != L'/')))
+            throw std::runtime_error("save filename response requires an absolute path or cancel");
+        filename_dialog_selections.push_back(selected);
+    }
+    if (filename_dialog_selections.empty() && std::wcscmp(selections, L"none") != 0)
+        throw std::runtime_error("save filename response required");
+    wchar_t before[32768]{}, after[32768]{};
+    if (!GetCurrentDirectoryW(_countof(before), before)) throw std::runtime_error("cannot capture filename working directory");
+    Module common(L"comdlg32.dll");
+    filename_dialog_real = proc<SaveFileNameWFunction>(common.handle, "GetSaveFileNameW");
+    Module retained(dll_path);
+    ScopedImportOverride hook;
+    hook.install(retained.handle, "GetSaveFileNameW", reinterpret_cast<DWORD>(filename_dialog_real),
+                 reinterpret_cast<DWORD>(audited_save_filename), true);
+    if (!hook.slot) hook.install_data_pointer(retained.handle, reinterpret_cast<DWORD>(filename_dialog_real),
+                                             reinterpret_cast<DWORD>(audited_save_filename));
+    const int result = run_command_dialog_probe(dll_path, command, responses, layout, utf8, api, locale,
+        language, nullptr, step_count, steps, progress_kind, true);
+    if (!GetCurrentDirectoryW(_countof(after), after)) throw std::runtime_error("cannot capture final filename working directory");
+    const bool restored = std::wcscmp(before, after) == 0;
+    std::cout << "filename-dialog.requests=" << filename_dialog_used << ",cwd-preserved=" << restored << std::endl;
+    if (!filename_dialog_failure.empty()) throw std::runtime_error(filename_dialog_failure);
+    if (!restored || filename_dialog_used != filename_dialog_selections.size())
+        throw std::runtime_error("save filename calls or working-directory restoration differ");
+    return result;
+}
+
+static std::vector<ULONGLONG> disk_space_values;
+static std::vector<std::string> disk_space_observations;
+static size_t disk_space_used = 0;
+static bool disk_space_probe_failed = false;
+
+static BOOL audited_disk_space(const wchar_t* path, PULARGE_INTEGER available,
+                               PULARGE_INTEGER total, PULARGE_INTEGER free) {
+    const DWORD previous_error = GetLastError();
+    try {
+        const ULONGLONG value = disk_space_values[(std::min)(disk_space_used, disk_space_values.size() - 1)];
+        ++disk_space_used;
+        if (available) available->QuadPart = value;
+        if (total) total->QuadPart = (std::max)(value, 1ULL << 40);
+        if (free) free->QuadPart = value;
+        wchar_t directory[32768]{};
+        if (!path) GetCurrentDirectoryW(_countof(directory), directory);
+        std::wstring observed = path ? path : directory;
+        std::replace(observed.begin(), observed.end(), L'/', L'\\');
+        disk_space_observations.push_back("disk-space.query=" + quote_wide(observed.c_str()) +
+            ",available=" + std::to_string(value));
+        SetLastError(previous_error);
+        return TRUE;
+    } catch (...) {
+        disk_space_probe_failed = true;
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+}
+
+static BOOL WINAPI audited_disk_space_w(LPCWSTR path, PULARGE_INTEGER available,
+                                        PULARGE_INTEGER total, PULARGE_INTEGER free) {
+    return audited_disk_space(path, available, total, free);
+}
+
+static BOOL WINAPI audited_disk_space_a(LPCSTR path, PULARGE_INTEGER available,
+                                        PULARGE_INTEGER total, PULARGE_INTEGER free) {
+    const DWORD previous_error = GetLastError();
+    wchar_t wide[32768]{};
+    if (path && !MultiByteToWideChar(CP_ACP, 0, path, -1, wide, _countof(wide))) {
+        disk_space_probe_failed = true;
+        return FALSE;
+    }
+    SetLastError(previous_error);
+    return audited_disk_space(path ? wide : nullptr, available, total, free);
+}
+
+int run_disk_space_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
+                                const wchar_t* responses, const wchar_t* layout, const bool utf8,
+                                const wchar_t* api, const LCID locale, const LANGID language,
+                                const wchar_t* values, const int step_count = 0, wchar_t** steps = nullptr,
+                                const wchar_t* progress_kind = nullptr) {
+    disk_space_values.clear();
+    disk_space_observations.clear();
+    disk_space_used = 0;
+    disk_space_probe_failed = false;
+    std::wistringstream stream(values);
+    std::wstring value;
+    while (std::getline(stream, value, L'|')) {
+        if (value.empty() || value.find_first_not_of(L"0123456789") != std::wstring::npos)
+            throw std::runtime_error("disk space values require unsigned byte counts");
+        disk_space_values.push_back(std::stoull(value));
+    }
+    if (disk_space_values.empty()) throw std::runtime_error("disk space value required");
+    Module retained(dll_path);
+    const HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+    const DWORD function_a = reinterpret_cast<DWORD>(GetProcAddress(kernel, "GetDiskFreeSpaceExA"));
+    const DWORD function_w = reinterpret_cast<DWORD>(GetProcAddress(kernel, "GetDiskFreeSpaceExW"));
+    if (!function_a || !function_w) throw std::runtime_error("disk space API unavailable");
+    ScopedImportOverride hook_a, hook_w;
+    hook_a.install(retained.handle, "GetDiskFreeSpaceExA", function_a,
+        reinterpret_cast<DWORD>(audited_disk_space_a), true);
+    if (!hook_a.slot) hook_a.install_data_pointer(retained.handle, function_a,
+        reinterpret_cast<DWORD>(audited_disk_space_a), true);
+    hook_w.install(retained.handle, "GetDiskFreeSpaceExW", function_w,
+        reinterpret_cast<DWORD>(audited_disk_space_w), true);
+    wchar_t before[32768]{}, after[32768]{};
+    if (!GetCurrentDirectoryW(_countof(before), before)) throw std::runtime_error("cannot capture disk probe directory");
+    const int result = run_command_dialog_probe(dll_path, command, responses, layout, utf8, api, locale,
+        language, nullptr, step_count, steps, progress_kind);
+    if (!GetCurrentDirectoryW(_countof(after), after)) throw std::runtime_error("cannot capture final disk probe directory");
+    for (const auto& observation : disk_space_observations) std::cout << observation << '\n';
+    std::cout << "disk-space.queries=" << disk_space_used << ",cwd-preserved=" << (std::wcscmp(before, after) == 0)
+              << std::endl;
+    if (std::wcscmp(before, after) != 0) throw std::runtime_error("disk probe changed working directory");
+    if (disk_space_probe_failed) throw std::runtime_error("disk space audit failed");
+    return result;
+}
+
+static std::wstring create_failure_path;
+static DWORD create_failure_error = ERROR_ACCESS_DENIED;
+static unsigned create_failure_calls = 0;
+static bool create_failure_audit_failed = false;
+using CreateFileWFunction = decltype(&CreateFileW);
+using FopenFunction = decltype(&fopen);
+using WideFopenFunction = decltype(&_wfopen_s);
+static CreateFileWFunction create_failure_real_w = nullptr;
+static FopenFunction create_failure_real_fopen = nullptr;
+static WideFopenFunction create_failure_real_wfopen = nullptr;
+
+static bool matches_create_failure(const wchar_t* path) noexcept {
+    const DWORD previous = GetLastError();
+    bool matches = false;
+    try {
+        matches = path && _wcsicmp(normalized_absolute_filename(path).c_str(), create_failure_path.c_str()) == 0;
+    } catch (...) { create_failure_audit_failed = true; }
+    SetLastError(previous);
+    return matches;
+}
+
+static HANDLE WINAPI audited_create_file_w(LPCWSTR path, DWORD access, DWORD share,
+    LPSECURITY_ATTRIBUTES security, DWORD disposition, DWORD flags, HANDLE template_file) {
+    if ((access & GENERIC_WRITE) && matches_create_failure(path)) {
+        ++create_failure_calls;
+        SetLastError(create_failure_error);
+        return INVALID_HANDLE_VALUE;
+    }
+    return create_failure_real_w(path, access, share, security, disposition, flags, template_file);
+}
+
+static void set_create_failure_errno() {
+    ++create_failure_calls;
+    errno = EACCES;
+    _set_doserrno(create_failure_error);
+    SetLastError(create_failure_error);
+}
+
+static FILE* __cdecl audited_create_fopen(const char* path, const char* mode) {
+    const DWORD previous = GetLastError();
+    wchar_t wide[32768]{};
+    const bool write = mode && (std::strchr(mode, 'w') || std::strchr(mode, 'a') || std::strchr(mode, '+'));
+    const bool converted = path && MultiByteToWideChar(CP_ACP, 0, path, -1, wide, _countof(wide));
+    SetLastError(previous);
+    if (write && converted && matches_create_failure(wide)) {
+        set_create_failure_errno();
+        return nullptr;
+    }
+    return create_failure_real_fopen(path, mode);
+}
+
+static errno_t __cdecl audited_create_wfopen(FILE** file, const wchar_t* path, const wchar_t* mode) {
+    if (mode && (std::wcschr(mode, L'w') || std::wcschr(mode, L'a') || std::wcschr(mode, L'+')) &&
+        matches_create_failure(path)) {
+        if (file) *file = nullptr;
+        set_create_failure_errno();
+        return EACCES;
+    }
+    return create_failure_real_wfopen(file, path, mode);
+}
+
+int run_create_failure_probe(const wchar_t* dll_path, const wchar_t* command,
+    const wchar_t* responses, const wchar_t* layout, bool utf8, const wchar_t* api,
+    LCID locale, LANGID language, const wchar_t* path, DWORD error,
+    const int step_count = 0, wchar_t** steps = nullptr, const wchar_t* progress_kind = nullptr) {
+    create_failure_path = normalized_absolute_filename(path);
+    create_failure_error = error;
+    create_failure_calls = 0;
+    create_failure_audit_failed = false;
+    Module retained(dll_path);
+    Module runtime(L"ucrtbase.dll");
+    create_failure_real_w = proc<CreateFileWFunction>(GetModuleHandleW(L"kernel32.dll"), "CreateFileW");
+    create_failure_real_fopen = proc<FopenFunction>(runtime.handle, "fopen");
+    create_failure_real_wfopen = proc<WideFopenFunction>(runtime.handle, "_wfopen_s");
+    ScopedImportOverride native, narrow, wide;
+    native.install(retained.handle, "CreateFileW", reinterpret_cast<DWORD>(create_failure_real_w),
+        reinterpret_cast<DWORD>(audited_create_file_w), true);
+    if (!native.slot) native.install_data_pointer(retained.handle, reinterpret_cast<DWORD>(create_failure_real_w),
+        reinterpret_cast<DWORD>(audited_create_file_w), true);
+    narrow.install(retained.handle, "fopen", reinterpret_cast<DWORD>(create_failure_real_fopen),
+        reinterpret_cast<DWORD>(audited_create_fopen), true);
+    wide.install(retained.handle, "_wfopen_s", reinterpret_cast<DWORD>(create_failure_real_wfopen),
+        reinterpret_cast<DWORD>(audited_create_wfopen), true);
+    if (!native.slot && !narrow.slot && !wide.slot) throw std::runtime_error("file create interception unavailable");
+    const int result = run_command_dialog_probe(dll_path, command, responses, layout, utf8, api, locale,
+        language, nullptr, step_count, steps, progress_kind);
+    std::cout << "create-failure.calls=" << create_failure_calls << ",error=" << error << std::endl;
+    if (!create_failure_calls || create_failure_audit_failed) throw std::runtime_error("file create audit failed");
+    return result;
+}
+
+static std::wstring overwrite_race_path;
+static unsigned overwrite_race_observations = 0;
+
+static BOOL WINAPI overwrite_race_attributes(LPCWSTR path, GET_FILEEX_INFO_LEVELS level, LPVOID data) {
+    if (path) {
+        std::wstring normalized = path;
+        std::replace(normalized.begin(), normalized.end(), L'/', L'\\');
+        if (_wcsicmp(normalized.c_str(), overwrite_race_path.c_str()) == 0 && ++overwrite_race_observations == 1) {
+            // 事前判定直後に同名ファイルが現れる条件を、当該判定1回だけの不在応答で再現する。
+            SetLastError(ERROR_FILE_NOT_FOUND);
+            return FALSE;
+        }
+    }
+    return GetFileAttributesExW(path, level, data);
+}
+
+int run_overwrite_race_probe(const wchar_t* dll_path, const wchar_t* archive_path,
+                             const wchar_t* expected_path, const wchar_t* workspace) {
+    if (GetFileAttributesW(workspace) != INVALID_FILE_ATTRIBUTES)
+        throw std::runtime_error("overwrite race requires a new workspace");
+    const auto input = read_file(archive_path);
+    const auto expected = read_file(expected_path);
+    ensure_directory(workspace);
+    const std::wstring root = workspace;
+    const std::wstring archive = root + L"\\source.lzh";
+    const std::wstring output = root + L"\\output";
+    ensure_directory(output);
+    write_file(archive, input);
+    overwrite_race_path = output + L"\\nested.txt";
+    std::replace(overwrite_race_path.begin(), overwrite_race_path.end(), L'/', L'\\');
+    const std::vector<unsigned char> saved{'S', 'A', 'F', 'E'};
+    write_file(overwrite_race_path, saved);
+    Module retained(dll_path);
+    const auto unlha = proc<FnUnlhaW>(retained.handle, "UnlhaW");
+    const std::wstring operands = quote_argument(archive) + L" " + quote_argument(output + L"\\") + L" folder/nested.txt";
+    int result = 0;
+    overwrite_race_observations = 0;
+    {
+        ScopedImportOverride attributes;
+        attributes.install(retained.handle, "GetFileAttributesExW",
+            reinterpret_cast<DWORD>(GetFileAttributesExW), reinterpret_cast<DWORD>(overwrite_race_attributes));
+        result = unlha(nullptr, (L"e -n1 " + operands).c_str(), nullptr, 0);
+    }
+    if (overwrite_race_observations == 0 || result == 0 || read_file(overwrite_race_path) != saved)
+        throw std::runtime_error("overwrite race changed an unconfirmed existing file");
+    const auto require_released = [&]() {
+        const HANDLE file = CreateFileW(archive.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (file == INVALID_HANDLE_VALUE) throw std::runtime_error("overwrite race retained the input handle");
+        CloseHandle(file);
+    };
+    require_released();
+    if (unlha(nullptr, (L"e -n1 -gm1 -y1 -c1 " + operands).c_str(), nullptr, 0) != 0 ||
+        read_file(overwrite_race_path) != expected)
+        throw std::runtime_error("overwrite race subsequent authorized extraction failed");
+    require_released();
+    if (read_file(archive) != input) throw std::runtime_error("overwrite race changed the archive");
+    overwrite_race_path.clear();
+    std::cout << "overwrite.race=preserved,subsequent=passed,input-released=1\n";
+    return 0;
+}
 
 int run_enum_sequence_probe(const wchar_t* dll_path, const wchar_t* layout, const LCID locale,
                             const bool utf8, const wchar_t* api, int count, wchar_t** steps,
@@ -5339,7 +6103,9 @@ int run_update_policy_probe(const wchar_t* dll_path, const wchar_t* workspace,
                 continue;
             }
             std::vector<unsigned char> bytes(info.dwOriginalSize);
-            const std::wstring memory = quote_argument(item.second) + L" " + quote_argument(names[index]);
+            // 更新判定では展開データだけを確認する。既定の進捗画面は専用の UI 試験で比較するため、
+            // 数百回のメモリ展開でモデルレス画面を作らないよう明示的に抑止する。
+            const std::wstring memory = L"-n1 " + quote_argument(item.second) + L" " + quote_argument(names[index]);
             if (extract(nullptr, memory.c_str(), bytes.data(), static_cast<DWORD>(bytes.size()),
                         nullptr, nullptr, nullptr) != 0 ||
                 (bytes != std::vector<unsigned char>(41, 'A') &&
@@ -6574,8 +7340,10 @@ int wmain(int argc, wchar_t** argv) {
         if ((argc == 4 || argc == 5) && std::wcscmp(argv[1], L"--verify-dictionary-fixture") == 0) {
             return verify_dictionary_fixture(argv[2], argv[3], argc == 5 ? argv[4] : L"payload.bin");
         }
-        if (argc == 5 && std::wcscmp(argv[1], L"--legacy-payload-probe") == 0) {
-            return run_legacy_payload_probe(argv[2], argv[3], argv[4]);
+        if ((argc == 5 || argc == 6) && std::wcscmp(argv[1], L"--legacy-payload-probe") == 0) {
+            if (argc == 6 && std::wcscmp(argv[5], L"quiet") != 0)
+                throw std::runtime_error("legacy payload: optional mode must be quiet");
+            return run_legacy_payload_probe(argv[2], argv[3], argv[4], argc == 6);
         }
         if (argc == 4 && std::wcscmp(argv[1], L"--dictionary-state") == 0) {
             return run_dictionary_state(argv[2], argv[3]);
@@ -6609,6 +7377,31 @@ int wmain(int argc, wchar_t** argv) {
             if (argc == 5 && std::wcscmp(argv[4], L"quiet") != 0)
                 throw std::runtime_error("archive tail: optional mode must be quiet");
             return run_archive_tail_probe(argv[2], argv[3], argc == 5);
+        }
+        if ((argc == 4 || argc == 6 || argc == 7 || argc == 8) && std::wcscmp(argv[1], L"--memory-progress-dialog-probe") == 0) {
+            wchar_t* capacity_end = nullptr;
+            const unsigned long long capacity = argc >= 6 ? std::wcstoull(argv[5], &capacity_end, 10) : 64;
+            MemoryProgressDialogProbeAction action = MemoryProgressDialogProbeAction::Observe;
+            if (argc >= 7) {
+                if (std::wcscmp(argv[6], L"observe") == 0) action = MemoryProgressDialogProbeAction::Observe;
+                else if (std::wcscmp(argv[6], L"complete") == 0) action = MemoryProgressDialogProbeAction::Complete;
+                else if (std::wcscmp(argv[6], L"cancel") == 0) action = MemoryProgressDialogProbeAction::Cancel;
+                else if (std::wcscmp(argv[6], L"quit") == 0) action = MemoryProgressDialogProbeAction::Quit;
+                else throw std::runtime_error("memory progress dialog action is invalid");
+            }
+            if (argc >= 6 && (!capacity_end || *capacity_end || capacity == 0 ||
+                              capacity > kMemoryProgressDialogProbeMaximumCapacity))
+                throw std::runtime_error("memory progress dialog capacity is invalid");
+            LANGID language = 0xffff;
+            if (argc == 8) {
+                wchar_t* language_end = nullptr;
+                const unsigned long requested = std::wcstoul(argv[7], &language_end, 10);
+                if (!language_end || *language_end || (requested != 0 && requested != 1033 && requested != 1041))
+                    throw std::runtime_error("memory progress dialog language is invalid");
+                language = static_cast<LANGID>(requested);
+            }
+            return run_memory_progress_dialog_probe(argv[2], argv[3], argc >= 6 ? argv[4] : L"-gm1",
+                                                    static_cast<DWORD>(capacity), action, language);
         }
         if (argc >= 4 && argc <= 6 && std::wcscmp(argv[1], L"--find-pattern-probe") == 0) {
             const bool components = argc == 6 && std::wcscmp(argv[5], L"components") == 0;
@@ -6748,6 +7541,39 @@ int wmain(int argc, wchar_t** argv) {
                                           argc >= 11 && std::wcstol(argv[10], nullptr, 10) != 0,
                                           argc == 12 ? std::wcstol(argv[11], nullptr, 10) : -1);
         }
+        if (argc == 6 && std::wcscmp(argv[1], L"--overwrite-race-probe") == 0) {
+            return run_overwrite_race_probe(argv[2], argv[3], argv[4], argv[5]);
+        }
+        if (argc == 12 && std::wcscmp(argv[1], L"--create-failure-probe") == 0) {
+            return run_create_failure_probe(argv[2], argv[3], argv[4], argv[5],
+                std::wcstol(argv[6], nullptr, 10) != 0, argv[7], std::wcstoul(argv[8], nullptr, 10),
+                static_cast<LANGID>(std::wcstoul(argv[9], nullptr, 10)), argv[10], std::wcstoul(argv[11], nullptr, 10));
+        }
+        if (argc >= 12 && std::wcscmp(argv[1], L"--create-failure-sequence-probe") == 0) {
+            return run_create_failure_probe(argv[2], nullptr, argv[3], argv[4],
+                std::wcstol(argv[6], nullptr, 10) != 0, argv[7], std::wcstoul(argv[5], nullptr, 10),
+                0xffff, argv[9], std::wcstoul(argv[10], nullptr, 10), argc - 11, argv + 11, argv[8]);
+        }
+        if (argc == 11 && std::wcscmp(argv[1], L"--disk-space-dialog-probe") == 0) {
+            return run_disk_space_dialog_probe(argv[2], argv[3], argv[4], argv[5],
+                std::wcstol(argv[6], nullptr, 10) != 0, argv[7], std::wcstoul(argv[8], nullptr, 10),
+                static_cast<LANGID>(std::wcstoul(argv[9], nullptr, 10)), argv[10]);
+        }
+        if (argc >= 11 && std::wcscmp(argv[1], L"--disk-space-sequence-probe") == 0) {
+            return run_disk_space_dialog_probe(argv[2], nullptr, argv[3], argv[4],
+                std::wcstol(argv[6], nullptr, 10) != 0, argv[7], std::wcstoul(argv[5], nullptr, 10),
+                0xffff, argv[9], argc - 10, argv + 10, argv[8]);
+        }
+        if (argc == 11 && std::wcscmp(argv[1], L"--filename-dialog-probe") == 0) {
+            return run_filename_dialog_probe(argv[2], argv[3], argv[4], argv[5],
+                std::wcstol(argv[6], nullptr, 10) != 0, argv[7], std::wcstoul(argv[8], nullptr, 10),
+                static_cast<LANGID>(std::wcstoul(argv[9], nullptr, 10)), argv[10]);
+        }
+        if (argc >= 11 && std::wcscmp(argv[1], L"--filename-sequence-probe") == 0) {
+            return run_filename_dialog_probe(argv[2], nullptr, argv[3], argv[4],
+                std::wcstol(argv[6], nullptr, 10) != 0, argv[7], std::wcstoul(argv[5], nullptr, 10),
+                0xffff, argv[9], argc - 10, argv + 10, argv[8]);
+        }
         if (argc >= 8 && argc <= 11 && std::wcscmp(argv[1], L"--command-dialog-probe") == 0) {
             return run_command_dialog_probe(argv[2], argv[3], argv[4], argv[5],
                 std::wcstol(argv[6], nullptr, 10) != 0, argv[7],
@@ -6835,6 +7661,13 @@ int wmain(int argc, wchar_t** argv) {
                          "       CompatibilityTests --verify-dictionary-fixture <dll> <workspace> [member]\n"
                          "       CompatibilityTests --utf8-path-probe <dll> <workspace> <W|A|legacy> [defaults]\n"
                          "       CompatibilityTests --command-dialog-probe <dll> <command> <buttons|inspect> <layout> <unicode-mode> <W|A|legacy> [locale [language [audit-archive]]]\n"
+                         "         buttons: comma-separated button IDs or radio:button pairs\n"
+                         "         inspect-layout: inspect dialog geometry without responding\n"
+                         "         inspect-layout:hidden|visible|child|offscreen: inspect with a test owner window\n"
+                         "         sequence @initial-language:0|1033|1041 sets language before callback registration\n"
+                         "       CompatibilityTests --overwrite-race-probe <dll> <archive> <expected-payload> <workspace>\n"
+                         "       CompatibilityTests --filename-dialog-probe <dll> <command> <buttons> <layout> <unicode-mode> <api> <locale> <language> <paths|cancel>\n"
+                         "       CompatibilityTests --filename-sequence-probe <dll> <buttons> <layout> <locale> <unicode-mode> <api> <progress-layout> <paths|cancel> <steps...>\n"
                          "       CompatibilityTests --sequence-dialog-probe <dll> <buttons|inspect> <layout> <locale> <unicode-mode> <api> <progress-layout> <steps...>\n"
                          "       CompatibilityTests --command-raw-probe <dll> <command> <W|A|legacy> [capacity] [utf8]\n"
                          "       CompatibilityTests --attribute-probe <dll> <archive>\n"
@@ -6849,12 +7682,13 @@ int wmain(int argc, wchar_t** argv) {
                          "       CompatibilityTests --open-state-probe <dll> <valid-archive> <initial-path|@null|@empty|@valid> <api> <action> [owner]\n"
                          "       CompatibilityTests --create-open-size-fixtures <empty-archive> <workspace>\n"
                          "       CompatibilityTests --archive-tail-probe <dll> <archive> [quiet]\n"
+                         "       CompatibilityTests --memory-progress-dialog-probe <dll> <archive> [switches capacity [observe|complete|cancel|quit [language]]]\n"
                          "       CompatibilityTests --unicode-memory-probe <dll> <workspace>\n"
                          "       CompatibilityTests --unicode-command-probe <dll> <workspace>\n"
                          "       CompatibilityTests --sfx-probe <dll> <workspace> [dos|win|winm]\n"
                          "       CompatibilityTests --check-archive-probe <dll> <workspace>\n"
                          "       CompatibilityTests --check-existing-archive-probe <dll> <archive> [mode]\n"
-                         "       CompatibilityTests --legacy-payload-probe <dll> <archive> <expected-payload>\n"
+                         "       CompatibilityTests --legacy-payload-probe <dll> <archive> <expected-payload> [quiet]\n"
                          "       CompatibilityTests --create-check-boundary-fixtures <valid-archive> <workspace>\n"
                          "       CompatibilityTests --check-argument-probe <dll> <archive>\n"
                          "       CompatibilityTests --check-busy-probe <dll> <archive>\n"

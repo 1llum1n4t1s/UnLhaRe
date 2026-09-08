@@ -21,6 +21,10 @@ extern UINT Lha_GetMsgArcExtract();
 extern void Lha_SetMsgArcExtract(UINT u);
 extern LHA_ARCHIVERPROC_GEN Lha_GetArcProc();
 extern BOOL Lha_GetEnableTotalProgress();
+extern BOOL Lha_IsMemoryExtracting();
+extern int Lha_DispatchMemoryProgress(int state, const LzHeader* header,
+                                      const char* source, const char* destination,
+                                      __int64 current_size, __int64 total_size);
 extern int cmd;
 extern int Lha_DispatchCompatProgress(int state, const LzHeader* header,
                                       const char* source, const char* destination,
@@ -146,6 +150,28 @@ static int Lha_SendProgressMessageCore(int state, const char* filename,
     LHA_ARCHIVERPROC_GEN proc = Lha_GetArcProc();
 
     if (g_lha_aborted) return 1;
+    /* メモリ展開の専用画面は、登録済みの外部進捗とは独立して更新する。 */
+    if (Lha_IsMemoryExtracting()) {
+        const LzHeader* header = g_has_progress_header ? &g_progress_header : NULL;
+        const char* source = (state == ARCEXTRACT_OPEN || g_copy_progress) ? filename
+                           : header ? header->name : filename;
+        const char* destination = g_progress_destination[0] ? g_progress_destination : NULL;
+        if (state == ARCEXTRACT_END) {
+            header = NULL;
+            source = NULL;
+            destination = NULL;
+            g_copy_progress = 0;
+        }
+        const int abort = Lha_DispatchMemoryProgress(state, header, source, destination,
+                                                      current_size, total_size);
+        if (abort) {
+            g_lha_aborted = 1;
+            return abort;
+        }
+        // メモリ API は開始直後の 0 バイト通知も BEGIN として外部へ渡す。
+        if (state == ARCEXTRACT_INPROCESS && current_size == 0 && total_size > 0)
+            state = ARCEXTRACT_BEGIN;
+    }
     if (!progress_window && !proc) return 0;
 
     /* 1. 全体進捗の自動計算ロジック */
@@ -194,8 +220,13 @@ static int Lha_SendProgressMessageCore(int state, const char* filename,
 
         const char* name_to_use = (filename && filename[0] != '\0') ? filename : g_last_filename;
         if (name_to_use[0] != '\0') {
-            MultiByteToWideChar(932, 0, name_to_use, -1, pi_ex.szSourceFileName, FNAME_MAX32);
-            MultiByteToWideChar(932, 0, name_to_use, -1, pi_ex.szDestFileName, FNAME_MAX32);
+            // Unicode 圧縮の現入力ヘッダーだけは UTF-8 の生バイトを保持する。
+            // CMD_ADD 中にコピーする旧メンバーと展開は従来の CP932 変換を保つ。
+            const UINT name_code_page = cmd == CMD_ADD && g_has_progress_header &&
+                g_progress_header.has_input_name_code_page &&
+                g_progress_header.input_name_code_page == CP_UTF8 ? CP_UTF8 : 932;
+            MultiByteToWideChar(name_code_page, 0, name_to_use, -1, pi_ex.szSourceFileName, FNAME_MAX32);
+            MultiByteToWideChar(name_code_page, 0, name_to_use, -1, pi_ex.szDestFileName, FNAME_MAX32);
         }
 
         int abort = 0;

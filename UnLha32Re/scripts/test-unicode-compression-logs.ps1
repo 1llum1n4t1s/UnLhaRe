@@ -56,6 +56,20 @@ foreach ($locale in 1033, 1041) {
             # 両方の出力書庫を元 DLL で読み、格納名・属性の維持と読取可能性も確認する。
             $metadata = @(& $TestProgram --registry '' --attribute-probe $Oracle $archive)
             if ($LASTEXITCODE -ne 0) { throw "圧縮結果を読み取れません: $label / $side" }
+            if ($side -eq 'reimpl') {
+                # 候補が生成した書庫を、候補自身の列挙・メモリ展開 API でも読み返す。
+                $candidateMetadata = @(& $TestProgram --registry '' --attribute-probe $Candidate $archive)
+                $candidateMetadataExit = $LASTEXITCODE
+                if ($candidateMetadataExit -ne 0) {
+                    throw "Unicode 圧縮結果を候補自身で読み取れません: $label / $side"
+                }
+                $metadataDifference = @(Compare-Object $metadata $candidateMetadata -CaseSensitive -SyncWindow 0)
+                if ($metadataDifference.Count) {
+                    $details = $metadataDifference | Select-Object -First 8 | Out-String -Width 1500
+                    throw ("候補が生成した Unicode 圧縮結果の自己読み出しが原版読み出しと一致しません: " +
+                        $label + [Environment]::NewLine + $details)
+                }
+            }
             $rows += $metadata
             $results += ,$rows
         }

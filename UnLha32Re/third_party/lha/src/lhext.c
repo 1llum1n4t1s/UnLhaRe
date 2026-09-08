@@ -35,7 +35,7 @@ static boolean decode_macbinary(FILE *ofp, off_t size, const char *outPath);
 
 /* ------------------------------------------------------------------------ */
 static          boolean
-inquire_extract(char *name)
+inquire_extract(char *name, boolean confirmed)
 {
     struct stat     stbuf;
 
@@ -50,7 +50,7 @@ inquire_extract(char *name)
             printf("EXTRACT %s but file is exist.\n", name);
             return FALSE;
         }
-        else if (!force) {
+        else if (!force && !confirmed) {
             fatal_error("同名ファイルがあるので書き込めません。\n%s\n", name);
             return FALSE;
         }
@@ -176,6 +176,10 @@ make_parent_path(const char *name)
 static FILE    *
 open_with_make_path(char *name)
 {
+#ifdef LHA_LIBRARY
+    /* 親は容量確認前に作成済み。失敗した既存ファイルは削除・再試行しない。 */
+    return fopen(name, WRITE_BINARY);
+#else
     FILE           *fp;
 
     if ((fp = fopen(name, WRITE_BINARY)) == NULL) {
@@ -184,6 +188,7 @@ open_with_make_path(char *name)
             error("Cannot extract a file \"%s\"", name);
     }
     return fp;
+#endif
 }
 
 /* ------------------------------------------------------------------------ */
@@ -293,9 +298,8 @@ extract_one(FILE *afp,  /* archive file */
     off_t read_size = 0;
 
     /* 原版は項目開始の進捗後、列挙・本文処理より前に非対応方式を読み飛ばす。 */
-    if ((output_to_stdout || verify_mode) &&
-        (memcmp(hdr->method, PMARC0_METHOD, 5) == 0 ||
-         memcmp(hdr->method, PMARC2_METHOD, 5) == 0)) {
+    if (memcmp(hdr->method, PMARC0_METHOD, 5) == 0 ||
+        memcmp(hdr->method, PMARC2_METHOD, 5) == 0) {
         Lha_RecordHeaderCommandEvent("UnsupportedMethod", hdr, hdr->method[3] - '0');
         return read_size;
     }
@@ -472,11 +476,21 @@ extract_one(FILE *afp,  /* archive file */
             }
 #endif /* __APPLE__ */
 #ifdef LHA_LIBRARY
-            if (!Lha_PrepareCommandExtraction(hdr, name, sizeof(name)))
-                return read_size;
+            const int prepared = Lha_PrepareCommandExtraction(hdr, name, sizeof(name));
+            if (prepared < 0) {
+                g_infp = afp;
+                exit(1);
+            }
+            if (!prepared) return read_size;
 #endif
             if (skip_flg == FALSE)  {
-                up_flag = inquire_extract(name);
+                up_flag = inquire_extract(name,
+#ifdef LHA_LIBRARY
+                    prepared == 2 /* 判定後に出現した既存ファイルの保護は引き続き行う。 */
+#else
+                    FALSE
+#endif
+                );
                 if (up_flag == FALSE && force == FALSE) {
                     return read_size;
                 }
@@ -493,15 +507,34 @@ extract_one(FILE *afp,  /* archive file */
                 return read_size;
             }
 
+#ifdef LHA_LIBRARY
+            if (strchr(name, '/') && !make_parent_path(name)) {
+                Lha_HandleCommandDirectoryFailure(name);
+                g_infp = afp;
+                exit(1);
+            }
+            if (Lha_CommandChecksDiskSpace()) {
+                /* 原版は親作成後に容量を確認し、拒否した既存ファイルは削除しない。 */
+                const int enough = Lha_CheckCommandDiskSpace(hdr, name);
+                if (enough < 0) {
+                    g_infp = afp;
+                    exit(1);
+                }
+                if (!enough) return read_size;
+            }
+#endif
+
             signal(SIGINT, interrupt);
 #ifdef SIGHUP
             signal(SIGHUP, interrupt);
 #endif
 
+#ifndef LHA_LIBRARY
             unlink(name);
-            remove_extracting_file_when_interrupt = TRUE;
+#endif
 
             if ((fp = open_with_make_path(name)) != NULL) {
+                remove_extracting_file_when_interrupt = TRUE;
                 g_outfp = fp;
 #if HAVE_LIBAPPLEFILE
                 if (hdr->extend_type == EXTEND_MACOS && !verify_mode && decode_macbinary_contents) {
@@ -535,6 +568,12 @@ extract_one(FILE *afp,  /* archive file */
                 g_outfp = NULL;
                 fclose(fp);
             }
+#ifdef LHA_LIBRARY
+            else if (Lha_HandleCommandCreateFailure(hdr, name)) {
+                g_infp = afp;
+                exit(1);
+            }
+#endif
             remove_extracting_file_when_interrupt = FALSE;
             g_infp = NULL;
             signal(SIGINT, SIG_DFL);
@@ -583,7 +622,7 @@ extract_one(FILE *afp,  /* archive file */
 
 #ifdef S_IFLNK
                 if (skip_flg == FALSE)  {
-                    up_flag = inquire_extract(name);
+                    up_flag = inquire_extract(name, FALSE);
                     if (up_flag == FALSE && force == FALSE) {
                         return read_size;
                     }
@@ -617,9 +656,23 @@ extract_one(FILE *afp,  /* archive file */
             else { /* make directory */
 #if defined(_WIN32) && defined(LHA_LIBRARY)
                 Lha_RecordHeaderCommandEvent("Melted", hdr, 0);
+                {
+                    const int prepared = Lha_PrepareCommandDirectoryExtraction(name);
+                    if (prepared < 0) {
+                        g_infp = afp;
+                        exit(1);
+                    }
+                    if (!prepared) return read_size;
+                }
 #endif
-                if (!make_parent_path(name))
+                if (!make_parent_path(name)) {
+#if defined(_WIN32) && defined(LHA_LIBRARY)
+                    Lha_HandleCommandDirectoryFailure(name);
+                    g_infp = afp;
+                    exit(1);
+#endif
                     return read_size;
+                }
 #if defined(_WIN32) && defined(LHA_LIBRARY)
                 /* 原版は次の項目より前に復元する。中断後の次命令へ保留情報を持ち越さない。 */
                 Lha_RestoreCommandDirectoryMetadata(hdr, name);

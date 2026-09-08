@@ -73,6 +73,7 @@ foreach ($variant in $Variants) {
                     throw "更新元の作成に失敗しました: $label / $side"
                 }
             }
+            $archiveBeforeHash = if (Test-Path -LiteralPath $archive) { (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash } else { $null }
             $base = '..\source\'
             $pattern = '*.txt'
             $flags = '-x0'
@@ -95,6 +96,8 @@ foreach ($variant in $Variants) {
                 throw "親相対パスの呼び出しに失敗しました: $label / $side`n$($rows -join "`n")"
             }
             $exists = Test-Path -LiteralPath $archive
+            $candidateProducedArchive = $side -eq 'reimpl' -and $exists -and
+                ($null -eq $archiveBeforeHash -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -cne $archiveBeforeHash)
             $rows += "archive-exists=$exists"
             if ($exists) {
                 $metadata = @(& $TestProgram --registry '' --attribute-probe $Oracle $archive)
@@ -103,6 +106,31 @@ foreach ($variant in $Variants) {
                 # 検索先と読み取り先の内容を区別し、格納された実データまで比較する。
                 $contents = @(& $TestProgram --registry '' --command-probe-a $Oracle "p -+ `"$archive`"" A)
                 if ($LASTEXITCODE -ne 0 -or $contents -notcontains 'result=0') { throw "原版で結果を読めません: $label / $side" }
+                if ($candidateProducedArchive) {
+                    # 候補生成書庫を候補自身の全列挙・メモリ展開 API でも読み戻し、原版結果と厳密に比較する。
+                    $candidateMetadata = @(& $TestProgram --registry '' --attribute-probe $Candidate $archive)
+                    $candidateMetadataExit = $LASTEXITCODE
+                    [IO.File]::WriteAllLines((Join-Path $root 'candidate-metadata.txt'),[string[]](@("probe-exit=$candidateMetadataExit") + $candidateMetadata))
+                    if ($candidateMetadataExit -ne 0) {
+                        throw "生成書庫のメタデータを候補自身で読み取れません: $label / $side"
+                    }
+                    $metadataDifference = @(Compare-Object $metadata $candidateMetadata -CaseSensitive -SyncWindow 0)
+                    if ($metadataDifference.Count) {
+                        $details = $metadataDifference | Select-Object -First 12 | Out-String -Width 2000
+                        throw "候補生成書庫のメタデータ・メモリ展開が原版と不一致です: $label`n$details"
+                    }
+                    $candidateContents = @(& $TestProgram --registry '' --command-probe-a $Candidate "p -+ `"$archive`"" A)
+                    $candidateContentsExit = $LASTEXITCODE
+                    [IO.File]::WriteAllLines((Join-Path $root 'candidate-payload.txt'),[string[]](@("probe-exit=$candidateContentsExit") + $candidateContents))
+                    if ($candidateContentsExit -ne 0 -or $candidateContents -notcontains 'result=0') {
+                        throw "生成書庫の内容を候補自身で読み取れません: $label / $side (exit $candidateContentsExit)`n$($candidateContents -join "`n")"
+                    }
+                    $contentsDifference = @(Compare-Object $contents $candidateContents -CaseSensitive -SyncWindow 0)
+                    if ($contentsDifference.Count) {
+                        $details = $contentsDifference | Select-Object -First 12 | Out-String -Width 2000
+                        throw "候補生成書庫の本文読み戻しが原版と不一致です: $label`n$details"
+                    }
+                }
                 $rows += @($contents | ForEach-Object { "data.$_" })
             }
             foreach ($file in $files.Keys) { $rows += "file=$file,exists=$(Test-Path -LiteralPath (Join-Path $root $file))" }

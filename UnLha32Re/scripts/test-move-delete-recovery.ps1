@@ -92,6 +92,21 @@ foreach ($layout in 'a32','w32','a64','w64') { foreach ($locale in 1033,1041) { 
             if ($LASTEXITCODE -ne 0 -or $data -notcontains 'result=0' -or $data -notcontains "output=`"final-$name-new-value`"") {
                 throw "削除失敗後に再更新した圧縮内容が違います: $label/$side/$name"
             }
+            if ($side -eq 'reimpl') {
+                # 候補が生成した書庫を、候補自身のメモリ展開 API でも読み返す。
+                $readCommand = 'p -+ "' + $archive + '" ' + $name
+                $candidateData = @(& $TestProgram --registry '' --command-probe-a $Candidate $readCommand A)
+                $candidateDataExit = $LASTEXITCODE
+                if ($candidateDataExit -ne 0 -or $candidateData -notcontains 'result=0') {
+                    throw "削除失敗後に再更新した圧縮内容を候補自身で読み取れません: $label/$side/$name"
+                }
+                $payloadDifference = @(Compare-Object $data $candidateData -CaseSensitive -SyncWindow 0)
+                if ($payloadDifference.Count) {
+                    $details = $payloadDifference | Select-Object -First 8 | Out-String -Width 1500
+                    throw ("候補が生成した再更新書庫の自己読み出しが原版読み出しと一致しません: " +
+                        $label + "/" + $name + [Environment]::NewLine + $details)
+                }
+            }
         }
         $results += ,@(Normalize-MoveRecoveryRows $rows $variant $side | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
     }
