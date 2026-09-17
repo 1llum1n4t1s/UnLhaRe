@@ -4,7 +4,23 @@
 
 実装は `UnLha32Re/` にあり、UNLHA32.DLL 3.00.0.5 の x86 ABI と観測可能な動作を再現する Windows DLL `UNLHA32RE.DLL` を構築する。完全互換は目標であり、全入力・全副作用の一致を示すものではない。確認範囲、既知の差異、データ保護上の例外は [プロジェクト README](UnLha32Re/README.md) を正本とする。
 
-`UnLhaRe/` は将来の近代化版のための領域で、現時点では未実装である。
+`UnLhaRe/` はRust 1.98.1 / edition 2024による独立した近代化版。Windows/macOSのx64/ARM64を対象とし、旧x86 ABIを引き継がない。利用手順と機能境界は [新版README](UnLhaRe/README.md)。以下の互換版の設計とは実装と試験入口を分離する。
+
+## 近代化版の構成
+
+| 場所 | 責務 |
+| --- | --- |
+| `UnLhaRe/src/lib.rs` | 公開Rust API、64bitサイズと呼び出し単位のLimits、入力ディレクトリ列挙 |
+| `UnLhaRe/src/reader.rs` | delharcによるヘッダー読取・一覧・CRC検査・展開、cap-stdによる出力先基点の操作 |
+| `UnLhaRe/src/writer.rs` | oxiarc-lzhufによる圧縮、レベル2/Unicode/64bitサイズ拡張、新規書庫の確定 |
+| `UnLhaRe/src/pathname.rs` | UTF-8/UTF-16/旧コードページの解釈と共通のファイル名制約 |
+| `UnLhaRe/src/ffi.rs`、`include/unlhare.h` | C ABI 1、UTF-8文字列、固定幅整数、呼び出し元所有のバッファ、スレッド別エラー |
+| `UnLhaRe/src/main.rs` | create/list/test/extract CLI |
+| `UnLhaRe/tests/`、`scripts/`、`.github/workflows/modern.yml` | 正常往復・既存出力保持・上限・並列・C ABI試験、4環境のビルド |
+
+新版は操作ごとにデコーダーと状態を所有し、レジストリやホストのシグナル設定を変更しない。作成先と展開先の既存ファイルを置換しない。作成は一時書庫の完成後に確定、展開は各ファイルのサイズ・CRC一致後に同一ファイルシステム内のhard linkで確定する。後続項目で失敗した場合、先に確定したファイルは残る。hard link非対応のファイルシステムはエラーとする。サイズ表現はu64だが圧縮は1項目をメモリに保持するため、既定の容量上限を設ける。
+
+元のx86ソースやDLLを新ライブラリへリンクしない。Rust依存はCargo.lockで固定し、新版の第三者告知とライセンス原文をbundleに収録する。
 
 ## 主要コンポーネント
 

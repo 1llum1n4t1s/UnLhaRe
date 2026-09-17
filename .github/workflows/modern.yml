@@ -1,0 +1,156 @@
+name: Modern Rust
+
+on:
+  push:
+    branches:
+      - 'release/unlhare/**'
+    paths:
+      - 'UnLhaRe/**'
+      - '.github/workflows/modern.yml'
+  pull_request:
+    paths:
+      - 'UnLhaRe/**'
+      - '.github/workflows/modern.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025-vs2026
+            os: windows
+            msvc_arch: amd64
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-vs2026-arm
+            os: windows
+            msvc_arch: arm64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            os: macos
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            os: macos
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: UnLhaRe
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Cache Rust build dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            UnLhaRe/build/cargo
+          key: unlhare-${{ matrix.target }}-${{ hashFiles('UnLhaRe/Cargo.lock', 'UnLhaRe/rust-toolchain.toml') }}
+
+      - name: Install Rust components and target
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          rustup component add rustfmt clippy
+          rustup target add "$TARGET"
+
+      - name: Test and build Windows bundle
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: ./scripts/build.ps1 -Target '${{ matrix.target }}' -Test
+
+      - name: Test and build macOS bundle
+        if: matrix.os == 'macos'
+        shell: bash
+        run: bash scripts/build.sh --target '${{ matrix.target }}' --test
+
+      - name: Link and run C API consumer on Windows
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          MSVC_ARCH: ${{ matrix.msvc_arch }}
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $installationPath = & $vswhere -latest -products * -property installationPath
+          if (-not $installationPath) { throw 'Visual Studio was not found.' }
+          Import-Module (Join-Path $installationPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $installationPath -SkipAutomaticLocation -Arch $env:MSVC_ARCH -HostArch $env:MSVC_ARCH
+          $releaseDirectory = Join-Path $PWD 'build/cargo/${{ matrix.target }}/release'
+          New-Item -ItemType Directory -Path build/consumer/input -Force | Out-Null
+          Set-Content -LiteralPath build/consumer/input/hello.txt -Value 'hello from the C API consumer' -Encoding utf8NoBOM
+          cl.exe /nologo /std:c17 /W4 /WX /Iinclude /Fobuild/consumer/c_api.obj examples/c_api.c /link "/LIBPATH:$releaseDirectory" unlhare.dll.lib /OUT:build/consumer/c_api.exe
+          if ($LASTEXITCODE -ne 0) { throw "C consumer compilation failed with exit code $LASTEXITCODE." }
+          & (Join-Path $releaseDirectory 'unlhare-cli.exe') create build/consumer/sample.lzh --source build/consumer/input --method stored
+          if ($LASTEXITCODE -ne 0) { throw "Fixture creation failed with exit code $LASTEXITCODE." }
+          $env:PATH = "$releaseDirectory;$env:PATH"
+          & (Join-Path $PWD 'build/consumer/c_api.exe') build/consumer/sample.lzh
+          if ($LASTEXITCODE -ne 0) { throw "C consumer execution failed with exit code $LASTEXITCODE." }
+
+      - name: Link and run C API consumer on macOS
+        if: matrix.os == 'macos'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          bundle_directory="$PWD/artifacts/$TARGET"
+          codesign --force --sign - "$bundle_directory/libunlhare.dylib"
+          codesign --force --sign - "$bundle_directory/unlhare-cli"
+          codesign --verify --strict "$bundle_directory/libunlhare.dylib"
+          codesign --verify --strict "$bundle_directory/unlhare-cli"
+          runtime_directory="$PWD/build/consumer/runtime"
+          mkdir -p "$runtime_directory/input"
+          cp -p "$bundle_directory/libunlhare.dylib" "$bundle_directory/unlhare-cli" "$runtime_directory/"
+          printf '%s\n' 'hello from the C API consumer' > "$runtime_directory/input/hello.txt"
+
+          cc -std=c17 -Wall -Wextra -Werror -I"$bundle_directory/include" examples/c_api.c \
+            -L"$runtime_directory" -lunlhare \
+            -Wl,-rpath,@executable_path \
+            -o "$runtime_directory/c_api"
+
+          otool -D "$runtime_directory/libunlhare.dylib" \
+            | tail -n +2 \
+            | grep -Fx '@rpath/libunlhare.dylib'
+          otool -l "$runtime_directory/c_api" \
+            | grep -A 2 LC_RPATH \
+            | grep -F 'path @executable_path '
+
+          "$runtime_directory/unlhare-cli" create "$runtime_directory/sample.lzh" \
+            --source "$runtime_directory/input" --method stored
+          DYLD_LIBRARY_PATH="$runtime_directory" \
+            "$runtime_directory/c_api" "$runtime_directory/sample.lzh"
+          env -u DYLD_LIBRARY_PATH \
+            "$runtime_directory/c_api" "$runtime_directory/sample.lzh"
+
+      - name: Archive macOS bundle
+        if: matrix.os == 'macos'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: tar -C "artifacts/$TARGET" -czf "artifacts/unlhare-$TARGET.tar.gz" .
+
+      - name: Upload Windows bundle
+        if: matrix.os == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unlhare-${{ matrix.target }}
+          path: UnLhaRe/artifacts/${{ matrix.target }}
+          if-no-files-found: error
+
+      - name: Upload macOS bundle
+        if: matrix.os == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unlhare-${{ matrix.target }}
+          path: UnLhaRe/artifacts/unlhare-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
