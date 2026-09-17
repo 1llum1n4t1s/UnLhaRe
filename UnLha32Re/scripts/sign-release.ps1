@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $Candidate = [IO.Path]::GetFullPath($Candidate)
 if (!(Test-Path -LiteralPath $Candidate -PathType Leaf)) {
     throw "署名対象 DLL が見つかりません: $Candidate"
@@ -25,7 +26,7 @@ function Test-CodeSigningCertificate {
         return $false
     }
     foreach ($usage in $Certificate.EnhancedKeyUsageList) {
-        if ($usage.ObjectId.Value -eq '1.3.6.1.5.5.7.3.3') { return $true }
+        if ($usage.ObjectId -eq '1.3.6.1.5.5.7.3.3') { return $true }
     }
     return $false
 }
