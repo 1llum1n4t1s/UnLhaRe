@@ -4,8 +4,10 @@ use std::ptr;
 
 use tempfile::tempdir;
 use unlhare::ffi::{
-    STATUS_BUFFER_TOO_SMALL, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_abi_version,
-    unlhare_create, unlhare_extract, unlhare_last_error, unlhare_list_json, unlhare_verify,
+    ERROR_KIND_BUFFER_TOO_SMALL, ERROR_KIND_FORMAT, ERROR_KIND_INVALID_ARGUMENT, ERROR_KIND_IO,
+    STATUS_BUFFER_TOO_SMALL, STATUS_ERROR, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_abi_version,
+    unlhare_create, unlhare_extract, unlhare_last_error, unlhare_last_error_kind,
+    unlhare_list_json, unlhare_verify,
 };
 
 fn c_path(path: &std::path::Path) -> CString {
@@ -35,6 +37,29 @@ fn last_error() -> String {
         .to_str()
         .expect("last error must be UTF-8")
         .to_owned()
+}
+
+#[test]
+fn last_error_kind_classifies_archive_failures() {
+    let temporary = tempdir().expect("temporary directory");
+    let missing = c_path(&temporary.path().join("missing.lzh"));
+    let mut required = 0_u64;
+    // SAFETY: the path and required-size pointer are valid for the call.
+    assert_eq!(
+        unsafe { unlhare_list_json(missing.as_ptr(), ptr::null_mut(), 0, &mut required) },
+        STATUS_ERROR
+    );
+    assert_eq!(unlhare_last_error_kind(), ERROR_KIND_IO);
+
+    let invalid_path = temporary.path().join("invalid.lzh");
+    fs::write(&invalid_path, b"not an archive").expect("invalid archive fixture");
+    let invalid = c_path(&invalid_path);
+    // SAFETY: the path and required-size pointer are valid for the call.
+    assert_eq!(
+        unsafe { unlhare_list_json(invalid.as_ptr(), ptr::null_mut(), 0, &mut required) },
+        STATUS_ERROR
+    );
+    assert_eq!(unlhare_last_error_kind(), ERROR_KIND_FORMAT);
 }
 
 #[test]
@@ -76,6 +101,7 @@ fn c_abi_round_trip_and_buffer_contract() {
         unsafe { unlhare_list_json(archive_c.as_ptr(), ptr::null_mut(), 0, &mut required) },
         STATUS_BUFFER_TOO_SMALL
     );
+    assert_eq!(unlhare_last_error_kind(), ERROR_KIND_BUFFER_TOO_SMALL);
     assert!(required > 1);
 
     let mut short = [0x55_u8; 2];
@@ -144,6 +170,7 @@ fn invalid_arguments_and_last_error_contract() {
         unsafe { unlhare_list_json(ptr::null(), ptr::null_mut(), 0, &mut required) },
         STATUS_INVALID_ARGUMENT
     );
+    assert_eq!(unlhare_last_error_kind(), ERROR_KIND_INVALID_ARGUMENT);
     let original = last_error();
     assert!(original.contains("archive_utf8"));
 
@@ -161,6 +188,7 @@ fn invalid_arguments_and_last_error_contract() {
         STATUS_INVALID_ARGUMENT
     );
     assert_eq!(last_error(), original, "last_error must preserve its value");
+    assert_eq!(unlhare_last_error_kind(), ERROR_KIND_INVALID_ARGUMENT);
 
     let archive = CString::new("unused.lzh").expect("literal CString");
     required = 0;

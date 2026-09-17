@@ -47,6 +47,8 @@ enum Request {
         method: i32,
         #[serde(default)]
         limits: InputLimits,
+        #[serde(default)]
+        fail_if_all_skipped: bool,
     },
     Extract {
         archive: PathBuf,
@@ -73,14 +75,7 @@ struct ListRequest {
 }
 
 fn operation_error(error: crate::Error) -> FfiError {
-    if matches!(error, crate::Error::Cancelled) {
-        FfiError {
-            status: STATUS_CANCELLED,
-            message: error.to_string(),
-        }
-    } else {
-        FfiError::operation(error.to_string())
-    }
+    FfiError::archive(error)
 }
 
 unsafe fn parse_request<T: serde::de::DeserializeOwned>(
@@ -98,7 +93,7 @@ unsafe fn parse_request<T: serde::de::DeserializeOwned>(
 /// ABI 1に追加されたアプリ連携APIの世代。
 #[unsafe(no_mangle)]
 pub extern "C" fn unlhare_api_level() -> u32 {
-    3
+    4
 }
 
 /// 0で続行、それ以外で中断する。同じ呼び出しスレッドで同期実行する。
@@ -153,7 +148,13 @@ pub unsafe extern "C" fn unlhare_run_json(
                 entries,
                 method,
                 limits,
+                fail_if_all_skipped,
             } => {
+                if fail_if_all_skipped {
+                    return Err(FfiError::invalid(
+                        "fail_if_all_skipped requires unlhare_create_json_report",
+                    ));
+                }
                 let method = method_from_abi(method)?;
                 let sources: Vec<_> = entries
                     .into_iter()
@@ -250,6 +251,7 @@ pub unsafe extern "C" fn unlhare_create_json_report(
             entries,
             method,
             limits,
+            fail_if_all_skipped,
         } = request
         else {
             return Err(FfiError::invalid("operation must be create"));
@@ -261,12 +263,15 @@ pub unsafe extern "C" fn unlhare_create_json_report(
                 name: entry.name,
             })
             .collect();
-        let report = crate::create_archive_with_report(
+        let report = crate::create_archive_with_report_options(
             &output,
             &sources,
             &CreateOptions {
                 method: method_from_abi(method)?,
                 limits: limits.into(),
+            },
+            &crate::CreateReportOptions {
+                fail_if_all_skipped,
             },
             &mut |progress| report_progress(callback, user, progress),
         )

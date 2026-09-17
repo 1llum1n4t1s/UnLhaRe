@@ -56,7 +56,8 @@ compression, but cannot interrupt the compression calculation for a single file.
 The package validates native ABI version 1 and API level 2 before use. A clear
 `NotSupportedException` is raised if an older native DLL is selected by the
 process loader. Native failures use `ArchiveNativeException`; cancellation uses
-`OperationCanceledException`.
+`OperationCanceledException`. Source builds with API level 4 also expose a stable
+`ArchiveNativeException.Kind`; older native libraries report `Unknown`.
 
 Native and third-party notices are included in the package. The package's
 `buildTransitive` target also copies them to `licenses/Kagayoi.UnLhaRe` under a
@@ -106,3 +107,26 @@ relative separators in archive entry names and validate after normalizing to `/`
 
 The encoder still retains one source entry in memory; per-entry limits continue
 to apply. These APIs do not yet provide streaming compression.
+
+## Unreleased API level 4
+
+The parameterless `ArchiveClient.List(path)` automatically uses the API level 3
+single-scan result callback when the loaded native library supports it. API
+level 2 libraries retain the former size-query fallback.
+
+Creation results expose `ArchiveCreateEntryStatus.Written` and `Skipped` instead
+of requiring string comparisons. To require at least one written entry:
+
+```csharp
+var result = ArchiveClient.CreateWithResults(
+    "partial.lzh", sources, CompressionMethod.Lh5,
+    new ArchiveCreateReportOptions(FailIfAllSkipped: true),
+    cancellationToken: token);
+```
+
+If every source is skipped, the native temporary file is discarded and
+`ArchiveNativeException` is thrown without publishing an empty archive. Omitting
+the option preserves the API level 3 behavior. `ArchiveNativeException.Kind`
+distinguishes I/O, format, unsupported-feature, limit, invalid-path,
+already-existing destination, invalid-argument, cancellation, and internal
+failures without parsing localized message text.

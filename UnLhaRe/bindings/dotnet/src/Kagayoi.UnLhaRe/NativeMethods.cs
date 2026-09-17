@@ -58,4 +58,8 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "unlhare_last_error")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int LastError(byte* output, ulong capacity, out ulong required);
+
+    [LibraryImport(LibraryName, EntryPoint = "unlhare_last_error_kind")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int LastErrorKind();
 }

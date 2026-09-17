@@ -12,6 +12,8 @@ public static unsafe class ArchiveClient
     private const uint RequiredAbiVersion = 1;
     private const uint RequiredApiLevel = 2;
     private const uint RequiredResultCallbackApiLevel = 3;
+    private const uint RequiredErrorKindApiLevel = 4;
+    private const uint RequiredCreatePolicyApiLevel = 4;
     private const int StatusOk = 0;
     private const int StatusBufferTooSmall = 2;
     private const int StatusCancelled = 5;
@@ -27,6 +29,17 @@ public static unsafe class ArchiveClient
         EnsureNativeCompatibility();
 
         var request = new ListRequest(archive, LimitsRequest.From(limits));
+        if (NativeApiLevel.Value >= RequiredResultCallbackApiLevel)
+        {
+            return RunWithResult(
+                request,
+                ArchiveJsonContext.Default.ListRequest,
+                ArchiveJsonContext.Default.ArchiveEntryArray,
+                NativeResultOperation.List,
+                progress: null,
+                CancellationToken.None);
+        }
+
         var jsonRequest = JsonSerializer.Serialize(request, ArchiveJsonContext.Default.ListRequest);
         var json = ReadListJson(jsonRequest);
         return JsonSerializer.Deserialize(json, ArchiveJsonContext.Default.ArchiveEntryArray)
@@ -135,14 +148,55 @@ public static unsafe class ArchiveClient
         IProgress<ArchiveProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var request = BuildCreateRequest(output, entries, method, limits);
+        return CreateWithResultsCore(
+            output,
+            entries,
+            method,
+            reportOptions: null,
+            limits,
+            progress,
+            cancellationToken);
+    }
+
+    /// <summary>Creates an archive with per-entry results and explicit publication policy.</summary>
+    public static ArchiveCreateReport CreateWithResults(
+        string output,
+        IReadOnlyList<ArchiveSourceEntry> entries,
+        CompressionMethod method,
+        ArchiveCreateReportOptions reportOptions,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        return CreateWithResultsCore(
+            output,
+            entries,
+            method,
+            reportOptions,
+            limits,
+            progress,
+            cancellationToken);
+    }
+
+    private static ArchiveCreateReport CreateWithResultsCore(
+        string output,
+        IReadOnlyList<ArchiveSourceEntry> entries,
+        CompressionMethod method,
+        ArchiveCreateReportOptions? reportOptions,
+        ArchiveLimits? limits,
+        IProgress<ArchiveProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var failIfAllSkipped = reportOptions?.FailIfAllSkipped == true ? true : (bool?)null;
+        var request = BuildCreateRequest(output, entries, method, limits, failIfAllSkipped);
         return RunWithResult(
             request,
             ArchiveJsonContext.Default.CreateRequest,
             ArchiveJsonContext.Default.ArchiveCreateReport,
             NativeResultOperation.Create,
             progress,
-            cancellationToken);
+            cancellationToken,
+            failIfAllSkipped == true ? RequiredCreatePolicyApiLevel : RequiredResultCallbackApiLevel);
     }
 
     private static void Run<TRequest>(
@@ -199,10 +253,11 @@ public static unsafe class ArchiveClient
         System.Text.Json.Serialization.Metadata.JsonTypeInfo<TResult> resultJsonType,
         NativeResultOperation operation,
         IProgress<ArchiveProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        uint requiredApiLevel = RequiredResultCallbackApiLevel)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        EnsureNativeCompatibility(RequiredResultCallbackApiLevel);
+        EnsureNativeCompatibility(requiredApiLevel);
 
         var json = JsonSerializer.Serialize(request, requestJsonType);
         var state = new CallbackState(progress, cancellationToken);
@@ -227,7 +282,7 @@ public static unsafe class ArchiveClient
         }
         catch (EntryPointNotFoundException exception)
         {
-            throw ApiLevelException(RequiredResultCallbackApiLevel, exception);
+            throw ApiLevelException(requiredApiLevel, exception);
         }
         finally
         {
@@ -318,7 +373,8 @@ public static unsafe class ArchiveClient
         string output,
         IReadOnlyList<ArchiveSourceEntry> entries,
         CompressionMethod method,
-        ArchiveLimits? limits)
+        ArchiveLimits? limits,
+        bool? failIfAllSkipped = null)
     {
         ValidateText(output, nameof(output));
         ArgumentNullException.ThrowIfNull(entries);
@@ -342,7 +398,8 @@ public static unsafe class ArchiveClient
             output,
             requestEntries,
             (int)method,
-            LimitsRequest.From(limits));
+            LimitsRequest.From(limits),
+            failIfAllSkipped);
     }
 
     private static byte[] ReadListJson(string request)
@@ -388,7 +445,27 @@ public static unsafe class ArchiveClient
     {
         if (status != StatusOk)
         {
-            throw new ArchiveNativeException(status, ReadLastError());
+            throw new ArchiveNativeException(status, ReadLastErrorKind(), ReadLastError());
+        }
+    }
+
+    private static ArchiveErrorKind ReadLastErrorKind()
+    {
+        if (NativeApiLevel.Value < RequiredErrorKindApiLevel)
+        {
+            return ArchiveErrorKind.Unknown;
+        }
+
+        try
+        {
+            var value = NativeMethods.LastErrorKind();
+            return Enum.IsDefined(typeof(ArchiveErrorKind), value)
+                ? (ArchiveErrorKind)value
+                : ArchiveErrorKind.Unknown;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return ArchiveErrorKind.Unknown;
         }
     }
 

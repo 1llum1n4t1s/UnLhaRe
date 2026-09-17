@@ -29,10 +29,20 @@ Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / 
 - `list_archive_with_progress` / `unlhare_list_json_with_progress` は一覧走査中の進捗・キャンセルに対応し、C版は1回の走査結果を同期JSONコールバックで返します。
 - 一覧の `modified_unix_seconds` は更新日時のUnix秒です。日時不正・変換不能ならnull。タイムゾーンのない旧DOS日時は実行環境のローカル時間として解釈し、夏時間の切替などで一意に決まらない場合もnullとします。
 - `extract_archive_with_options` の `preserve_timestamps`、JSON extract要求の同名フィールドで、通常ファイルの更新日時をCRC検証後・公開前に復元できます。既定はfalse、ディレクトリ日時は変更しません。
-- `create_archive_with_report` / `unlhare_create_json_report` は読み取れない入力だけをスキップし、入力順の `written` / `skipped` とエラー理由を返します。スキップするのは入力側I/Oエラーだけです。容量上限、安全性違反、出力I/Oエラー、キャンセルは書庫全体を失敗させます。全入力をスキップした場合は空の書庫を作成します。従来の作成APIは1件の失敗でも全体を中止します。
+- `create_archive_with_report` / `unlhare_create_json_report` は読み取れない入力だけをスキップし、入力順の `written` / `skipped` とエラー理由を返します。スキップするのは入力側I/Oエラーだけです。容量上限、安全性違反、出力I/Oエラー、キャンセルは書庫全体を失敗させます。API level 3の既定動作では、全入力をスキップした場合も空の書庫を作成します。従来の作成APIは1件の失敗でも全体を中止します。
 - 圧縮元一覧の書庫内名は `\\` と `/` の両方を受け付け、`/` に正規化してから検証します。絶対パス・親参照・正規化後の重複は引き続き拒否します。
 
-Cの結果JSONは通知中だけ有効で、長さはNULを含まないバイト数です。結果通知からは中断できません。圧縮結果を通知する時点で書庫は確定しています。.NETからの使い方は [バインディングの追加API](bindings/dotnet/README.md#unreleased-api-level-3) を参照してください。
+Cの結果JSONは通知中だけ有効で、長さはNULを含まないバイト数です。結果通知からは中断できません。圧縮結果を通知する時点で書庫は確定しています。.NETからの使い方は [バインディングの追加API](bindings/dotnet/README.md#api-level-3) を参照してください。
+
+## Unreleased API level 4
+
+ABI 1と既存関数のシグネチャを維持した開発中の追加APIです。
+
+- `unlhare_last_error_kind()` は呼び出しスレッドの直前エラーを、I/O、書庫形式、非対応機能、上限、無効パス、既存出力、無効引数、キャンセル、バッファ不足、内部エラーへ分類します。メッセージと同様に成功では消去しません。
+- `unlhare_create_json_report` のcreate要求へ `"fail_if_all_skipped":true` を指定すると、1件も書き込めなかった場合は一時書庫だけを破棄して失敗します。省略時はAPI level 3と同じく有効な空書庫と項目別結果を返します。
+- WindowsとmacOSでは圧縮元、展開先、書庫出力先の親をファイルシステムルートのハンドルから1要素ずつ開き、途中のjunction、シンボリックリンク、その他のreparse pointを追跡しません。展開先の欠けた要素も1件ずつ作成して非追跡で再検査します。
+
+.NETの通常の `ArchiveClient.List(path)` はAPI level 3以上のnativeで自動的に1回走査を使用し、level 2だけ従来のサイズ照会方式へ戻ります。`ArchiveNativeException.Kind` はAPI level 4未満では `Unknown` です。作成結果の状態は `ArchiveCreateEntryStatus` enumで返し、`ArchiveCreateReportOptions(FailIfAllSkipped: true)` で空書庫の公開を拒否できます。
 
 ## CLI
 
@@ -47,7 +57,7 @@ unlhare-cli extract output.lzh --output extracted
 
 既定の上限は100,000項目、1ファイル256MiB、展開後合計2GiBです。CLIの `--max-entries` / `--max-entry-bytes` / `--max-total-bytes`、Rustの `Limits`、C API level 2のJSON指定で変更できます。読取可能な書庫ファイルは展開後合計上限に64MiBを加えたサイズまで、項目名などの保持に使うメタデータは合計64MiBまでです。サイズは64bitですが、圧縮は1ファイル分をメモリに保持するため、上限を上げる際は利用可能メモリに合わせてください。従来のC関数は既定上限を使用します。
 
-ディレクトリ一括圧縮と展開は、シンボリックリンクを追跡せずに開いた基点ディレクトリのハンドル配下だけを操作します。展開は一時ファイルへの展開とCRC検査後にhard linkでファイルを確定します。hard linkが利用できなければOSの既存ファイルを置換しない原子的なrenameを使用します。確定前の失敗・キャンセルでは一時ファイルだけを削除します。書庫全体のトランザクションではなく、途中で失敗した場合も先に完了したファイルとディレクトリは残ります。
+ディレクトリ一括圧縮と展開は、シンボリックリンクを追跡せずに開いた基点ディレクトリのハンドル配下だけを操作します。WindowsとmacOSのどちらも基点までの全要素と、操作中にたどる各ディレクトリのリンクを拒否します。Windowsではjunctionを含むすべてのreparse pointが対象です。書庫作成は検査済み出力親ハンドル内の一時ファイルへ書き込み、展開は一時ファイルへの展開とCRC検査後にhard linkでファイルを確定します。hard linkが利用できなければOSの既存ファイルを置換しない原子的なrenameを使用します。どちらの公開も検査済み親ハンドルを基点にし、確定前の失敗・キャンセルでは一時ファイルだけを削除します。書庫全体のトランザクションではなく、途中で失敗した場合も先に完了したファイルとディレクトリは残ります。
 
 ## ビルド
 
@@ -97,7 +107,7 @@ C ABI 1を維持したAPI level 2では `unlhare_run_json` と `unlhare_list_jso
 
 一覧用の `unlhare_list_json_ex` は `{"archive":"out.lzh"}` を受け付けます。各リクエストへ `"limits":{"max_entries":100000,"max_entry_bytes":268435456,"max_total_bytes":2147483648}` を追加できます。limitsの省略は既定値、指定時は3値すべてが必要です。展開のentries省略またはnullは全項目、空配列は本文を展開しない指定です。ディレクトリ名だけを指定しても子孫は含みません。
 
-C/C++では `include/unlhare.h` と同じアーキテクチャのライブラリを使用してください。ABIバージョンは1です。全パスはNUL終端UTF-8、サイズはuint64_t、出力バッファは呼び出し元で確保・解放します。NULLと容量0で必要バイト数（終端NULを含む）を照会し、確保して再呼び出しします。入力・出力・サイズポインターは有効かつ重ならない領域にしてください。最終エラーはスレッド別に保持し、成功では消去しません。
+C/C++では `include/unlhare.h` と同じアーキテクチャのライブラリを使用してください。ABIバージョンは1です。全パスはNUL終端UTF-8、サイズはuint64_t、出力バッファは呼び出し元で確保・解放します。NULLと容量0で必要バイト数（終端NULを含む）を照会し、確保して再呼び出しします。入力・出力・サイズポインターは有効かつ重ならない領域にしてください。最終エラーのメッセージとAPI level 4の分類はスレッド別に保持し、成功では消去しません。
 
 `examples/c_api.c` はABI確認とJSON一覧を行う例です。Windowsでは `cl /utf-8 /Iinclude examples/c_api.c unlhare.dll.lib`、macOSでは `cc -Iinclude examples/c_api.c -L. -lunlhare -Wl,-rpath,@executable_path` のようにリンクし、実行時にライブラリをロード可能な場所へ配置します。
 

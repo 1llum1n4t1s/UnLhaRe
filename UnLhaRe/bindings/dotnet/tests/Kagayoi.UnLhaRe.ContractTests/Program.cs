@@ -168,9 +168,10 @@ internal static class ContractTests
             sourceModifiedAt,
             "ExtractWithOptions did not restore the archived modification time.");
 
-        AssertThrows<ArchiveNativeException>(
+        var limitError = AssertThrows<ArchiveNativeException>(
             () => ArchiveClient.List(archive, new ArchiveLimits(MaxEntries: 1)),
             "List must enforce MaxEntries.");
+        Assert(limitError.Kind == ArchiveErrorKind.Limit, "List did not classify a resource-limit error.");
         AssertThrows<ArchiveNativeException>(
             () => ArchiveClient.Verify(archive, new ArchiveLimits(MaxEntryBytes: 1)),
             "Verify must enforce MaxEntryBytes.");
@@ -228,9 +229,10 @@ internal static class ContractTests
         var existingArchive = Path.Combine(root, "既存出力.lzh");
         var archiveSentinel = new byte[] { 0x55, 0x6e, 0x4c, 0x68, 0x61 };
         File.WriteAllBytes(existingArchive, archiveSentinel);
-        AssertThrows<ArchiveNativeException>(
+        var existsError = AssertThrows<ArchiveNativeException>(
             () => ArchiveClient.Create(existingArchive, sources, CompressionMethod.Stored),
             "Create must reject an existing output.");
+        Assert(existsError.Kind == ArchiveErrorKind.Exists, "Create did not classify an existing output.");
         Assert(File.ReadAllBytes(existingArchive).SequenceEqual(archiveSentinel),
             "Create changed an existing output after failure.");
 
@@ -280,14 +282,23 @@ internal static class ContractTests
         Assert(File.Exists(reportArchive), "CreateWithResults did not publish the successful archive.");
         Assert(report.Entries.Count == 2, "CreateWithResults did not report every requested entry.");
         var written = report.Entries.Single(entry => entry.Name == "Windows 名称.txt");
-        Assert(written.Status == "written" && written.Error is null,
+        Assert(written.Status == ArchiveCreateEntryStatus.Written && written.Error is null,
             "CreateWithResults did not report the Windows source name as written.");
         var skipped = report.Entries.Single(entry => entry.Name == "読取失敗.txt");
-        Assert(skipped.Status == "skipped" && !string.IsNullOrWhiteSpace(skipped.Error),
+        Assert(skipped.Status == ArchiveCreateEntryStatus.Skipped && !string.IsNullOrWhiteSpace(skipped.Error),
             "CreateWithResults did not report the source read failure as skipped.");
         var reportEntries = ArchiveClient.List(reportArchive);
         Assert(reportEntries.Count == 1 && reportEntries[0].Name == "Windows 名称.txt",
             "CreateWithResults wrote an unexpected set of entries.");
+
+        var legacyNullLimitsArchive = Path.Combine(root, "null上限互換.lzh");
+        var legacyNullLimitsReport = ArchiveClient.CreateWithResults(
+            legacyNullLimitsArchive,
+            [new ArchiveSourceEntry(writtenSource, "legacy.txt")],
+            CompressionMethod.Stored,
+            null);
+        Assert(legacyNullLimitsReport.Entries.Single().Status == ArchiveCreateEntryStatus.Written,
+            "The legacy positional null limits overload no longer resolves or succeeds.");
 
         var strictWrittenSource = Path.Combine(sourceDirectory, "通常成功.txt");
         var strictFailedSource = Path.Combine(sourceDirectory, "通常失敗.txt");
@@ -325,6 +336,19 @@ internal static class ContractTests
             "CreateWithResults must not skip resource-limit violations.");
         Assert(!File.Exists(limitArchive),
             "CreateWithResults published an archive after a resource-limit violation.");
+
+        var allSkippedArchive = Path.Combine(root, "全件スキップ.lzh");
+        var allSkippedError = AssertThrows<ArchiveNativeException>(
+            () => ArchiveClient.CreateWithResults(
+                allSkippedArchive,
+                [new ArchiveSourceEntry(Path.Combine(sourceDirectory, "存在しない.txt"), "missing.txt")],
+                CompressionMethod.Stored,
+                new ArchiveCreateReportOptions(FailIfAllSkipped: true)),
+            "CreateWithResults must fail when every input is skipped and the option is enabled.");
+        Assert(allSkippedError.Kind == ArchiveErrorKind.InvalidArgument,
+            "CreateWithResults did not classify an all-skipped failure.");
+        Assert(!File.Exists(allSkippedArchive),
+            "CreateWithResults published an empty archive after an all-skipped failure.");
     }
 
     private static void AssertTimestampClose(

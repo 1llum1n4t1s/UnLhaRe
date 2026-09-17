@@ -5,7 +5,7 @@ use std::{
 };
 use tempfile::tempdir;
 use unlhare::ffi::{
-    STATUS_CANCELLED, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_create_json_report,
+    STATUS_CANCELLED, STATUS_ERROR, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_create_json_report,
     unlhare_list_json_with_progress,
 };
 
@@ -143,6 +143,39 @@ fn result_callback_is_required_before_side_effects_and_cancel_has_no_result() {
             )
         },
         STATUS_CANCELLED
+    );
+    assert!(!archive.exists());
+    assert!(state.results.is_empty());
+}
+
+#[test]
+fn create_report_can_reject_an_all_skipped_archive_before_publication() {
+    let root = tempdir().unwrap();
+    let archive = root.path().join("all-skipped.lzh");
+    let create = CString::new(
+        json!({
+            "operation":"create",
+            "output":archive,
+            "method":0,
+            "fail_if_all_skipped":true,
+            "entries":[{"path":root.path().join("missing.txt"),"name":"missing.txt"}]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let mut state = State::default();
+
+    // SAFETY: all pointers and callbacks remain valid for the synchronous call.
+    assert_eq!(
+        unsafe {
+            unlhare_create_json_report(
+                create.as_ptr(),
+                None,
+                Some(receive),
+                (&mut state as *mut State).cast(),
+            )
+        },
+        STATUS_ERROR
     );
     assert!(!archive.exists());
     assert!(state.results.is_empty());

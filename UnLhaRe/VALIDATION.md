@@ -1,5 +1,12 @@
 # 検証記録 — 2026-09-18
 
+## Unreleased API level 4とパス安全性
+
+- Windows x64で `scripts/build.ps1 -Target x86_64-pc-windows-msvc -Test` が成功。fmt、clippy `-D warnings`、Rust全61試験、doc test、Release bundleを確認した。実junctionを途中要素に置いた圧縮元・展開先・書庫出力先の拒否、検査済み出力親ハンドルへの一時作成とno-replace公開、全入力スキップ時の非公開、API level 4のエラー分類とsticky状態を含む。
+- .NET 10のwin-x64 NativeAOT publish・実行が成功。通常の `List(path)`、作成結果enum、厳格作成オプション、`ArchiveNativeException.Kind` を実native DLLとの契約試験で確認した。publishには `-p:OS=Windows_NT` を指定した。
+- Windows ARM64はRelease bundleを生成し、macOS x64/ARM64は `cargo check --locked --all-targets` に成功。Windows ARM64とmacOSのネイティブ実行はCIで確認する。
+- WindowsとmacOSでは絶対パスをルートハンドルから要素単位で開く。途中のjunction、シンボリックリンク、その他のreparse pointを追跡せず、欠けた展開先要素も1件ずつ作成して再検査する。Windowsでは実junctionを通る公開圧縮・展開経路で拒否と外部側非変更を確認した。macOSは同じ公開経路のsymlink試験を追加してクロスコンパイルしたが、ネイティブ実行はCIで確認する。
+
 ## 1.0.2 API level 3 利用性改善
 
 - Lhamiel側の利用箇所を照合し、一覧の途中キャンセル、更新日時取得・通常ファイルの任意の時刻復元、入力I/O失敗だけをスキップする結果通知版圧縮、Windows相対パス区切りの受理を追加した。従来のC関数・.NETメソッドのシグネチャは維持。

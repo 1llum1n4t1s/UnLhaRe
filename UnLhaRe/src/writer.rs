@@ -1,19 +1,17 @@
 use std::collections::{HashMap, hash_map::Entry};
-#[cfg(windows)]
-use std::fs::OpenOptions;
-use std::fs::{self, File, Metadata};
+use std::ffi::OsStr;
+use std::fs::{File, Metadata};
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 use oxiarc_lzhuf::{LzhEncoder, LzhMethod};
-use tempfile::NamedTempFile;
 
 use crate::operation::checkpoint;
 use crate::pathname::validate_entry_name;
 use crate::{
-    CreateEntryResult, CreateEntryStatus, CreateOptions, CreateReport, Error, Method, Progress,
-    Result, SourceEntry,
+    CreateEntryResult, CreateEntryStatus, CreateOptions, CreateReport, CreateReportOptions, Error,
+    Method, Progress, Result, SourceEntry,
 };
 use cap_std::fs::Dir;
 use crc_fast::{CrcAlgorithm, Digest, checksum};
@@ -146,7 +144,7 @@ pub fn create_archive_with_progress(
     options: &CreateOptions,
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<()> {
-    create_archive_with_progress_impl(destination, entries, options, callback, None, false)?;
+    create_archive_with_progress_impl(destination, entries, options, callback, None, false, false)?;
     Ok(())
 }
 
@@ -161,8 +159,33 @@ pub fn create_archive_with_report(
     options: &CreateOptions,
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<CreateReport> {
-    create_archive_with_progress_impl(destination, entries, options, callback, None, true)?
-        .ok_or_else(|| Error::InvalidArgument("create report was not generated".to_owned()))
+    create_archive_with_report_options(
+        destination,
+        entries,
+        options,
+        &CreateReportOptions::default(),
+        callback,
+    )
+}
+
+/// Creates an archive with per-entry results and explicit report policy.
+pub fn create_archive_with_report_options(
+    destination: &Path,
+    entries: &[SourceEntry],
+    options: &CreateOptions,
+    report_options: &CreateReportOptions,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<CreateReport> {
+    create_archive_with_progress_impl(
+        destination,
+        entries,
+        options,
+        callback,
+        None,
+        true,
+        report_options.fail_if_all_skipped,
+    )?
+    .ok_or_else(|| Error::InvalidArgument("create report was not generated".to_owned()))
 }
 
 pub(crate) fn create_archive_beneath(
@@ -178,6 +201,7 @@ pub(crate) fn create_archive_beneath(
         &mut |_| true,
         Some(source_root),
         false,
+        false,
     )?;
     Ok(())
 }
@@ -189,8 +213,27 @@ fn create_archive_with_progress_impl(
     callback: &mut dyn FnMut(Progress) -> bool,
     source_root: Option<&Dir>,
     skip_source_io: bool,
+    fail_if_all_skipped: bool,
 ) -> Result<Option<CreateReport>> {
-    reject_existing_destination(destination)?;
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let destination_parent =
+        crate::directory::open_ambient_directory_nofollow(parent).map_err(|error| {
+            if crate::directory::is_nofollow_rejection(&error) {
+                Error::Unsupported(format!(
+                    "archive destination link or reparse point resolution was rejected: {}",
+                    parent.display()
+                ))
+            } else {
+                Error::Io(error)
+            }
+        })?;
+    let destination_name = destination
+        .file_name()
+        .ok_or_else(|| Error::InvalidPath(destination.display().to_string()))?;
+    reject_existing_destination(&destination_parent, destination_name, destination)?;
 
     let entry_count = u64::try_from(entries.len())
         .map_err(|_| Error::Limit("entry count does not fit in u64".to_owned()))?;
@@ -236,14 +279,12 @@ fn create_archive_with_progress_impl(
         checkpoint(callback, 1, index as u64 + 1, entry_count)?;
     }
 
-    let parent = destination
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut temporary = NamedTempFile::new_in(parent)?;
+    let staging = cap_tempfile::TempDir::new_in(&destination_parent)?;
+    let mut temporary = crate::reader::create_staging_file(&staging, true)?;
     let mut completed_bytes = 0_u64;
     let mut encoder = None;
     let mut compressed = Vec::new();
+    let mut written_entries = 0_u64;
     checkpoint(callback, 2, 0, total_bytes)?;
 
     for (entry, scanned_source) in scanned {
@@ -257,6 +298,7 @@ fn create_archive_with_progress_impl(
                 &entry.archive_name,
             )?;
             temporary.write_all(&header)?;
+            written_entries += 1;
             set_report_result(
                 &mut report_entries,
                 entry.index,
@@ -313,6 +355,7 @@ fn create_archive_with_progress_impl(
         )?;
         temporary.write_all(&header)?;
         temporary.write_all(packed)?;
+        written_entries += 1;
         set_report_result(
             &mut report_entries,
             entry.index,
@@ -320,17 +363,25 @@ fn create_archive_with_progress_impl(
         );
     }
 
+    if fail_if_all_skipped && written_entries == 0 {
+        return Err(Error::InvalidArgument(
+            "no source entry was written because every input was skipped".to_owned(),
+        ));
+    }
+
     // A zero byte terminates both non-empty archives and a valid empty archive.
     temporary.write_all(&[0])?;
-    temporary.as_file_mut().sync_all()?;
-    checkpoint(callback, 4, 0, 0)?;
-    temporary.persist_noclobber(destination).map_err(|error| {
-        if error.error.kind() == std::io::ErrorKind::AlreadyExists {
-            Error::Exists(destination.to_path_buf())
-        } else {
-            Error::Io(error.error)
-        }
-    })?;
+    temporary.sync_all()?;
+    crate::reader::publish_staged_no_replace(
+        &staging,
+        &temporary,
+        &destination_parent,
+        destination_name,
+        destination,
+        callback,
+    )?;
+    drop(temporary);
+    staging.close()?;
     Ok(report_entries.map(|entries| CreateReport {
         entries: entries
             .into_iter()
@@ -365,8 +416,8 @@ fn skipped_result(name: String, error: io::Error) -> CreateEntryResult {
     }
 }
 
-fn reject_existing_destination(destination: &Path) -> Result<()> {
-    match fs::symlink_metadata(destination) {
+fn reject_existing_destination(parent: &Dir, name: &OsStr, destination: &Path) -> Result<()> {
+    match parent.symlink_metadata(name) {
         Ok(_) => Err(Error::Exists(destination.to_path_buf())),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(Error::Io(error)),
@@ -400,6 +451,18 @@ fn prepare_entries(entries: &[SourceEntry]) -> Result<Vec<PreparedEntry<'_>>> {
 }
 
 fn reject_unsupported_source(path: &Path, metadata: &Metadata) -> Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(Error::Unsupported(format!(
+                "reparse points cannot be archived: {}",
+                path.display()
+            )));
+        }
+    }
     let file_type = metadata.file_type();
     if file_type.is_symlink() {
         return Err(Error::Unsupported(format!(
@@ -417,84 +480,37 @@ fn reject_unsupported_source(path: &Path, metadata: &Metadata) -> Result<()> {
 }
 
 fn scan_source(source_root: Option<&Dir>, path: &Path) -> Result<ScannedSource> {
-    let metadata = if let Some(root) = source_root {
-        let link_metadata = root.symlink_metadata(path)?;
-        let file_type = link_metadata.file_type();
-        if file_type.is_symlink() || (!file_type.is_file() && !file_type.is_dir()) {
-            return Err(Error::Unsupported(format!(
-                "source is not a regular file or directory: {}",
-                path.display()
-            )));
-        }
-        if link_metadata.is_dir() {
-            root.open_dir(path)?.into_std_file().metadata()?
-        } else {
-            root.open(path)?.into_std().metadata()?
-        }
-    } else {
-        fs::symlink_metadata(path).map_err(|error| source_io_error(path, error))?
-    };
+    let file = open_source_entry_nofollow(source_root, path)?;
+    let metadata = file.metadata()?;
     reject_unsupported_source(path, &metadata)?;
-    if metadata.is_dir() {
-        return Ok(ScannedSource {
-            metadata,
-            identity: None,
-        });
-    }
-
-    // Open without following the final path component. This closes the race
-    // between the symlink check above and acquiring the file used for identity.
-    let file = open_regular_file(source_root, path)?;
-    let opened = file.metadata()?;
-    reject_unsupported_source(path, &opened)?;
-    Ok(ScannedSource {
-        identity: Some(file_identity(&file, &opened)?),
-        metadata: opened,
-    })
+    let identity = metadata
+        .is_file()
+        .then(|| file_identity(&file, &metadata))
+        .transpose()?;
+    Ok(ScannedSource { metadata, identity })
 }
 
-#[cfg(windows)]
-fn open_regular_file_nofollow(path: &Path) -> io::Result<File> {
-    use std::os::windows::fs::OpenOptionsExt;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
-
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(path)
-}
-
-fn open_regular_file(source_root: Option<&Dir>, path: &Path) -> Result<File> {
+fn open_source_entry_nofollow(source_root: Option<&Dir>, path: &Path) -> Result<File> {
     match source_root {
-        Some(root) => root.open(path).map(cap_std::fs::File::into_std),
-        None => open_regular_file_nofollow(path),
+        Some(root) => crate::directory::open_entry_beneath_nofollow(root, path),
+        None => crate::directory::open_ambient_entry_nofollow(path),
     }
     .map_err(|error| source_io_error(path, error))
 }
 
+fn open_regular_file(source_root: Option<&Dir>, path: &Path) -> Result<File> {
+    open_source_entry_nofollow(source_root, path)
+}
+
 fn source_io_error(_path: &Path, error: io::Error) -> Error {
     // nofollowによる拒否は、結果通知版でも読取失敗としてスキップしない。
-    #[cfg(target_os = "macos")]
-    if error.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error()) {
+    if crate::directory::is_nofollow_rejection(&error) {
         return Error::Unsupported(format!(
-            "source symbolic link resolution was rejected: {}",
+            "source link or reparse point resolution was rejected: {}",
             _path.display()
         ));
     }
     Error::Io(error)
-}
-
-#[cfg(target_os = "macos")]
-fn open_regular_file_nofollow(path: &Path) -> io::Result<File> {
-    use rustix::fs::{Mode, OFlags, open};
-
-    let descriptor = open(
-        path,
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
-        Mode::empty(),
-    )
-    .map_err(io::Error::from)?;
-    Ok(File::from(descriptor))
 }
 
 #[cfg(windows)]
@@ -782,7 +798,7 @@ fn lha_crc16(data: &[u8]) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::{create_archive_beneath, lha_crc16, open_matching_regular_file, scan_source};
-    use crate::{CreateOptions, SourceEntry};
+    use crate::{CreateOptions, SourceEntry, create_archive};
     use cap_std::{ambient_authority, fs::Dir};
     use crc_fast::{CrcAlgorithm, Digest};
     use std::fs;
@@ -797,6 +813,48 @@ mod tests {
         digest.update(b"1234");
         digest.update(b"56789");
         assert_eq!(digest.finalize(), 0xbb3d);
+    }
+
+    #[test]
+    fn create_rejects_an_intermediate_destination_link_without_writing_through_it() {
+        let temporary = tempdir().expect("temporary directory");
+        let target = temporary.path().join("target");
+        let link = temporary.path().join("link");
+        let source = temporary.path().join("source.txt");
+        let archive = link.join("archive.lzh");
+        fs::create_dir(&target).expect("archive target directory");
+        fs::write(&source, b"payload").expect("archive source");
+
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            let status = Command::new("cmd")
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(&link)
+                .arg(&target)
+                .status()
+                .expect("launch junction creation");
+            assert!(status.success(), "create archive destination junction");
+        }
+        #[cfg(target_os = "macos")]
+        std::os::unix::fs::symlink(&target, &link).expect("create archive destination symlink");
+
+        let error = create_archive(
+            &archive,
+            &[SourceEntry {
+                path: source,
+                name: "source.txt".into(),
+            }],
+            &CreateOptions::default(),
+        )
+        .expect_err("create must reject an intermediate destination link");
+        assert!(matches!(error, crate::Error::Unsupported(_)));
+        assert!(!target.join("archive.lzh").exists());
+
+        #[cfg(windows)]
+        fs::remove_dir(&link).expect("remove archive destination junction");
+        #[cfg(target_os = "macos")]
+        fs::remove_file(&link).expect("remove archive destination symlink");
     }
 
     #[test]

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- ABI 1を維持したAPI level 4を追加し、直前のnativeエラーをI/O、書庫形式、非対応機能、上限、無効パス、既存出力、無効引数、キャンセルなどへ分類できるようにした。.NETでは`ArchiveNativeException.Kind`で公開する。
+- .NETの通常の`ArchiveClient.List`もAPI level 3以上では同期JSON結果通知を使用し、利用者が追加オーバーロードを選ばなくても1回の書庫走査で一覧を取得するようにした。API level 2のnativeだけ従来の二段取得へフォールバックする。
+- 結果通知版の圧縮へ`fail_if_all_skipped`を追加し、全入力が読めない場合に空書庫を公開せず失敗できるようにした。.NETの作成結果は文字列ではなく`ArchiveCreateEntryStatus`で公開する。
+- WindowsとmacOSでは圧縮元・展開先の基点、書庫内の親ディレクトリ、書庫出力先の親をルートハンドルから1要素ずつ非追跡で開くようにした。Windowsでは中間のjunctionを含むreparse point、macOSでは中間symlinkを拒否する。書庫の一時作成とno-replace公開も検査済み出力親ハンドルを基点にする。
+
 ## 1.0.2 - 2026-09-18
 
 - ABI 1を維持したAPI level 3を追加。一覧の同期キャンセル、更新日時メタデータと通常ファイルの任意の時刻復元、入力I/Oエラーだけをスキップして項目ごとの結果を返す圧縮に対応。.NETにも既存メソッドを維持した追加APIを用意。

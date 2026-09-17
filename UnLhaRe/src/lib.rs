@@ -10,6 +10,7 @@
 )))]
 compile_error!("UnLhaRe supports only Windows/macOS on x86_64 or aarch64 (64-bit).");
 
+mod directory;
 mod error;
 pub mod ffi;
 mod operation;
@@ -23,7 +24,10 @@ pub use reader::{
     extract_archive, extract_archive_with_options, extract_archive_with_progress, list_archive,
     list_archive_with_progress, verify_archive, verify_archive_with_progress,
 };
-pub use writer::{create_archive, create_archive_with_progress, create_archive_with_report};
+pub use writer::{
+    create_archive, create_archive_with_progress, create_archive_with_report,
+    create_archive_with_report_options,
+};
 
 use cap_std::fs::Dir;
 use serde::Serialize;
@@ -65,6 +69,13 @@ impl Default for Limits {
 pub struct CreateOptions {
     pub method: Method,
     pub limits: Limits,
+}
+
+/// Optional policy for creation APIs which report skipped source entries.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CreateReportOptions {
+    /// Fail without publishing an archive when no requested entry was written.
+    pub fail_if_all_skipped: bool,
 }
 
 /// Optional extraction behavior. Existing APIs keep their original defaults.
@@ -129,7 +140,16 @@ pub fn create_from_directory(
     destination: &Path,
     options: &CreateOptions,
 ) -> Result<()> {
-    let directory = open_source_directory_nofollow(source)?;
+    let directory = open_source_directory_nofollow(source).map_err(|error| {
+        if crate::directory::is_nofollow_rejection(&error) {
+            Error::Unsupported(format!(
+                "source link or reparse point resolution was rejected: {}",
+                source.display()
+            ))
+        } else {
+            Error::Io(error)
+        }
+    })?;
     let metadata = directory.metadata()?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(Error::InvalidArgument(
@@ -186,7 +206,8 @@ pub fn create_from_directory(
             if kind.is_dir() {
                 // Opening from the current directory handle keeps resolution
                 // beneath that directory even if the name is raced to a link.
-                let child_directory = directory.open_dir(&child_name)?;
+                let child_directory =
+                    directory::open_directory_beneath_nofollow(directory, Path::new(&child_name))?;
                 visit(&child_directory, &relative, entries, limits, depth + 1)?;
             }
         }
@@ -197,43 +218,14 @@ pub fn create_from_directory(
     writer::create_archive_beneath(destination, &root, &entries, options)
 }
 
-#[cfg(windows)]
 fn open_source_directory_nofollow(source: &Path) -> io::Result<File> {
-    use std::fs::OpenOptions;
-    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    };
-
-    let directory = OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(source)?;
-    if directory.metadata()?.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "source directory is a reparse point",
-        ));
-    }
-    Ok(directory)
-}
-
-#[cfg(target_os = "macos")]
-fn open_source_directory_nofollow(source: &Path) -> io::Result<File> {
-    use rustix::fs::{Mode, OFlags, open};
-
-    let descriptor = open(
-        source,
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
-        Mode::empty(),
-    )
-    .map_err(io::Error::from)?;
-    Ok(File::from(descriptor))
+    crate::directory::open_ambient_directory_nofollow(source).map(cap_std::fs::Dir::into_std_file)
 }
 
 #[cfg(test)]
 mod tests {
     use super::open_source_directory_nofollow;
+    use super::{CreateOptions, create_from_directory};
     use std::fs;
     use tempfile::tempdir;
 
@@ -259,5 +251,39 @@ mod tests {
 
         open_source_directory_nofollow(&link)
             .expect_err("source directory symlink must not be followed");
+    }
+
+    #[test]
+    fn create_from_directory_rejects_an_intermediate_source_link() {
+        let temporary = tempdir().expect("temporary directory");
+        let target = temporary.path().join("target");
+        let child = target.join("child");
+        let link = temporary.path().join("link");
+        let archive = temporary.path().join("archive.lzh");
+        fs::create_dir_all(&child).expect("source target child");
+        fs::write(child.join("secret.txt"), b"secret").expect("source target file");
+
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            let status = Command::new("cmd")
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(&link)
+                .arg(&target)
+                .status()
+                .expect("launch junction creation");
+            assert!(status.success(), "create intermediate source junction");
+        }
+        #[cfg(target_os = "macos")]
+        std::os::unix::fs::symlink(&target, &link).expect("create intermediate source symlink");
+
+        let error = create_from_directory(&link.join("child"), &archive, &CreateOptions::default())
+            .expect_err("create must reject an intermediate source link");
+        assert!(matches!(error, super::Error::Unsupported(_)));
+        assert!(!archive.exists());
+        #[cfg(windows)]
+        fs::remove_dir(&link).expect("remove source junction");
+        #[cfg(target_os = "macos")]
+        fs::remove_file(&link).expect("remove source symlink");
     }
 }

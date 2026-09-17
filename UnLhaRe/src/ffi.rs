@@ -34,13 +34,45 @@ pub const STATUS_INVALID_ARGUMENT: i32 = 3;
 /// A Rust panic was caught at the ABI boundary.
 pub const STATUS_PANIC: i32 = 4;
 
+/// The error could not be classified more specifically.
+pub const ERROR_KIND_UNKNOWN: i32 = 0;
+/// A filesystem or stream I/O operation failed.
+pub const ERROR_KIND_IO: i32 = 1;
+/// The archive structure or payload was invalid.
+pub const ERROR_KIND_FORMAT: i32 = 2;
+/// The requested archive feature or source type is unsupported.
+pub const ERROR_KIND_UNSUPPORTED: i32 = 3;
+/// A caller-controlled resource limit was exceeded.
+pub const ERROR_KIND_LIMIT: i32 = 4;
+/// An archive entry name was unsafe or invalid.
+pub const ERROR_KIND_INVALID_PATH: i32 = 5;
+/// A destination already existed.
+pub const ERROR_KIND_EXISTS: i32 = 6;
+/// An ABI or operation argument was invalid.
+pub const ERROR_KIND_INVALID_ARGUMENT: i32 = 7;
+/// The operation was cancelled by its callback.
+pub const ERROR_KIND_CANCELLED: i32 = 8;
+/// A caller-provided output buffer was too small.
+pub const ERROR_KIND_BUFFER_TOO_SMALL: i32 = 9;
+/// Serialization or another internal boundary operation failed.
+pub const ERROR_KIND_INTERNAL: i32 = 10;
+
 thread_local! {
-    static LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
+    static LAST_ERROR: RefCell<LastError> = const { RefCell::new(LastError {
+        kind: ERROR_KIND_UNKNOWN,
+        message: String::new(),
+    }) };
+}
+
+struct LastError {
+    kind: i32,
+    message: String,
 }
 
 #[derive(Debug)]
 struct FfiError {
     status: i32,
+    kind: i32,
     message: String,
 }
 
@@ -48,13 +80,37 @@ impl FfiError {
     fn operation(message: impl Into<String>) -> Self {
         Self {
             status: STATUS_ERROR,
+            kind: ERROR_KIND_INTERNAL,
             message: message.into(),
+        }
+    }
+
+    fn archive(error: crate::Error) -> Self {
+        let kind = match &error {
+            crate::Error::Io(_) => ERROR_KIND_IO,
+            crate::Error::Format(_) => ERROR_KIND_FORMAT,
+            crate::Error::Unsupported(_) => ERROR_KIND_UNSUPPORTED,
+            crate::Error::Limit(_) => ERROR_KIND_LIMIT,
+            crate::Error::InvalidPath(_) => ERROR_KIND_INVALID_PATH,
+            crate::Error::Exists(_) => ERROR_KIND_EXISTS,
+            crate::Error::InvalidArgument(_) => ERROR_KIND_INVALID_ARGUMENT,
+            crate::Error::Cancelled => ERROR_KIND_CANCELLED,
+        };
+        Self {
+            status: if matches!(error, crate::Error::Cancelled) {
+                STATUS_CANCELLED
+            } else {
+                STATUS_ERROR
+            },
+            kind,
+            message: error.to_string(),
         }
     }
 
     fn invalid(message: impl Into<String>) -> Self {
         Self {
             status: STATUS_INVALID_ARGUMENT,
+            kind: ERROR_KIND_INVALID_ARGUMENT,
             message: message.into(),
         }
     }
@@ -62,6 +118,7 @@ impl FfiError {
     fn buffer_too_small(required: u64, capacity: u64) -> Self {
         Self {
             status: STATUS_BUFFER_TOO_SMALL,
+            kind: ERROR_KIND_BUFFER_TOO_SMALL,
             message: format!(
                 "output buffer is too small: required {required} bytes, received {capacity}"
             ),
@@ -69,15 +126,16 @@ impl FfiError {
     }
 }
 
-fn set_last_error(message: &str) {
+fn set_last_error(kind: i32, message: &str) {
     LAST_ERROR.with(|last_error| {
         let mut destination = last_error.borrow_mut();
-        destination.clear();
+        destination.kind = kind;
+        destination.message.clear();
         for character in message.chars() {
             if character == '\0' {
-                destination.push('\u{fffd}');
+                destination.message.push('\u{fffd}');
             } else {
-                destination.push(character);
+                destination.message.push(character);
             }
         }
     });
@@ -89,7 +147,7 @@ fn run_ffi(operation: impl FnOnce() -> Result<(), FfiError>) -> i32 {
         Ok(Err(error)) => {
             let status = error.status;
             if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                set_last_error(&error.message)
+                set_last_error(error.kind, &error.message)
             }))
             .is_err()
             {
@@ -100,7 +158,10 @@ fn run_ffi(operation: impl FnOnce() -> Result<(), FfiError>) -> i32 {
         }
         Err(_) => {
             let _ = std::panic::catch_unwind(|| {
-                set_last_error("a Rust panic was caught at the FFI boundary")
+                set_last_error(
+                    ERROR_KIND_INTERNAL,
+                    "a Rust panic was caught at the FFI boundary",
+                )
             });
             STATUS_PANIC
         }
@@ -246,8 +307,8 @@ pub unsafe extern "C" fn unlhare_list_json(
         validate_output_arguments(output, capacity, required)?;
         // SAFETY: Pointer validity is guaranteed by the public caller contract.
         let archive = unsafe { utf8_path(archive_utf8, "archive_utf8")? };
-        let entries = crate::list_archive(&archive, &Limits::default())
-            .map_err(|error| FfiError::operation(error.to_string()))?;
+        let entries =
+            crate::list_archive(&archive, &Limits::default()).map_err(FfiError::archive)?;
         let json = serde_json::to_vec(&entries).map_err(|error| {
             FfiError::operation(format!("failed to serialize entry list: {error}"))
         })?;
@@ -267,8 +328,7 @@ pub unsafe extern "C" fn unlhare_verify(archive_utf8: *const c_char) -> i32 {
     run_ffi(|| {
         // SAFETY: Pointer validity is guaranteed by the public caller contract.
         let archive = unsafe { utf8_path(archive_utf8, "archive_utf8")? };
-        crate::verify_archive(&archive, &Limits::default())
-            .map_err(|error| FfiError::operation(error.to_string()))?;
+        crate::verify_archive(&archive, &Limits::default()).map_err(FfiError::archive)?;
         Ok(())
     })
 }
@@ -290,7 +350,7 @@ pub unsafe extern "C" fn unlhare_extract(
         // SAFETY: Pointer validity is guaranteed by the public caller contract.
         let destination = unsafe { utf8_path(destination_utf8, "destination_utf8")? };
         crate::extract_archive(&archive, &destination, &Limits::default())
-            .map_err(|error| FfiError::operation(error.to_string()))?;
+            .map_err(FfiError::archive)?;
         Ok(())
     })
 }
@@ -322,7 +382,7 @@ pub unsafe extern "C" fn unlhare_create(
             limits: Limits::default(),
         };
         crate::create_from_directory(&source_directory, &output, &options)
-            .map_err(|error| FfiError::operation(error.to_string()))?;
+            .map_err(FfiError::archive)?;
         Ok(())
     })
 }
@@ -347,11 +407,21 @@ pub unsafe extern "C" fn unlhare_last_error(
         LAST_ERROR.with(|last_error| {
             let last_error = last_error.borrow();
             // SAFETY: Pointer validity is guaranteed by the public caller contract.
-            unsafe { copy_output(last_error.as_bytes(), output, capacity, required) }
+            unsafe { copy_output(last_error.message.as_bytes(), output, capacity, required) }
         })
     })) {
         Ok(Ok(())) => STATUS_OK,
         Ok(Err(error)) => error.status,
         Err(_) => STATUS_PANIC,
     }
+}
+
+/// Returns the calling thread's most recent ABI error classification.
+///
+/// This query never clears or replaces the saved error. A value of
+/// [`ERROR_KIND_UNKNOWN`] means that no classified error is available.
+#[unsafe(no_mangle)]
+pub extern "C" fn unlhare_last_error_kind() -> i32 {
+    std::panic::catch_unwind(|| LAST_ERROR.with(|last_error| last_error.borrow().kind))
+        .unwrap_or(ERROR_KIND_INTERNAL)
 }

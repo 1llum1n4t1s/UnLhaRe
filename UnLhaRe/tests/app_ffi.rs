@@ -5,7 +5,8 @@ use std::{
 };
 use tempfile::tempdir;
 use unlhare::ffi::{
-    STATUS_CANCELLED, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_api_level, unlhare_run_json,
+    ERROR_KIND_CANCELLED, STATUS_CANCELLED, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_api_level,
+    unlhare_last_error_kind, unlhare_run_json,
 };
 
 fn run(value: serde_json::Value) -> i32 {
@@ -21,7 +22,7 @@ fn json_api_selection_and_validation() {
     let archive = temp.path().join("test.lzh");
     let output = temp.path().join("out");
     fs::write(&input, "内容").unwrap();
-    assert_eq!(unlhare_api_level(), 3);
+    assert_eq!(unlhare_api_level(), 4);
     assert_eq!(
         run(
             json!({"operation":"create", "output":archive, "entries":[{"path":input,"name":"日本語.txt"}],"method":0})
@@ -78,6 +79,7 @@ fn json_api_callback_lifetime_and_cancel_status() {
         )
     };
     assert_eq!(status, STATUS_CANCELLED);
+    assert_eq!(unlhare_last_error_kind(), ERROR_KIND_CANCELLED);
     assert_eq!(calls, 1);
     assert!(!archive.exists());
 }

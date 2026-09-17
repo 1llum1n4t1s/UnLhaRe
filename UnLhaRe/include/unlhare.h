@@ -45,7 +45,19 @@ _Static_assert(sizeof(void *) == 8, "UnLhaRe requires 64-bit pointers");
 #define UNLHARE_STATUS_INVALID_ARGUMENT INT32_C(3)
 #define UNLHARE_STATUS_PANIC INT32_C(4)
 #define UNLHARE_STATUS_CANCELLED INT32_C(5)
-#define UNLHARE_API_LEVEL UINT32_C(3)
+#define UNLHARE_API_LEVEL UINT32_C(4)
+
+#define UNLHARE_ERROR_KIND_UNKNOWN INT32_C(0)
+#define UNLHARE_ERROR_KIND_IO INT32_C(1)
+#define UNLHARE_ERROR_KIND_FORMAT INT32_C(2)
+#define UNLHARE_ERROR_KIND_UNSUPPORTED INT32_C(3)
+#define UNLHARE_ERROR_KIND_LIMIT INT32_C(4)
+#define UNLHARE_ERROR_KIND_INVALID_PATH INT32_C(5)
+#define UNLHARE_ERROR_KIND_EXISTS INT32_C(6)
+#define UNLHARE_ERROR_KIND_INVALID_ARGUMENT INT32_C(7)
+#define UNLHARE_ERROR_KIND_CANCELLED INT32_C(8)
+#define UNLHARE_ERROR_KIND_BUFFER_TOO_SMALL INT32_C(9)
+#define UNLHARE_ERROR_KIND_INTERNAL INT32_C(10)
 
 #define UNLHARE_METHOD_STORED INT32_C(0)
 #define UNLHARE_METHOD_LH5 INT32_C(5)
@@ -109,6 +121,15 @@ UNLHARE_API int32_t unlhare_create_json_report(const char *request_utf8,
                                               unlhare_progress_callback callback,
                                               unlhare_json_callback result,
                                               void *user);
+
+/* API level 4 additions. create_json_report accepts
+ * "fail_if_all_skipped":true. When no entry is written, the call fails and
+ * does not publish an empty archive.
+ * unlhare_last_error_kind returns the calling thread's most recent error
+ * classification.
+ * The value is sticky like unlhare_last_error and is not cleared by success.
+ */
+UNLHARE_API int32_t unlhare_last_error_kind(void);
 
 UNLHARE_API int32_t unlhare_list_json(const char *archive_utf8,
                                       char *output,

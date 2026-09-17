@@ -2,8 +2,9 @@ use std::fs;
 
 use tempfile::tempdir;
 use unlhare::{
-    CreateEntryStatus, CreateOptions, Error, Limits, Method, SourceEntry, create_archive,
-    create_archive_with_progress, create_archive_with_report, list_archive,
+    CreateEntryStatus, CreateOptions, CreateReportOptions, Error, Limits, Method, SourceEntry,
+    create_archive, create_archive_with_progress, create_archive_with_report,
+    create_archive_with_report_options, list_archive,
 };
 
 #[cfg(windows)]
@@ -81,6 +82,50 @@ fn all_skipped_sources_create_a_valid_empty_archive() {
     assert_eq!(report.entries.len(), 1);
     assert_eq!(report.entries[0].status, CreateEntryStatus::Skipped);
     assert_eq!(fs::read(&archive).expect("empty archive"), [0]);
+}
+
+#[test]
+fn fail_if_all_skipped_does_not_publish_an_empty_archive() {
+    let temporary = tempdir().expect("temporary directory");
+    let archive = temporary.path().join("must-not-exist.lzh");
+    let error = create_archive_with_report_options(
+        &archive,
+        &[source(temporary.path().join("missing.txt"), "missing.txt")],
+        &stored_options(),
+        &CreateReportOptions {
+            fail_if_all_skipped: true,
+        },
+        &mut |_| true,
+    )
+    .expect_err("all-skipped creation must fail when explicitly requested");
+
+    assert!(matches!(error, Error::InvalidArgument(_)));
+    assert!(!archive.exists());
+}
+
+#[test]
+fn fail_if_all_skipped_still_publishes_partial_success() {
+    let temporary = tempdir().expect("temporary directory");
+    let readable = temporary.path().join("readable.txt");
+    let archive = temporary.path().join("partial.lzh");
+    fs::write(&readable, b"readable").expect("readable source");
+    let report = create_archive_with_report_options(
+        &archive,
+        &[
+            source(&readable, "readable.txt"),
+            source(temporary.path().join("missing.txt"), "missing.txt"),
+        ],
+        &stored_options(),
+        &CreateReportOptions {
+            fail_if_all_skipped: true,
+        },
+        &mut |_| true,
+    )
+    .expect("one written entry must permit publication");
+
+    assert_eq!(report.entries[0].status, CreateEntryStatus::Written);
+    assert_eq!(report.entries[1].status, CreateEntryStatus::Skipped);
+    assert!(archive.exists());
 }
 
 #[test]

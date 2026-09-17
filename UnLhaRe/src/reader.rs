@@ -4,7 +4,7 @@ use cap_std::fs::{Dir, OpenOptions};
 use delharc::LhaDecodeReader;
 use std::{
     collections::HashSet,
-    fs::{self, File},
+    fs::File,
     io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::Path,
     time::{Duration, UNIX_EPOCH},
@@ -20,51 +20,25 @@ struct ScannedArchive {
     decoder: Option<Decoder>,
 }
 
-#[cfg(windows)]
-fn open_destination_directory_nofollow(destination: &Path) -> io::Result<File> {
-    use std::fs::OpenOptions;
-    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    };
-
-    let directory = OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(destination)?;
-    if directory.metadata()?.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "destination directory is a reparse point",
-        ));
-    }
-    Ok(directory)
-}
-
-#[cfg(target_os = "macos")]
-fn open_destination_directory_nofollow(destination: &Path) -> io::Result<File> {
-    use rustix::fs::{Mode, OFlags, open};
-
-    let descriptor = open(
-        destination,
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
-        Mode::empty(),
-    )
-    .map_err(io::Error::from)?;
-    Ok(File::from(descriptor))
-}
-
 fn open_destination_root(destination: &Path) -> Result<Dir> {
-    fs::create_dir_all(destination)?;
-    let directory = open_destination_directory_nofollow(destination)?;
-    let metadata = directory.metadata()?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(Error::Unsupported(format!(
-            "destination is not a regular directory: {}",
-            destination.display()
-        )));
+    crate::directory::create_ambient_directory_all_nofollow(destination)
+        .map_err(|error| destination_directory_error(destination, error))
+}
+
+fn create_destination_directory(root: &Dir, relative: &Path) -> Result<Dir> {
+    crate::directory::create_directory_all_beneath_nofollow(root, relative)
+        .map_err(|error| destination_directory_error(relative, error))
+}
+
+fn destination_directory_error(path: &Path, error: io::Error) -> Error {
+    if crate::directory::is_nofollow_rejection(&error) {
+        Error::Unsupported(format!(
+            "destination link or reparse point resolution was rejected: {}",
+            path.display()
+        ))
+    } else {
+        Error::Io(error)
     }
-    Ok(Dir::from_std_file(directory))
 }
 
 fn open(path: &Path, limits: &Limits) -> Result<Decoder> {
@@ -435,14 +409,13 @@ pub fn extract_archive_with_options(
         }
         let relative = pathname::validate_entry_name(&entry.name)?;
         if entry.is_directory {
-            root.create_dir_all(&relative)?;
+            create_destination_directory(&root, &relative)?;
         } else {
             let parent_path = relative
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or(Path::new("."));
-            root.create_dir_all(parent_path)?;
-            let parent = root.open_dir(parent_path)?;
+            let parent = create_destination_directory(&root, parent_path)?;
             let filename = relative
                 .file_name()
                 .ok_or_else(|| Error::InvalidPath(entry.name.clone()))?;
@@ -455,7 +428,7 @@ pub fn extract_archive_with_options(
             // no-replace hard-link commit after validation. Filesystems which
             // reject hard links use the platform's atomic no-replace rename.
             let staging = cap_tempfile::TempDir::new_in(&parent)?;
-            let mut file = create_staging_file(&staging)?;
+            let mut file = create_staging_file(&staging, false)?;
             decode(
                 active,
                 &entry,
@@ -508,9 +481,17 @@ fn set_modified_time(file: &cap_std::fs::File, unix_seconds: i64) -> Result<()> 
     Ok(())
 }
 
-fn create_staging_file(staging: &Dir) -> io::Result<cap_std::fs::File> {
+pub(crate) fn create_staging_file(
+    staging: &Dir,
+    _private_on_unix: bool,
+) -> io::Result<cap_std::fs::File> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
+    #[cfg(target_os = "macos")]
+    if _private_on_unix {
+        use cap_std::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
     #[cfg(windows)]
     {
         use cap_std::fs::OpenOptionsExt;
@@ -526,7 +507,7 @@ fn create_staging_file(staging: &Dir) -> io::Result<cap_std::fs::File> {
     staging.open_with("content", &options)
 }
 
-fn publish_staged_no_replace(
+pub(crate) fn publish_staged_no_replace(
     staging: &Dir,
     staged_file: &cap_std::fs::File,
     parent: &Dir,
@@ -652,6 +633,7 @@ fn rename_staged_no_replace(
 #[cfg(test)]
 mod tests {
     use super::{create_staging_file, open_destination_root, publish_staged_no_replace_impl};
+    use crate::{CreateOptions, create_archive, extract_archive};
     use crate::{Error, Limits, list_archive};
     use cap_std::{ambient_authority, fs::Dir};
     use std::{fs, io::Write};
@@ -664,7 +646,7 @@ mod tests {
             .expect("capability directory");
 
         let staging = cap_tempfile::TempDir::new_in(&parent).expect("staging directory");
-        let mut staged_file = create_staging_file(&staging).expect("staging file");
+        let mut staged_file = create_staging_file(&staging, false).expect("staging file");
         staged_file.write_all(b"published").expect("staging data");
         staged_file.sync_all().expect("sync staging data");
         publish_staged_no_replace_impl(
@@ -687,7 +669,7 @@ mod tests {
         fs::write(temporary.path().join("existing.txt"), b"original")
             .expect("existing destination");
         let staging = cap_tempfile::TempDir::new_in(&parent).expect("second staging directory");
-        let mut staged_file = create_staging_file(&staging).expect("second staging file");
+        let mut staged_file = create_staging_file(&staging, false).expect("second staging file");
         staged_file
             .write_all(b"replacement")
             .expect("second staging data");
@@ -712,13 +694,81 @@ mod tests {
     }
 
     #[test]
+    fn capability_publication_does_not_follow_a_retargeted_ancestor() {
+        let temporary = tempdir().expect("temporary directory");
+        let safe = temporary.path().join("safe");
+        let parent_path = safe.join("parent");
+        let moved = temporary.path().join("moved");
+        let outside = temporary.path().join("outside");
+        fs::create_dir_all(&parent_path).expect("original destination parent");
+        fs::create_dir(&outside).expect("outside destination");
+        let parent = crate::directory::open_ambient_directory_nofollow(&parent_path)
+            .expect("validated destination parent");
+
+        if fs::rename(&safe, &moved).is_err() {
+            assert!(
+                safe.exists(),
+                "failed rename must leave the original ancestor"
+            );
+            assert!(
+                !moved.exists(),
+                "failed rename must not create a moved ancestor"
+            );
+            return;
+        }
+
+        fs::create_dir(&safe).expect("replacement ancestor");
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            let status = Command::new("cmd")
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(&parent_path)
+                .arg(&outside)
+                .status()
+                .expect("launch replacement junction creation");
+            assert!(status.success(), "create replacement destination junction");
+        }
+        #[cfg(target_os = "macos")]
+        std::os::unix::fs::symlink(&outside, &parent_path)
+            .expect("create replacement destination symlink");
+
+        let staging = cap_tempfile::TempDir::new_in(&parent).expect("staging directory");
+        let mut staged_file = create_staging_file(&staging, false).expect("staging file");
+        staged_file.write_all(b"published").expect("staging data");
+        staged_file.sync_all().expect("sync staging data");
+        publish_staged_no_replace_impl(
+            &staging,
+            &staged_file,
+            &parent,
+            std::ffi::OsStr::new("archive.lzh"),
+            &parent_path.join("archive.lzh"),
+            &mut |_| true,
+            true,
+        )
+        .expect("publish through validated directory handle");
+        drop(staged_file);
+        staging.close().expect("remove staging directory");
+
+        assert_eq!(
+            fs::read(moved.join("parent").join("archive.lzh")).expect("published archive"),
+            b"published"
+        );
+        assert!(!outside.join("archive.lzh").exists());
+        #[cfg(windows)]
+        fs::remove_dir(&parent_path).expect("remove replacement junction");
+        #[cfg(target_os = "macos")]
+        fs::remove_file(&parent_path).expect("remove replacement symlink");
+    }
+
+    #[test]
     fn forced_rename_fallback_cancellation_does_not_remove_other_files() {
         let temporary = tempdir().expect("temporary directory");
         let parent = Dir::open_ambient_dir(temporary.path(), ambient_authority())
             .expect("capability directory");
         fs::write(temporary.path().join("keep.txt"), b"keep").expect("unrelated file");
         let staging = cap_tempfile::TempDir::new_in(&parent).expect("staging directory");
-        let mut staged_file = create_staging_file(&staging).expect("staging file");
+        let mut staged_file = create_staging_file(&staging, false).expect("staging file");
         staged_file.write_all(b"cancelled").expect("staging data");
         staged_file.sync_all().expect("sync staging data");
 
@@ -781,5 +831,39 @@ mod tests {
         }
 
         open_destination_root(&link).expect_err("destination symlink must not be followed");
+    }
+
+    #[test]
+    fn extract_rejects_an_intermediate_destination_link_without_modifying_it() {
+        let temporary = tempdir().expect("temporary directory");
+        let target = temporary.path().join("target");
+        let link = temporary.path().join("link");
+        let archive = temporary.path().join("archive.lzh");
+        fs::create_dir(&target).expect("destination target");
+        create_archive(&archive, &[], &CreateOptions::default()).expect("empty archive fixture");
+
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            let status = Command::new("cmd")
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(&link)
+                .arg(&target)
+                .status()
+                .expect("launch junction creation");
+            assert!(status.success(), "create intermediate destination junction");
+        }
+        #[cfg(target_os = "macos")]
+        std::os::unix::fs::symlink(&target, &link)
+            .expect("create intermediate destination symlink");
+
+        let error = extract_archive(&archive, &link.join("new"), &Limits::default())
+            .expect_err("extract must reject an intermediate destination link");
+        assert!(matches!(error, Error::Unsupported(_)));
+        assert!(!target.join("new").exists());
+        #[cfg(windows)]
+        fs::remove_dir(&link).expect("remove destination junction");
+        #[cfg(target_os = "macos")]
+        fs::remove_file(&link).expect("remove destination symlink");
     }
 }

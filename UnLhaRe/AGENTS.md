@@ -21,6 +21,6 @@ pwsh -NoProfile -File scripts/build.ps1 -Target $target -Test
 $project = 'bindings/dotnet/tests/Kagayoi.UnLhaRe.ContractTests/Kagayoi.UnLhaRe.ContractTests.csproj'
 $output = "build/dotnet-contract/$rid"
 $nativeRoot = Join-Path $PWD 'artifacts'
-dotnet publish $project --configuration Release --runtime $rid --self-contained true --output $output -p:PublishAot=true -p:NativeArtifactsRoot="$nativeRoot"
+dotnet publish $project --configuration Release --runtime $rid --self-contained true --output $output -p:PublishAot=true -p:OS=Windows_NT -p:NativeArtifactsRoot="$nativeRoot"
 & (Join-Path $output 'Kagayoi.UnLhaRe.ContractTests.exe')
 ```
