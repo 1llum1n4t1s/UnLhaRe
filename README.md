@@ -1,6 +1,9 @@
 # UnLhaRe
 
-UnLhaRe は、Windows の UNLHA32 対応アプリから利用する互換ライブラリです。現在は UNLHA32.DLL 3.00.0.5 の 32 ビット（x86）ABI 互換を目指す UnLha32Re を開発しています。
+UnLhaRe はLHA書庫を扱うライブラリです。Windows/macOSのx64/ARM64向けRust版と、既存Windowsアプリ向けx86互換版を分けて提供します。
+
+- **[近代化版 UnLhaRe 1.0.0](UnLhaRe/README.md)**: Rust 1.98.1 / edition 2024、新しいUTF-8 C APIとRust API、CLI。32bitを対象外とし、一覧・検査・展開・新規作成を提供します。[専用リリースページ](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.0)から対象OS・CPUのパッケージを選択してください。
+- **[互換版 UnLha32Re](UnLha32Re/README.md)**: UNLHA32.DLL 3.00.0.5の32bit ABI互換を目指すWindows DLL。以下の配布案内は互換版のものです。
 
 配布バージョンは **1.0.0** です。DLL の互換バージョン `3.00.0.5` は、既存アプリとの互換性のため配布バージョンとは独立して維持します。
 
