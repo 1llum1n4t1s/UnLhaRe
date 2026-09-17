@@ -2,10 +2,14 @@
 
 UnLhaRe はLHA書庫を扱うライブラリです。Windows/macOSのx64/ARM64向けRust版と、既存Windowsアプリ向けx86互換版を分けて提供します。
 
-- **[近代化版 UnLhaRe 1.0.0](UnLhaRe/README.md)**: Rust 1.98.1 / edition 2024、新しいUTF-8 C APIとRust API、CLI。32bitを対象外とし、一覧・検査・展開・新規作成を提供します。[専用リリースページ](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.0)から対象OS・CPUのパッケージを選択してください。
-- **[互換版 UnLha32Re](UnLha32Re/README.md)**: UNLHA32.DLL 3.00.0.5の32bit ABI互換を目指すWindows DLL。以下の配布案内は互換版のものです。
+## 提供する2つの版
 
-配布バージョンは **1.0.0** です。DLL の互換バージョン `3.00.0.5` は、既存アプリとの互換性のため配布バージョンとは独立して維持します。
+- **[近代化版 UnLhaRe 1.0.0](UnLhaRe/README.md)**: Rust 1.98.1 / edition 2024、新しいUTF-8 C APIとRust API、CLI。32bitを対象外とし、一覧・検査・展開・新規作成を提供します。[専用リリースページ](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.0)から対象OS・CPUのパッケージを選択してください。
+- **[互換版 UnLha32Re](UnLha32Re/README.md)**: UNLHA32.DLL 3.00.0.5の32bit ABI互換を目指すWindows DLL。
+
+## 互換版 UnLha32Re 1.0.0
+
+互換版の配布バージョンは **1.0.0** です。DLL の互換バージョン `3.00.0.5` は、既存アプリとの互換性のため配布バージョンとは独立して維持します。
 
 - LZH 書庫の圧縮・展開・一覧表示、メモリ操作、書庫の結合・改名・注釈編集に対応します。
 - 使用する DLL は `UNLHA32RE.DLL` です。従来名を固定して読み込むアプリでは、配置時に `UNLHA32.DLL` へ名前を変更できます。32 ビットのホストアプリが対象です。
