@@ -261,6 +261,8 @@ FRESH の追加ファイル名には `../` が残ります。相対基準では�
 
 試験ディレクトリは初回から一桁の試行番号を付け、再試行の有無によらず両側を同じ長さにしました。出力長の比較、エラー判定、失敗ログは保持し、再試行数を増やしていません。実際の名前生成式の 12 個の一意なパス・36 対応の同長性を確認し、`build/compression-order-equal-path1.log` の a/u/f/m × 3 API の 12 比較も通過しました。この実行では原版の再試行は 0 回で、MoveFile エラーの発生原因を解決した結果ではありません。
 
+2026-09-12 の再開検証では、全11ケース中 `insert-first`・`mixed`・`replace-all`・`replace-first`・`replace-last`・`reversed-old`・`new-only`・`reversed-replace`・`case-replace`・`case-existing-upper`・`case-new-upper` の a/u/m × legacy/W を 66 比較し、順序・通知・メタデータ・本文・入力削除を照合しました。同じ11ケースの f × legacy/A/W 33比較と a/u/m × A 33比較も通過し、合計132/132比較を確認しています。作業領域は `build/target-compression-order-postfix-20260912`、`build/target-compression-order-resume-escalated-20260912`、`build/target-compression-order-replace-first-20260912`、`build/target-compression-order-replace-last-20260912`、`build/target-compression-order-reversed-new-20260912`、`build/target-compression-order-reversed-case-20260912`、`build/target-compression-order-case-upper-20260912`、`build/target-compression-order-fresh-all-20260912`、`build/target-compression-order-api-a-20260912` に分け、原版の追加 MoveFile 拒否は 0 回でした。
+
 ## 圧縮時の列挙メタデータと保持状態
 
 原版の ADD/FRESH 通知は、圧縮する実ファイルのメタデータをそのまま渡すとは限りません。64W の同一登録で `l` → 新しい書庫への `a` を呼ぶと、`a` の通知に直前の一覧で読んだ元サイズ・属性・OS 種別・日時が残りました。名前と追加ファイル名は今回の圧縮対象へ更新されます。新規登録直後の追加がゼロ値だったことだけを根拠に、すべてゼロにする修正では再現できません。
@@ -1005,6 +1007,9 @@ COPY 時のファイル状態を別の新しい試験領域で観測すると、
 
 ## 新規圧縮書庫の公開時点
 
+> この節の 2026-09-06～07 の記録は、各隔離 DLL を比較した時点の状態を残したものです。
+> その後の通常 Release への反映状況と恒久試験は、末尾の「新規圧縮公開時点の Release 反映」で更新しています。
+
 新規 a/u/m の COPY に FALSE を返す 3 対照では、双方とも正常終了しましたが、原版の通知先には完成した 94 バイトの書庫が存在し、候補はエラー 2（不存在）でした（`build/compression-copy-audit-new1`）。既存書庫の一時消失とは別の、新規作成でも到達する差です。
 
 プローブに `@audit-progress-archive:<絶対パス>` を追加し、通知名に依存せず各通知時の指定書庫サイズを読み取りました。観測は属性取得のみで最終エラーを保持し、連続呼び出しの終了時に設定を解除します。隔離プローブ `3471EB9FCBBDE2B5E92A27C8FF4BE573C907570AB5E8323732CE9C1D50D4AAAE` で、新規 a/u/m の原版は SEARCH・OPEN・BEGIN・FINISH・項目 INPROCESS の時点ですでに 8,388,608 バイト、COPY と後続 INPROCESS では 94 バイトでした。候補はこれらすべてで不存在でした（`build/compression-archive-timeline-new1`）。この観測は END の NULL 通知を含みません。
@@ -1308,6 +1313,13 @@ DLL 解放で `Heap memory error.` が出る条件がありました。通知な
 画面配置は `test-overwrite-dialog-layout.ps1 -Directory` の3 API・2言語・5所有者条件で比較します。
 これらを既定の `test.ps1` に接続しています。
 
+現行 Release（候補 SHA256 `0DF452BB8415721602D15C63FC86742E21454E3C49B314FEA94E6ADE11A187EA`、
+プローブ SHA256 `E64ED2FAA6D3536FBB59A5E238D6ED3DE599D1652E1065C403ACD6D083320250`）では、
+通常の親作成確認180系列、W APIの非CP932出力先を含む追加20系列、明示ディレクトリ66系列を
+全件実行しました。両言語・3 API、同じ DLL の次命令、本文・属性・確定日時、入力書庫の排他解放、
+画面と通知の順序まで一致しています。UnicodeMode=0/1 のW追加系列も10系列ずつ一致しました。
+作成不能時の追加対話、拒否後の別名入力、全DPI・UNC条件はこの記録の対象外です。
+
 拒否後の別名確認・入力は次節で分けて検証します。作成不能時の追加対話、高DPIと
 対話経路全体の完全互換・全統合試験の完走は未完です。
 
@@ -1425,3 +1437,785 @@ NULLパスを渡す前処理で87を記録し、既存先のマッピング成�
 `test-preparation-failure.ps1` は原版生成の正常・隠し・明示ディレクトリ書庫を用い、
 出力、画面全部品、通知、エラー、保存先集合・本文・日時・属性、入力不変性、排他再オープン、
 同じDLLの次命令を比較します。共有方針の全条件、情報取得中の他API失敗、全UNC・DPI条件は未検証です。
+
+## 書庫書き換え時の作成日時（2026-09-08）
+
+`c/n/y` と既存連結先への `j` では、書庫内容が原版と全バイト一致しても、候補の
+`ExecuteRewriteCommand` が一時出力の作成日時をそのまま公開していました。
+対象なしの `c/n/y` でも成立し、元書庫の作成日時を2024年へ固定した7条件で再現しました。
+原版 `1000a015 → 10011b8f → 1000f07b` は書庫の作成日時を復元します。
+
+単純なコピーだけでは上限外の日時を再現できません。原版 `10011b8f` は現行Windowsで
+ローカル日時2107-12-31 23:59:58を上限とし、`10010771` がNTFSと判定した場合は1980年の下限を
+適用しません。`-jsf0` では補正せず元日時を保持し、既定／`-jsf1` では範囲内へ補正しました。
+裸の `-jsf` と範囲外の数字は反転、先頭0／-は無効、1／+は有効です。末尾全体を数値変換する
+既存の汎用パーサーへ接続せず、この真偽値規則を命令ローカルの設定として追加しました。
+
+`RestoreRewriteCreationTime` は既存入力のハンドルから取得した日時を一時出力へ設定し、
+置換まで元書庫を保持します。新規連結先の作成日時と、アクセス／更新日時の方針は変更しません。
+Windows の [SetFileTime](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfiletime)
+で作成日時だけを指定し、他日時へNULLを渡す契約を確認しました（2026-09-08取得、更新日未取得）。
+メタデータ取得・設定失敗時は書庫を公開しない安全側の扱いですが、その故障注入は未実行です。
+
+`scripts/test-rewrite-creation-time.ps1` は33条件×legacy/A/Wの99組を定義しています。
+通常 Release `A5C6888CC5758DB0796C6CCAF5DD248D1F60BFFB0D6D5D2DF4EEE97D256C3B4A` で
+99組すべてが一致し、Wideの全33組では同一DLLの次命令が既定の補正へ戻ることも確認しました。
+以前に原版の MoveFile エラー5で未判定だった legacy の `-jsf0 -jsf2` も、独立した新規領域で
+再実行して一致しています。
+
+## 書庫注釈の対話入力（2026-09-08）
+
+原版の `c` は `-jz` を指定しない場合、対象メンバーごとに `GetCmtDlg32` を表示します。
+既存の注釈を ID 101 の複数行編集欄へ読み込み、ID 1 の `了解(&O)`（英語資源では `&Ok`）で
+受理した値をヘッダーへ書き戻します。閉じる操作はそのメンバーだけを変更せず、複数メンバーでは
+次の画面へ進みます。空文字を受理した場合は level 1/2 の注釈拡張を削除し、level 0 のように
+拡張領域を持たない形式は原版と同じくバイト列を維持します。
+
+専用の非公開ダイアログ資源 `IDD_UNLHA_COMMENT`（205）を追加し、原版の静的 102、編集 101、
+ボタン 1、`MS UI Gothic` 9pt、546×182 の画面配置を再現しました。既存の公開
+`GetCommentDlgProc` の ABI は変更せず、内部の `DialogBoxIndirectParamW` 経路からだけ利用します。
+明示 `-jz` のファイル入力は従来の終端・コードページ検査を維持しています。
+
+`scripts/test-rewrite-comment-dialog.ps1` は 3 API（legacy/A/W）×日本語・英語の 9 条件に加え、
+各言語・API の画面レイアウト観測を実行します。既存注釈の受理、ABC への変更、空値による削除、
+閉じる操作、注釈なし、level 0/1、2 メンバーの応答順を、戻り値・通知・出力・書庫ハッシュ・
+一時ファイルの状態まで原版と 60 組で比較しました（`build/comment-dialog-script-all7`）。
+画面だけを観測して終了する条件では、診断プロセスの終了時に原版と同じ一時書庫が残り得るため、
+シード書庫の不変性を別に確認しています。
+
+通常の注釈入力は明示NUL終端のファイルです。非終端入力で原版が入力外のバイトを注釈へ
+書く挙動を観測しましたが、候補の境界付き読み取りは維持しました。
+非NTFSの実行、全属性・UNC条件、新規連結、他命令への日時補正は別の未検証範囲です。
+通常の全統合試験は既知の原版 MoveFile 失敗を含むため、上記の専用 60 組を今回の対話経路の
+受入れ根拠とし、全体完走とは区別します。
+
+## 新規圧縮公開時点の Release 反映（2026-09-08）
+
+新規 `a/u/m` の出力では、書き込み開始前の 8 MiB 予約、8 MiB 境界を越える予約拡張、
+完了時の実使用サイズへの切り詰め、マッピング無効時の書き込み窓、バイナリ格納の途中通知を
+通常 Release へ反映しました。新規書庫の作成ハンドルは共有なしで開き、COPY より前の外部読み取りを
+原版と同じ共有違反にします。途中の監査は進捗コールバック内でサイズと先頭バイトを読み取るだけで、
+書庫の内容や最終エラーを変更しません。
+
+恒久試験 `scripts/test-compression-progress-cancel.ps1` に `-AuditPublication` を追加し、
+`@audit-progress-archive`／`@audit-progress-archive-prefix` の全進捗行を原版と候補で比較します。
+通常 Release（SHA256 `A5C6888CC5758DB0796C6CCAF5DD248D1F60BFFB0D6D5D2DF4EEE97D256C3B4A`）では、
+UseMFile=0 と 1 の各 36 比較（各 288 排他オープン）が通過し、既定の W64・3回反復では
+30 比較・300 排他オープンが通過しました（`build/compression-publication-release-current0`、
+`build/compression-publication-release-current1`、`build/compression-publication-release-fullslice`）。
+各系列で中断後の新規書庫削除、入力保持、一時書庫不在、同一 DLL の後続読み取り、ハンドル数不変も
+確認しています。監査された公開サイズ・先頭バイトを含む進捗列は全件一致しました。
+
+さらに UseMFile=0 の `FileBufferSize` 8192（入力 8117／8119）、8193（10000）、524288
+（262144）の境界系列を各 3 比較・18 排他オープンで再実行し、任意値を 2 の累乗へ丸めずに
+原版と同じ公開サイズ・通知列になることを確認しました（`build/compression-buffer-release-8192-8117`、
+`build/compression-buffer-release-8192-8119`、`build/compression-buffer-release-8193-10000`、
+`build/compression-buffer-release-524288-262144`）。この境界条件は既定回帰へ接続しています。
+
+この結果は、非 NTFS／UNC／I/O 故障注入、テキスト変換と大容量再格納の全閾値、既存書庫の公開方針、
+および既知の原版 MoveFile エラーを含む全体回帰の完走を意味しません。
+
+## 命令スレッド優先度の Release 回帰（2026-09-08）
+
+通常 Release の `UnlhaSetPriority` について、列挙・メモリ API の正常系 84、設定適用失敗 72、
+優先度取得失敗 36、メモリ再入 12 の計 204 比較を `scripts/test-thread-priority.ps1` で再実行しました。
+各系列で命令中の優先度、設定／取得失敗時の戻り値、再入時の拒否、呼び出し前の優先度への復元を
+原版と全ログ一致させ、Release DLL の SHA256 は `A5C6888CC5758DB0796C6CCAF5DD248D1F60BFFB0D6D5D2DF4EEE97D256C3B4A` でした
+（`build/thread-priority-release-current`）。全体回帰、同時実行、表示ありの再入は別の未検証範囲です。
+
+## 新規書庫の親ディレクトリ欠落（2026-09-08）
+
+原版の `a/u/m` と新規出力先への `j` は、親ディレクトリが存在しない場合に
+`MyCreateFile:write` の `ERROR_PATH_NOT_FOUND (3)` を `ERROR_ARC_FILE_OPEN (32792)` として返し、
+処理前の作成ログの後に日本語／英語の診断を出します。候補は従来、`Lha_BeginNewCompressionArchive`
+がこのエラーを「対象ファイルがない」として一時書庫へ進め、最後の rename だけを失敗させていました。
+その結果、戻り値が `-1` となり、カレントディレクトリに一時ファイルが残る差が確認できました。
+
+候補では親欠落だけを共通の作成失敗状態へ記録し、C エンジンへ一時書庫の処理を渡さずに終了します。
+既存親では従来の通常作成を維持し、異常時の入力・作業ディレクトリ・出力集合も確認しています。
+`scripts/test-compression-create-parent-failure.ps1` の 48 条件（a/u/m/j × 既存／欠落親 ×
+legacy/A/W × 日本語／英語）と、Wide UnicodeMode=1 の欠落親 8 条件で、戻り値、互換エラー、
+システムエラー、診断全文、入力、親・一時ファイルの状態が一致しました。
+
+## 一覧の新規限定と既存ファイル（2026-09-11）
+
+`l/v -jn1` は一覧にも作用し、CWD または明示した基準ディレクトリに存在する項目を表示から除外します。
+原版では除外される項目にも列挙通知が先に届き、表示名の階層省略とは独立に書庫内のフルパスを判定します。
+`-n1` の名前表示では、存在確認が失敗した最後の Win32 エラー（ファイル欠落2、親欠落3）が残ります。
+通常の一覧表示は従来どおり Win32 エラー1400、互換システムエラー38を返しました。
+
+候補は通知後の最終選択を別に記録し、一覧出力の再構築へ渡すよう修正しました。
+`scripts/test-list-new-only.ps1` は全件存在・全件欠落・一部存在、基準パス、`l/v`、`-n0/1`、
+`-jn0/1`、A/W と4種の列挙 ABI の受理・拒否を含む240条件で全出力を比較し、入力ファイルの不変性も確認します。
+Release DLL `47B60F7699C5ECEE2BFF6278475BCE8527BA9BF21719721D3C278C2EAF4E3FED` で成功しました。
+この結果は ASCII の通常ファイルを対象とし、特殊パスや全スイッチの組み合わせの保証ではありません。
+
+## Wide 圧縮の実パス・除外と日本語 TEMP（2026-09-12）
+
+非CP932の入力ディレクトリを指定した Wide 圧縮で、候補の別名コピー経路は
+`-jx*.txt` の新規入力を誤って格納し、`f` の既存項目を更新しませんでした。
+列挙通知で格納名を変えたときも、書庫は変更後の名前なのに `Frozen` のログへ変更前の名前を出しました。
+さらに、内部 UTF-8 経路で ANSI 列挙通知の読込先をそのまま受け取ると、日本語パスを開けず失敗しました。
+Wide の `a/u/f/c` も実パスを扱う共通処理へ接続し、別名コピー経路を除去しました。
+ANSI 列挙通知は公開コードページで復号してから内部形式へ戻し、保存コードページや公開 UnicodeMode は変更しません。
+
+除外対象の `skip.txt` が既存項目で、新規の `extra.txt` も同じ除外に一致する対照では、
+原版の `a/u/m` は `skip.txt` を更新し、`extra.txt` は格納しません。`f` は旧 `skip.txt` を保持します。
+候補の一律除外を修正し、格納名に対応する旧項目がある場合だけ `a/u/m` の除外を適用しないようにしました。
+原版 `m` は未格納の `extra.txt` も削除しますが、候補は既存の安全性例外に従って保持します。
+`scripts/test-wide-compression-selection.ps1` は level-0/1/2 × ASCII／非CP932パスの60比較で、
+命令結果・出力・エラー、項目集合、両 DLL による本文読み取りと元入力の保持／削除を検査します。
+新規書庫の未定義列挙数値欄は、この選択試験の比較対象には含めません。
+
+一時書庫のパスを ACP で返していた旧候補では、日本語 TEMP・UnicodeMode=1 の更新で
+rename と再オープンが誤ったパスへ向かい、失敗時の既存書庫が0バイトになることを専用 fixture で確認しました。
+作業書庫を `GetTempFileNameW` で作成し、命令内の UTF-8 パス登録で各ファイル操作へ渡すよう修正しました。
+登録済みパスは通常の ANSI 命令でも Wide 値から通知コードページへ戻します。
+`scripts/test-compression-temp-paths.ps1` は ASCII／日本語 TEMP × A/W × UnicodeMode 0/1 の8比較で、
+COPY と後続 INPROCESS のフルパス、戻り値・出力・エラー、更新／非更新本文の相互読み取り、
+元入力保持と一時ファイル不在を検査します。進捗の参照日時は実ファイルから独立に取得して照合し、
+一致を確認した時刻と一時名の割当番号だけを比較上そろえます。両スクリプトは標準 `test.ps1` に接続しています。
+これらの局所比較は、全統合試験や全ての共有・スイッチ条件の完了を意味しません。
+
+## Wide 再帰指定と書庫置換の失敗保持（2026-09-12）
+
+ASCII の基準パスの下に非CP932名 `Ā.txt` だけを置くと、旧候補は `-r1` では格納できても
+短縮形 `-r` と UTF-16 応答ファイル内の `-r+` では入力を見失いました。Wide の事前判定を
+共通の引数・スイッチ解析へ合わせ、設定の参照では次命令用の遅延状態を変更しないようにしました。
+`test-wide-wildcard-switches.ps1` の8比較は `r1/r/r+`、`d1/d/d+`、指定の上書き順、応答ファイルを
+含み、原版と候補の出力・エラーと両DLLによる本文読み取りが一致しました。
+`-d` は一致したディレクトリーをたどるため、試験では `*.txt` ではなく `*` を指定します。
+
+圧縮エンジンの旧置換経路には、保存先を unlink してから別ドライブへコピーする処理がありました。
+これはコード上の故障時データ消失リスクであり、原版との実ドライブ障害比較を行ったという意味ではありません。
+DLL 側は同一ドライブの置換を先に試し、別ドライブの場合だけ保存先側の LHC 一時ファイルへコピー・flush後に
+置換します。命令所有の未公開 LHT/LHC ファイルは終了時に清掃します。
+
+`test-compression-commit-failure.ps1` は候補の Win32 呼び出しを限定的に差し替え、
+別ドライブ分岐、途中コピーの容量不足、flush失敗、最終置換失敗、コピー成功を検査します。
+`a/u/f/m` の計36条件で、失敗時の旧書庫SHA256不変・元入力保持・一時ファイル不在・排他再オープン、
+故障注入解除後の同一DLL再利用、圧縮本体INPROCESSの中断と再利用が通過しました。
+COPY 通知の拒否は原版でも成功となる既存契約のため、中断を期待する試験には使用しません。
+`probe-compression-commit-errors.ps1` は同じ短い入力で `a/u/f/m` × 観測／最終置換拒否 ×
+原版／候補の16観測を記録します。観測成功の公開行は8比較すべて一致しました。
+最終置換拒否では原版が `result=0` のまま旧書庫を退避し、入力を削除しますが、候補は
+`result=-1`・Win32エラー5・「Permission denied」を返し、旧書庫SHA256、入力、LHT/LHC一時ファイルの
+保持を確認します。これはデータ保護を優先する既存の安全性例外であり、失敗値の互換一致とは扱いません。
+
+原版の過去の直接観測では、既存書庫の名前変更は、元書庫から同じディレクトリーの LHT への
+`MoveFileExW(..., 1)` と、完成した TEMP 内 LHT から公開名への `MoveFileExW(..., 0)` を区別できます
+（`build/rewrite-member-move-observer1/case-3/command.log`、`build/rewrite-member-move-observer3/case-0/command.log`）。
+前者の失敗は32792／システムエラー5でしたが、後者の故障時契約の証拠ではありません。
+また、新規 `a` の観測では公開書庫を直接 `CreateFileW` で作成しています
+（`build/compression-access-trace1/command.log`）。原版の Wide 移動 API は動的関数表にも存在するため、
+静的 import 一覧にないことを未使用の証拠とせず、対象命令・新規／既存・失敗段階を固定して比較します。
+
+Release DLL SHA256 `9D2146CC75D23BDD4DA400D6592A0FE8B5CF706383CDF4CEB517416B78CF2DF8`、
+CompatibilityTests.exe SHA256 `2CBDAA680BD78938D734A560AD9A1E515423DA4B67165F12355A9BCBD04695F7`、
+置換失敗プローブ `0D9E51F59BB2D96F1A7C6A86B199471A019EB0BED4E1A18D79E43B00B3ACF694` で、
+上記8比較・36保持条件と日本語TEMP等の10比較が通過しました。標準試験入口へ接続しています。
+実際の別ドライブ・電源断・UNC・全共有条件の一致と、全体回帰の完走はこの局所検証に含めません。
+
+書庫名と基準ディレクトリーだけを渡す暗黙更新では、原版が再帰指定によって入力列を切り替えます。
+`-r0` の `a/u/m` は `Updating archive` だけを返す成功する無操作、`-r1/-r2` は基準ディレクトリー
+配下の通常ファイルを暗黙入力として旧書庫順に処理します。候補は r1/r2 で基準ディレクトリーを
+LHA の入力列へ重ねず、通常ファイルだけを列挙して同じ順序へ渡し、r0 は空選択として扱います。
+`scripts/test-compression-implicit-update.ps1` の parent-first/parent-last × r0/r1/r2 ×
+除外なし／`-jx*.txt` の12比較、Level-2 再配置の純粋ヘルパー10検査、入力・書庫の保持が通過しました。
+同じ Release で `a/u/m` の暗黙入力も各再帰レベルの公開行を原版と照合しています。
+この試験スクリプトの SHA256 は `01CC09FFF042A2F63B6D923ACCC0C423937E71538BD5DBD8BFBDF4030442609C` です。
+
+同じ Release で保存設定のパス190比較・連続呼出76比較・Unicode属性8比較、既存のWide非CP932命令22比較、
+Wide注釈1比較、空の非CP932名を明示／ワイルドカードで圧縮するlevel-0/1/2の6比較も通過しました。
+設定試験は標準統合と同じ `--create-memory-selection-fixture` 由来の書庫を使用します。
+Wide圧縮選択は同じReleaseでlevel-0/1の40条件を通過し、level-2途中に原版の
+`execute_cmd (MoveFile)`・32792・システムエラー5で停止しました。原版のこの三点一致だけを
+同じ初期入力・同長の新規領域で最大5回再試行する既存方針へ合わせ、level-2全20条件を通過しました。
+両区間で60条件を確認した結果であり、最終スクリプトによる60条件一括実行の記録ではありません。
+
+## 統合回帰の再開とDWM安全停止（2026-09-12～13）
+
+作業再開後の `scripts/test.ps1` は、DWM監視・Releaseビルド、エクスポート130組、fixture 7種、列挙登録186行、
+round-trip、読み取りコマンド、更新・照合コマンド、更新ポリシー132条件、安全性例外159条件、
+圧縮順序132条件、thread-priority 204条件、enum-state 912比較＋初期化ガード8件、freshen 48比較、
+compression-sharing既存1,176比較・新規360比較まで通過しました。
+その後、DWM監視 `build/dwm-monitor/run-238d00907f1b467fb04b34e6ab0fd9b7/summary.json` が
+`Status=unhealthy`、`SustainedHighCpuDetected=true`、`PeakCpuPercent=201.254`、
+`PeakConsecutiveHighCpu=138`、`StopReason=stop-file` を記録して、recovery開始直後に安全停止しました。
+これは互換性不一致ではなく、継続高負荷を検出した監視側の停止です。WPR採取は権限エラー
+`0xc5585011` で開始できず、停止地点と子プロセスの保存ログは保持しています。
+
+停止地点から新しい分離workspaceへ切り出した `scripts/test-compression-sharing-recovery.ps1` は、
+strict-switch reset・失敗後の件数取得・再更新・検査・列挙状態保持の96系列を完了しました
+（`build/integration-recovery-resume-20260913`、スクリプト SHA256
+`88A06BA536C011FC6D360C94314CFE6704C32CD21B13B9C8D35320BC8EDDFA34`）。
+続く `scripts/test-compression-streams.ps1` も、10入力×12スイッチの方式・圧縮本体120条件と、
+原版／候補の生成・相互展開480条件を完了しました（`build/integration-continuation-20260913/compression-streams`、
+結果書庫240個・展開結果480個、スクリプト SHA256
+`CF5DC59E180BCD61109799DD134A508C3E4DD046BACA371C505302382C2C84D2`）。
+この再開区間は標準 `test.ps1` 全体の完走を意味せず、未実行の後続テストとDWM高負荷の原因特定は残課題です。
+
+続く `scripts/test-compression-directory-members.ps1` は、
+`build/integration-continuation-20260913/directory-members` を共用して再開しました。
+`new` は既存の44条件を引き継いで `StartCount=44` から再実行し、全105条件の完了行と、
+格納・更新・列挙・順序・重複防止・CRC・展開・入力保持の完了行を確認しました。
+`files` も全105条件を同じ2つの完了行まで確認しました。両区間の原版 `MoveFile` アクセス拒否再試行は0件です。
+
+`directories` は中断地点の `StartCount=53` から再開し、`case-053`～`case-104` を完了しました。
+同スクリプトの標準出力は `directories/empty-last, 105 comparisons passed`、
+`105 a/u/m creation/update, enumeration, member order, no-duplicate, CRC check, extraction, and source-retention comparisons passed`、
+`0 original MoveFile access-denied retries` の3行で終了コード0でした。
+作業領域を再照合し、3状態×105ケースの原版／候補105ペアすべてに `command.txt`・`result.lzh`・`extracted` が存在し、
+未完ペアが0件であること、終了後に `CompatibilityTests.exe` が残っていないことを確認しています。
+
+したがって、この区間の `new` 105 + `files` 105 + `directories` 105 = **315 / 315 条件**が完了しました。
+
+同じ Release で `scripts/test-directory-members-recovery.ps1` も続けて実行し、
+通常ファイル移動・ディレクトリーだけの移動・既定の非再帰設定への復帰・件数取得・削除状態を、
+`a32/w32/a64/w64` × 2言語 × UTF-8 0/1 × legacy/A/W の **48 系列**で原版と候補に照合しました。
+標準出力の `48 retained-DLL file move, directory-only move, default-switch reset, metadata, and deletion-state sequences passed`
+まで終了コード0で到達し、workspace の原版／候補96ケースと `commands.txt` 96個を再確認しました。
+実行workspaceは `build/integration-continuation-20260913/directory-members-recovery`、
+スクリプト SHA256 は `AA0FBB961060703F5D559B3A0EAE72CE84C2F2DD0A9935B2F3CC0978FDB67FA6` です。
+
+さらに `scripts/test-compression-parent-paths.ps1` の標準接続範囲を、
+`recursive`・`dot-recursive`・`no-base-recursive`・`recursive-deep` × 1033/1041 ×
+UTF-8 0/1 × legacy/A/W × `a/u/f` の **144 条件**で実行しました。
+標準出力は各 variant の完了行（最終 `Compression parent paths: recursive-deep, 144 comparisons passed`）に続き、
+`144 A/W/legacy commands=a/u/f, search/read, bytes, errors, working-directory comparisons passed; progress=False; enum=w64`、
+`0 original MoveFile access-denied retries` まで終了コード0で到達しました。
+原版・候補それぞれ144ケース、合計288ケースの `result.lzh` を再照合し、未完了ペア0件・失敗ログ0件・終了後の `CompatibilityTests.exe` 残留0件でした。
+実行workspaceは `build/integration-continuation-20260913/compression-parent-paths`、
+スクリプト SHA256 は `67B2F125314A005AD2D720E798F2F38B766F50351BFAF926C92915279AE09560`、
+使用した Release DLL は `9D2146CC75D23BDD4DA400D6592A0FE8B5CF706383CDF4CEB517416B78CF2DF8`、
+CompatibilityTests.exe は `2CBDAA680BD78938D734A560AD9A1E515423DA4B67165F12355A9BCBD04695F7` です。
+
+続く `scripts/test-compression-system-error.ps1` も標準引数の `new/replace/append` × `jm0/jm2` ×
+`a/u/f/m` × 4入力順 × 5 API／列挙レイアウト設定、計 **480 条件**を実行しました。
+`new/jm0` 80、`new/jm2` 160、`replace/jm0` 240、`replace/jm2` 320、`append/jm0` 400、
+`append/jm2` 480 の各完了行と、`480 command, empty-input/order, header-EOF, final-error, CRC-check, and source-retention comparisons passed`
+まで終了コード0で到達しました。原版・候補960ケース（`commands.txt` 960個）を再確認し、
+新規 `f` の想定失敗を除く結果書庫880個、終了後の `CompatibilityTests.exe` 残留0件でした。
+実行workspaceは `build/integration-continuation-20260913/compression-system-error-standalone`、
+スクリプト SHA256 は `800D3FE64A9621ECE383EEBE82618D1D3A226ABDE68E036BD637D39A6FFA944C` です。
+
+`scripts/test-compression-error-recovery.ps1` は、保存済みヘッダーを起点にした格納・空入力・失敗後の再利用・
+圧縮・EOF後・移動後の連続操作を、`a32/w32/a64/w64` × 1033/1041 × UTF-8 0/1 × legacy/A/W の
+**48 系列**で実行しました。各レイアウト／言語の完了行と、
+`48 retained-DLL stored/empty/failed/compressed/moved command sequences, CRC checks, and state resets passed`
+まで終了コード0で到達しました。原版・候補96ケース（`commands.txt` 96個）を再確認し、終了後の
+`CompatibilityTests.exe` 残留は0件でした。実行workspaceは
+`build/integration-continuation-20260913/compression-error-recovery-standalone`、
+スクリプト SHA256 は `D8BA39C90F241AD5E71DD97DC6B6CBD6732799270C11132EE2B75D27BB9126FD` です。
+
+`scripts/test-compression-header-init.ps1` は、事前の件数・検査を行わない level-2 初回更新を、ASCII／日本語名 ×
+first／all 選択 × `a/u/f/m` × 5 API／列挙設定の **80 条件**で実行しました。
+`ascii/first` 20、`ascii/all` 40、`japanese/first` 60、`japanese/all` 80 の各完了行と、
+`80 cold a/u/f/m level-2 updates, ASCII/Japanese names, callbacks, CRC checks, full extracted-content, and source-retention comparisons passed`
+まで終了コード0で到達しました。原版・候補160ケース（`command.txt`160個・展開結果160個）を再確認し、
+終了後の `CompatibilityTests.exe` 残留は0件でした。実行workspaceは
+`build/integration-continuation-20260913/compression-header-init-standalone`、
+スクリプト SHA256 は `EBD024756BDFF1971779B9FABE5BE252779D63E6F7F0EED9B2C7B8821B123482` です。
+
+コードページ標準スライスの `scripts/test-compression-code-pages.ps1`（`InputBytes=64`）も、
+UnicodeMode 0/1 × legacy/A/W × CP3/932/65001/1252 × header level 0/1/2 × 列挙レイアウト5 の
+**360 条件**を完了しました。各 CP の進捗行と、
+`360 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達しました。原版／候補720フォルダーの `command.log` と結果を再確認し、
+warmupを含む書庫721個、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件でした。
+実行workspaceは `build/integration-continuation-20260913/compression-code-pages-64-standalone`、
+スクリプト SHA256 は `1F6B4A13C14EF81EA26D3E8F044F7E8EADB5F0B40A995D03341F5BC2CD4277B8` です。
+
+同じコードページ範囲を `InputBytes=0` でも再実行し、UnicodeMode 0/1 × legacy/A/W ×
+CP3/932/65001/1252 × header level 0/1/2 × レイアウト5 の **360 条件**を完了しました。
+最終出力の `360 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達し、原版／候補720フォルダー、`command.log`720個、warmupを含む書庫721個、
+一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-0-standalone` です。
+
+英語ロケール（1033）で UnicodeMode=1 に固定した同試験も、legacy/A/W × CP3/932/65001/1252 ×
+header level 0/1/2 × レイアウト5 の **180 条件**を完了しました。
+最終出力の `180 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達し、原版／候補360フォルダー、`command.log`360個、warmupを含む書庫361個、
+一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-english-standalone` です。
+
+英語ロケールの Wide／非CP932名をソースワイルドカードで列挙する level-2 条件（CP932、`archive.lzh`）も
+`UseSourceWildcard` で **1 条件**実行し、`1 output/defined-notification/archive comparisons ... passed`
+まで終了コード0で到達しました。原版／候補2フォルダーのログ、warmupを含む書庫3個、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-english-unicode-wildcard-standalone` です。
+
+`test-unicode-total-progress.ps1` の候補専用全体進捗プローブも DesktopRunner の30秒制限内で完了しました。
+UTF-8 の `日本語.txt` を圧縮する **1 条件**で、`progress.set=1`・`progress.kill=1` と source/dest 名を含む
+3コールバックを確認し、`Unicode total progress: 3 candidate-only callbacks preserved the Unicode source and destination name`
+まで終了コード0で到達しました。実行workspaceは
+`build/integration-continuation-20260913/unicode-total-progress-standalone`、ログ1個・書庫1個・一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件でした。スクリプト SHA256 は
+`4EC163173071E139E2BBC3A33A4CE17C439C971ADD60ECE463FDBE8700382166` です。
+
+`test-wide-noncp932-commands.ps1` も DesktopRunner の30秒制限内で、Wide `l/v/t/p/d`、スイッチ位置、
+移動（明示／ワイルドカード）、無一致、キャンセル後の再利用を 1033/1041 で比較する **22 条件**を完了しました。
+`Wide non-CP932 W commands: 22 original/candidate command, path, mutation, cancellation, release, and interoperability comparisons passed`
+まで終了コード0で到達し、seedを含む45書庫、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しました。
+実行workspaceは `build/integration-continuation-20260913/wide-noncp932-commands-standalone`、
+スクリプト SHA256 は `D3806B581674F913CC528FBB33CC2C371B606594032C4C62BEE30F3C5A95EC1A` です。
+
+`test-wide-compression-noncp932.ps1` の Wide／UnicodeMode=0 コメントパス（非CP932名）も **1 条件**を完了し、
+`Wide non-CP932 compression: W UnicodeMode=0 comment path, output, state, and archive comparison passed`
+まで終了コード0で到達しました。seedと原版／候補の3書庫、一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/wide-compression-noncp932-standalone`、
+スクリプト SHA256 は `6572079DF366BC029E343A8E2D9075DECE0E3BEB4455B423285456F90C747D29` です。
+
+`test-wide-compression-selection.ps1` の除外・freshen・rename／callback 選択試験も、header level 0/1/2 ×
+ASCII／Wide × 10ケースの **60 比較**を終了コード0で完了しました。
+`Wide compression selection: 60 exclusions/freshen/rename comparisons and cross-reader payload checks passed`
+まで到達し、原版／候補120ディレクトリー、失敗記録0、seedを含む書庫180個、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/wide-compression-selection-standalone`、
+スクリプト SHA256 は `C3A4420D17DF2D9F6BC9A6C0AF6312F2D6519E954F503AD85A14F68AA79A9FDE` です。
+
+`test-wide-wildcard-switches.ps1` も `r1/r/r+`、`d1/d/d+`、`-r1 -r0 -r` のリセット、UTF-16応答ファイルを含む
+非CP932ネスト葉の **8 比較**を完了しました。`Wide recursive switches: 8 non-CP932 nested-leaf comparisons passed`
+まで終了コード0で到達し、原版／候補16ケース、書庫16個、UTF-16応答ファイル2個、バイナリマニフェスト、
+一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/wide-wildcard-switches-standalone`、
+スクリプト SHA256 は `A784BEEB1AE88A9FEB892E15AF08C03B8C4A884E55C1AA42FDDD49AF430F7418` です。
+
+`test-compression-commit-failure.ps1` も、`a/u/f/m` × copy／flush／replace 故障、同一DLL再利用、
+強制コピー成功、圧縮本体 INPROCESS 中断を含む **36 条件**を終了コード0で完了しました。
+最終出力は `36 candidate-only fault, cleanup, exact rollback, forced-copy success and same-DLL recovery cases passed; body INPROCESS abort targets=8` です。
+故障時のロールバック・元入力保持・排他再オープン・一時ファイル消去を再確認し、トップレベル38ディレクトリー、
+書庫37個、ログ154個、JSON78個、故障時一時ファイル0、バイナリマニフェストあり、終了後の
+`CompatibilityTests.exe` 残留0件でした。実行workspaceは
+`build/integration-continuation-20260913/compression-commit-failure-standalone`、
+スクリプト SHA256 は `80D3E2541A75402BFFF0C8B7968BEC23D2588564BDF88A0B71A301C5D43EF366` です。
+
+`probe-compression-commit-errors.ps1` も `a/u/f/m` × observe／deny × 原版／候補の **16 観測**を終了コード0で記録しました。
+observe は4操作すべて公開行一致（`differing-rows=0`）、deny は4操作すべて候補の安全性例外（`result=-1`）を記録し、
+原版との差分8件を `*difference.json` に保存しました。観測16件、差分記録8件、JSON137個、トップレベル17、
+故障時一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-commit-errors-standalone`、
+スクリプト SHA256 は `0D9E51F59BB2D96F1A7C6A86B199471A019EB0BED4E1A18D79E43B00B3ACF694` です。
+
+`test-compression-implicit-update.ps1` も r0/r1/r2 × parent-first/parent-last × 除外なし／`-jx*.txt` の
+**12 比較**と、level-2 レコード再配置・破損入力拒否の **10 純粋ヘルパー検査**を完了しました。
+最終出力は `12 r0/r1/r2 parent-first/last exclusion comparisons, 10 pure helper checks, and 0 original retries passed`、終了コード0です。
+検査領域は全ディレクトリー100（inspection 26）、書庫27、故障時一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件でした。実行workspaceは
+`build/integration-continuation-20260913/compression-implicit-update-standalone`、
+スクリプト SHA256 は `01CC09FFF042A2F63B6D923ACCC0C423937E71538BD5DBD8BFBDF4030442609C` です。
+
+`test-compression-progress-methods.ps1` の `jm0..jm5/jm7/jm8/jmm12/jmm17/jmm19` × repeat／small／empty入力 ×
+legacy/A/W の **99 条件**も完了しました。BEGIN/FINISH 方式表示と実圧縮本体を比較し、
+`99 single-input BEGIN/FINISH fields (volatile access time excluded) and actual compressed-body comparisons passed`
+まで終了コード0で到達しました。原版／候補198フォルダー、`command.txt`198個、書庫198個、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-progress-methods-standalone`、
+スクリプト SHA256 は `8BC08774BFC64A752884A16FC6E8B3E465A9BE3E5152FB988DECAD62113383A9` です。
+
+`test-compression-update-progress.ps1` の標準範囲も Commands=`a/u/f/m` × 選択6 × 新旧日時2 ×
+設定5 の **240 条件**を完了しました。各 command の完了行と、
+`240 existing-member BEGIN, freshen DIRECTORY suppression, notification sequences, metadata, archive-content and source-state comparisons passed`
+まで終了コード0で到達しました。原版／候補480ケース（trace480、展開480、書庫481）を再確認し、
+故障時一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-update-progress-standalone`、
+スクリプト SHA256 は `6AB7D0E46E463CCE9D3D639728675E62D5D358A4CAEE30F6204BDF29637CC446` です。
+
+`test-progress-state.ps1` の標準範囲（18バリアント × A/W 32/64レイアウト4 × API3 × 1033/1041 × UTF-8 0/1）も
+**864 比較**を完了し、`912 zero-initialized DIRECTORY guards passed` を含む
+`864 retained-DLL A/W 32/64 BEGIN/FINISH numeric-state comparisons` の完了行まで終了コード0で到達しました。
+原版／候補1728ケース（trace1728、書庫2017）、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。
+実行workspaceは `build/integration-continuation-20260913/progress-state-standalone`、
+スクリプト SHA256 は `E525D4E495B33258A440FAB71D137185F136A64DDE298D31A12A0B5210AE288A` です。
+
+`test-header-crc-search.ps1` の level-2/3 各ヘッダーで、good／first／middle／last（検索88行）と全項目破損を比較する
+**706 比較**、および count/check **10 系列**も完了しました。`706 A/W/OpenArchive2/mode comparisons, 10 count/check sequences and archive-unchanged guards passed`
+まで終了コード0で到達し、11書庫、検索ログ20個・APIログ20個、一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/header-crc-search-standalone`、
+スクリプト SHA256 は `8532C59379B0E6FC0075BFE6B58FC96452140F124B8BE40FBF07DAEEB005BD70` です。
+
+同じ `test-progress-state.ps1` を SeedHeaderLevel=2・10バリアント（open/open-add/off-open-add/find/find-none/count/check/off-list/mutate/memory）に絞った拡張も、
+**480 比較・480ゼロ初期化ガード**を完了しました。`480 retained-DLL A/W 32/64 BEGIN/FINISH numeric-state comparisons` と
+`480 zero-initialized DIRECTORY guards passed` まで終了コード0で到達し、原版／候補960ケース（trace960、書庫1153）、
+一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/progress-state-h2-standalone` です。
+
+同スクリプトを header level=2・PayloadRepeats=20・plain/w64 設定に絞った拡張も、Commands4 × 選択6 ×
+日時2 × 設定2 の **96 条件**を完了しました。`96 existing-member BEGIN, freshen DIRECTORY suppression, notification sequences, metadata, archive-content and source-state comparisons passed`
+まで終了コード0で到達し、原版／候補192ケース（trace192、展開192、書庫193）、candidate payload66、
+故障時一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-update-progress-h2-standalone` です。
+
+Wide／UnicodeMode=0 の非CP932メンバー `Ā.txt` を扱うコードページ試験（CP932、header level 0/1/2、layout=none）も
+**3 条件**を完了しました。`3 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達し、原版／候補6フォルダー、ログ6個、書庫7個、一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-wide-noncp932-standalone` です。
+
+同じ非CP932メンバー `Ā.txt` のコードページ3条件を `UseSourceWildcard` 経路でも完了し、
+`3 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達しました。原版／候補6フォルダー、ログ6個、書庫7個、一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-wide-noncp932-wildcard-standalone` です。
+
+Unicode階層名の追加スライスも完了しました。level-2 の `日本語/Ā.txt`（parent）を1033/1041で各60条件、
+`Ā/日本語.txt`（directory）を1033/1041で各60条件、level-1・CP932 の `日本語/Ā.txt`（parent）を1033/1041で各15条件、
+合計 **270 条件**です。いずれも同じ `output/defined-notification/archive comparisons ... passed` の完了行と終了コード0を確認し、
+各workspaceで原版／候補フォルダー、ログ、書庫、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を監査しました。
+実行workspaceは `build/integration-continuation-20260913/compression-unicode-parent-1041-standalone`、
+`compression-unicode-parent-1033-standalone`、`compression-unicode-directory-1041-standalone`、
+`compression-unicode-directory-1033-standalone`、`compression-unicode-parent-h1-1041-standalone`、
+`compression-unicode-parent-h1-1033-standalone` です。使用スクリプト SHA256 は
+`1F6B4A13C14EF81EA26D3E8F044F7E8EADB5F0B40A995D03341F5BC2CD4277B8` です。
+
+英語ロケール（1033）・UnicodeMode=0 の source wildcard 経路も、既定の legacy/A/W × CP932/65001/1252 ×
+header level 0/1/2 の **27 条件**を完了しました。最終出力の
+`27 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達し、原版／候補54フォルダー、ログ54個、warmupを含む書庫55個、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-english-ansi-standalone` です。
+
+UnicodeMode=1・メンバー名 `Ā.txt` の Wide名スライスも既定の legacy/A/W × CP3/932/65001/1252 ×
+header level 0/1/2 × レイアウト5、**180 条件**を完了しました。最終出力の
+`180 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達し、原版／候補360フォルダー、ログ360個、warmupを含む書庫361個、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-wide-name-standalone` です。
+
+メンバー名に階層を含む `日本語/source.txt` のディレクトリー経路（layout=none）も、UnicodeMode 0/1 ×
+legacy/A/W × CP3/932/65001/1252 × header level 0/1/2 の **72 条件**を完了しました。
+最終出力の `72 output/defined-notification/archive comparisons with independent source times, header checksums/CRC, payload, code-page and zero-initialized DIRECTORY checks passed`
+まで終了コード0で到達し、原版／候補144フォルダー、ログ144個、warmupを含む書庫145個、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-code-pages-directory-standalone` です。
+
+`test-compression-temp-paths.ps1` の標準範囲（ASCII／日本語 TEMP名 × UnicodeMode 0/1 × A/W × auto layout）も
+**8 比較**を完了しました。各組合せの `passed` 行と、`8 COPY/INPROCESS full-source-path, update/output/error/source-retention and cross-reader archive comparisons passed`
+まで終了コード0で到達し、seed等を含む17書庫、ログ162個、バイナリマニフェスト、一時ファイル0、
+終了後の `CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/compression-temp-paths-standalone`、
+スクリプト SHA256 は `6411F9A47B8163F24B186C276F12FE33AEF5FD64094A9747A25A1C0A39267DE6` です。
+
+同スクリプトの ANSI/Wide 境界（日本語 TEMP名、UnicodeMode=0、W API、非CP932 `Ā.lzh`、progress layout=a32/a64）も
+**2 比較**を完了し、`2 COPY/INPROCESS full-source-path, update/output/error/source-retention and cross-reader archive comparisons passed`
+まで終了コード0で到達しました。原版／候補4ケース＋seed、ログ42個、書庫5個、バイナリマニフェスト、
+一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/compression-temp-paths-ansi-wide-standalone` です。
+
+`test-header-crc-commands.ps1` の標準範囲（ascii/japanese × jm0/jm2 × header level 2/3 ×
+good/first/middle/last/all × `l/v/t/p` × name mode 0/1/2 × plain/a32/w32/a64/w64）は、
+**2,400 比較**を完了しました。最終出力は
+`Header CRC commands: 2400 comparisons, 48352 exact output/enum/progress/state snapshots compatible; archive content and write time unchanged`
+で、終了コード0です。原版／候補のスナップショット4,812個、書庫44個、一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/header-crc-commands-standalone`、
+スクリプト SHA256 は `B90E702D9E37FCD2C2E6362AA0B56CC3205264CC55D720706369AAAAFB31622` です。
+
+`test-header-crc-command-state.ps1` も、先行するCRC検索結果を読み込んだ後の `l/v/t/p` →追加→検査→進捗状態復帰を、
+header level 2/3 × warmup 無し／有りで各80、合計 **320 比較**完了しました。4組すべて
+`80 read/add/check retained-progress and recovery sequences compatible` まで終了コード0で到達し、
+原版／候補のtrace合計640個、書庫合計960個、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しました。
+実行workspaceは `build/integration-continuation-20260913/header-crc-command-state-h2-false-standalone`、
+`header-crc-command-state-h2-true-standalone`、`header-crc-command-state-h3-false-standalone`、
+`header-crc-command-state-h3-true-standalone` です。スクリプト SHA256 は
+`2C134DA897074DAB5C034D59D325DD276755E1725BB6089512CBD698F835B5CB` です。
+
+`test-header-crc-api-state.ps1` も、CRC不良後の Open／Find／Count／Check／Memory と後続追加の状態を、
+header level 2/3 × jm0/jm2 × warmup 無し／有りで各160、合計 **1,280 比較**完了しました。
+全8組で `160 Open/Find/Count/Check/Memory, owner-registration and subsequent-command state comparisons compatible`
+まで終了コード0に到達しました。各workspaceは原版／候補ケース320ディレクトリー、trace320、
+warmup 無しの書庫280、warmup 有りの書庫600、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。
+実行workspaceは `build/integration-continuation-20260913/header-crc-api-state-h2-jm0-false-standalone`、
+`header-crc-api-state-h2-jm0-true-standalone`、`header-crc-api-state-h2-jm2-false-standalone`、
+`header-crc-api-state-h2-jm2-true-standalone`、`header-crc-api-state-h3-jm0-false-standalone`、
+`header-crc-api-state-h3-jm0-true-standalone`、`header-crc-api-state-h3-jm2-false-standalone`、
+`header-crc-api-state-h3-jm2-true-standalone` です。スクリプト SHA256 は
+`E71A15FF37CB881C5C2CDF1E6854224E7B4861161D40B582630AFFCD2BCDF02E` です。
+
+`test-extraction-initial-progress.ps1` の標準範囲（size 0/1/13/64/98/99/100/101/128/255/280/1024/2048 ×
+jm0/jm2 × `t/p/e/x` × progress layout a32/w32/a64/w64）は **416 比較**を完了しました。
+`Extraction initial progress: 416 comparisons, 6752 exact callback/output/state snapshots compatible; extraction payloads matched`
+まで終了コード0で到達し、ケース832、trace832、seed書庫26、展開結果442、一時ファイル0、残留プロセス0を確認しました。
+実行workspaceは `build/integration-continuation-20260913/extraction-initial-progress-standalone` です。
+
+同スクリプトの header level 0・w64固定（size 0/99/100/101/2048 × jm0/jm2）も **40 比較**を完了し、
+`Extraction initial progress: 40 comparisons, 644 exact callback/output/state snapshots compatible; extraction payloads matched`
+まで終了コード0で到達しました。ケース80、trace80、seed書庫10、展開結果50、一時ファイル0、残留プロセス0を確認しています。
+実行workspaceは `build/integration-continuation-20260913/extraction-initial-progress-h0-standalone` です。
+
+さらに header level 0・jm0・lz4格納（size 0/99/100/101/2048 × `t/p/e/x` × progress layout 4）も **80 比較**を完了し、
+`Extraction initial progress: 80 comparisons, 1296 exact callback/output/state snapshots compatible; extraction payloads matched`
+まで終了コード0で到達しました。ケース160、trace160、seed書庫5、展開結果85、一時ファイル0、残留プロセス0を確認しています。
+実行workspaceは `build/integration-continuation-20260913/extraction-initial-progress-lz4-standalone` です。
+スクリプト SHA256 は3スライス共通で `076B653FF3EB192D9FC2E895D204150E949B06A6ADEA3E65DF179C99CAA7820F` です。
+
+`test-command-name-width.ps1` の command（`l/v/l -x1/t/e/x`）× name mode 0/1/2 × locale 1033/1041 ×
+UTF-8 0/1 × legacy/A/W の **216 条件**も完了しました。DesktopRunner 経由で一覧・展開名・本文・状態を比較し、
+`Command name width: 216 cases, 2952 exact output/state rows compatible` まで終了コード0で到達しました。
+実行workspaceは `build/integration-continuation-20260913/command-name-width-standalone`、ケース432、ログ866、
+書庫1、展開結果145、一時ファイル0、終了後の `CompatibilityTests.exe`／`DesktopRunner.exe` 残留0件を確認しています。
+スクリプト SHA256 は `B9BC70BE41BD506A74E18576FB54D16DFC5D4148DC7C06A9D8A59550F4FE5607` です。
+
+`test-decode-progress-state.ps1` の jm0/jm1/jm2/jm3/jm4/jmm12/jmm17/jmm19 × size 0/13/280/2048 ×
+`l/v/t/p/e/x` × progress layout 4 の **768 比較**も完了しました。最終出力は
+`Decode progress state: 768 read/add/check comparisons, 26384 exact callback/output/state snapshots compatible`
+で、終了コード0です。原版／候補trace1,536、書庫1,568、展開結果544、一時ファイル0、終了後の
+`CompatibilityTests.exe` 残留0件を確認しました。実行workspaceは
+`build/integration-continuation-20260913/decode-progress-state-standalone`、
+スクリプト SHA256 は `39A1EA447BA0660F7DBC53A58112D39F32E74FDC3486E06DCF603377BF18A860` です。
+
+`test-memory-progress-dialog.ps1` も単独DesktopRunner（各probe timeout 20秒）で完了しました。日本語／英語のUI構造・
+正常完了・取消・WM_QUIT **6 UI比較**、メモリ進捗・状態分離・3 MiB間隔・取消state **10 callback/取消比較**、
+容量不正 **3入力検証**がすべて通過し、最終出力は
+`Memory progress dialog: 6 UI comparisons, 10 exact callback/cancellation comparisons, and 3 input validations passed`、
+終了コード0です。実行workspaceは `build/integration-continuation-20260913/memory-progress-dialog-standalone`、
+入力書庫2、ログ2、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しました。
+スクリプト SHA256 は `350BC5B19056BF49C22679C27E1A876C8E563DA510232EFE47EE1665867CE612` です。
+
+`test-ratio-width.ps1` の圧縮／原サイズ境界（0、1、65/66、131/132、1376/1377、2048、65534/65535/65536/65537、
+128/0）**14 比較**も完了しました。`Ratio width: 14 metadata boundary comparisons, 2478 exact Find/getter/state rows compatible`
+まで終了コード0で到達し、trace28、書庫15、一時ファイル0、終了後の `CompatibilityTests.exe` 残留0件を確認しています。
+実行workspaceは `build/integration-continuation-20260913/ratio-width-standalone`、
+スクリプト SHA256 は `6E4A2C9ABC09C757C0999A45F60D5FEEE0478DAD3EC1761654AE53E5875BE2CF` です。
+
+`test-legacy-methods.ps1` の標準 legacy／LX1方式試験も完了しました。literal／境界／LX1 fixtureを用い、check **2,832**、
+全本文ガード **252**、legacy/A/Wコマンド継続 **1,008**、合計 **4,092 比較**を終了コード0で通過し、
+`Legacy methods: 4092 comparisons passed` に到達しました。実行workspaceは
+`build/integration-continuation-20260913/legacy-methods-standalone`、fixture書庫237、payload84、trace2,920、
+一時ファイル0、終了後の `CompatibilityTests.exe`／`DesktopRunner.exe` 残留0件を確認しています。
+スクリプト SHA256 は `F4A80BA00027760285F008BEFD3FA485888E593071650D96B5A6EFFEBB418305` です。
+
+`test-pmarc-check.ps1` も literal／境界のPMARC試料 **134 書庫**（fixture27＋boundary99）を、
+DesktopRunner 30秒制限下で check mode／API 192組すべて比較しました。最終出力は
+`PMarc check: 134 fixtures, 25728 exact original mode/API result/error/system comparisons passed`、終了コード0です。
+実行workspaceは `build/integration-continuation-20260913/pmarc-check-standalone`、書庫135（seed含む）、payload27、
+出力268、ディレクトリー3、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `A44D5AC8C7D30D25FE5152E56838B15D2A0B64DB8110E83540B5BB6D2C4C36C7` です。
+
+`test-memory-methods.ps1` も、PMARC fixtureの方式別20書庫×5プロファイル（100観測）と、短いヘッダ尾部45書庫を
+DesktopRunner 30秒制限付きで比較しました。最終出力は
+`Memory methods: 20 archives/100 profiles/560 returns and 45 header-tail archives/270 returns; all 830 records and callback traces match original`、
+終了コード0です。実行workspaceは `build/integration-continuation-20260913/memory-methods-standalone`、書庫45、
+trace530、`comparisons.tsv` 1、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `0856636FA8B26E1826F8AE0804C7EB217249294384491726CE5CE0F117865D5F` です。
+
+`test-command-methods.ps1` も、PMARC/LH0の print/test **324 比較**と list/test raw-tail **72 比較**、合計 **396 比較**を完了しました。
+出力・通知・終端・rawバッファガードを含め、最終出力
+`Command methods: 324 PMarc/LH0 print/test and 72 list/test raw-tail comparisons passed; all 396 returns, buffers, and callback traces match original`
+まで終了コード0で到達しました。実行workspaceは `build/integration-continuation-20260913/command-methods-standalone`、
+比較表1、trace792、raw-tail144、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `EE4AC5CAB67A4DDDA5F03049B5CDBD0559D79CF246644EB24327A41D562D393C` です。
+
+`test-pmarc-extraction.ps1` も、PMARC/LH0正常・欠落・拒否・既存・name mode／言語境界を含む **112 比較**を完了しました。
+`PMarc extraction: 112 exact comparisons, output retention/body and exclusive-open guards passed` まで終了コード0で到達し、
+probe224、比較表1、計画表1、展開結果128、差分記録0、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe`
+残留0件を確認しています。実行workspaceは `build/integration-continuation-20260913/pmarc-extraction-standalone`、
+スクリプト SHA256 は `425D47A0E864F6E75124CD12EB1FB0F9C461EC27AF45DFB9BB5E86C18368D0B8` です。
+
+`test-command-initial-headers.ps1` も、30種類の短い／不正先頭入力について raw buffer 3幅・API3・`l/v/t/p` と
+状態選択を比較する **1,368 条件**を完了しました。最終出力は
+`Initial command headers: 30 fixtures, 1368 exact output/guard/state/enum/progress comparisons compatible`、終了コード0です。
+実行workspaceは `build/integration-continuation-20260913/command-initial-headers-standalone`、入力30、trace2,736、
+観測表1、差分0、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `279D691D079CE12002F7C0CE0CDB3492B01E3DBA1C3D7ED790055F829CA29950` です。
+
+`test-command-crc.ps1` も、lh0/lz4/lz5/lzsの正常・本文CRC異常・CRCなし・短縮入力、重複／PMARC混在、
+level2 ascii／日本語3項目を12プロファイルで比較する **516 条件**を完了しました。
+`Command CRC: 516 exact normal/CRC/short-body comparisons passed` まで終了コード0で到達し、入力書庫88、
+trace1,032、観測表1、差分0、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+実行workspaceは `build/integration-continuation-20260913/command-crc-standalone`、
+スクリプト SHA256 は `9904C2B61D5AF71BBD64DA68AC26C45D423DC1948B3EEB6A81126690DAA18C1F` です。
+
+`test-command-body-errors.ps1` も、短い本文・末尾欠落 **60**、重度切断 **54**、focused CRC／`p/l/v` **17** の
+合計 **131 比較**を完了しました。`Command body errors: 60 boundary, 54 severe, and 17 focused comparisons exact`
+まで終了コード0で到達し、書庫183、trace262、観測表1、差分0、一時ファイル0、終了後の
+`DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。実行workspaceは
+`build/integration-continuation-20260913/command-body-errors-standalone`、
+スクリプト SHA256 は `181582A58706C72E52999158BEE9AD7BA1AA79C3454D6CB23947E9A05C5F015A` です。
+
+`test-command-short-headers.ps1` の level0〜3短ヘッダー生成・`l/t`読取も **76 比較**を完了し、
+`Short command headers: 76 exact comparisons and immutable-input guards passed` まで終了コード0で到達しました。
+実行workspaceは `build/integration-continuation-20260913/command-short-headers-standalone`、書庫42、probeログ310、
+観測表1、差分0、一時ファイル0、残留プロセス0件です。スクリプト SHA256 は
+`654F8A59A5B858F21161660FE6290FEF775A4E5D0BE4644AC25B5FA5C7BF6429` です。
+
+同fixtureを用いた `test-command-short-header-state.ps1` の level0〜3 × variant5 × command4 × layout4 × warmup2 の
+**640 条件**も、`Short-header state: 640 read/add/check sequences and immutable-input guards passed` まで終了コード0で完了しました。
+実行workspaceは `build/integration-continuation-20260913/command-short-header-state-standalone`、trace.log1,280、
+stderrログ1,280、invocation JSON1,280、`added.txt`1,280、`new.lzh`1,280、warmup書庫640、観測表1、差分0、
+一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。スクリプト SHA256 は
+`079F48485DED908EC58F236F89022C302896176C8E3623FAD2C486E76D59AD79` です。
+
+`test-level3-body-errors.ps1` の標準範囲（ascii／日本語 × jm0/jm2、control／CRC／終端／header-cut／body-cut、
+`l/v/t/p`）は **480 比較**を完了し、`Level-3 body errors: 480 exact comparisons and immutable-input guards passed`
+まで終了コード0で到達しました。実行workspaceは `build/integration-continuation-20260913/level3-body-errors-standalone`、
+書庫120、ログ1,920、invocation JSON960、観測表1、差分0、一時ファイル0、残留プロセス0件です。
+
+同スクリプトのascii・control／tail／header-cut限定、rawプロファイル9種の **504 比較**も完了しました。
+実行workspaceは `build/integration-continuation-20260913/level3-body-raw-standalone`、書庫14、ログ2,016、
+invocation JSON1,008、観測表1、差分0、一時ファイル0、残留プロセス0件です。
+
+さらに `p` 専用の raw-W-missing／raw-W-empty **28 比較**も完了しました。実行workspaceは
+`build/integration-continuation-20260913/level3-body-empty-raw-standalone`、書庫14、ログ112、invocation JSON56、
+観測表1、差分0、一時ファイル0、残留プロセス0件です。3スライス共通のスクリプト SHA256 は
+`FD0174F83F3D0F85F1B77697FE5B853B9D2E8B29D0B14297B1E88732A68E9ED2` です。
+
+`test-extraction-header-errors.ps1` の標準範囲（CRC／short／initial／missing-crc、ascii／日本語 × jm0/jm2、
+`e/x` × 14プロファイル）も **3,360 比較**を完了しました。最終出力は
+`Extraction header errors: 3360 exact comparisons, buffer and immutable-input guards passed`、終了コード0です。
+実行workspaceは `build/integration-continuation-20260913/extraction-header-errors-standalone`、effects6,720、
+ログ13,440、invocation JSON6,720、観測表1、差分0、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe`
+残留0件を確認しています。スクリプト SHA256 は `47CEF4A7D4F57B51E3B46086E317098451C28B495D26590690D04C1A10EC07E5` です。
+
+`test-extraction-header-errors.ps1` のascii/jm0・name mode 0/2限定（CRC4 fixture × `e/x` × 14プロファイル）は
+**224 比較**を完了し、effects448、ログ896、invocation JSON448、観測表1、差分0、一時物0、残留プロセス0を確認しました。
+実行workspaceは `build/integration-continuation-20260913/extraction-header-modes-standalone` です（終了コード0）。
+
+`test-command-short-header-state.ps1` の展開専用（level0〜3 × variant5 × `e/x` × layout4 × warmup2）も
+**320 比較**を完了し、`Short-header state: 320 read/add/check sequences and immutable-input guards passed` まで終了コード0で到達しました。
+実行workspaceは `build/integration-continuation-20260913/extraction-short-header-state-standalone`、effects640、
+invocation JSON640、ログ1,280、書庫960、観測表1、差分0、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe`
+残留0件です。スクリプト SHA256 は `079F48485DED908EC58F236F89022C302896176C8E3623FAD2C486E76D59AD79` です。
+
+`test-extraction-header-release.ps1` の正常level2書庫（`t/p/e/x` × 全件／missing × abort -1/0）は **16 系列**、
+64排他オープンガードを完了しました。`Extraction header release: 16 exact command sequences and 64 exclusive-open guards passed`
+まで終了コード0で到達し、実行workspaceは `build/integration-continuation-20260913/extraction-header-release-standalone`、
+effects32、ログ64、invocation JSON32、書庫32、差分0、一時物0、残留プロセス0件です。
+
+同スクリプトのlevel3 body切断・UnicodeMode=0・Wide出力名（`e/x` × 全件／missing × abort -1/0）も **8 系列**、
+32排他オープンガードを完了しました。実行workspaceは `build/integration-continuation-20260913/extraction-body-release-standalone`、
+effects16、ログ32、invocation JSON16、書庫16、差分0、一時物0、残留プロセス0件です。2スライス共通のスクリプト SHA256 は
+`E592A3357046C57976D405DD66B27D4AAABB04BB88BBD79FDEEEBAB61110CF46` です。
+
+`test-command-filter-progress.ps1` の4入力 × `l/v/t/p` × name mode3 × API3 × filter4による **576 選択／進捗比較**と、
+開始キャンセル **24 比較**、合計 **600 条件**を完了しました。最終出力は
+`Command filter: 576 selection/progress and 24 beginning-cancellation comparisons compatible`、終了コード0です。
+実行workspaceは `build/integration-continuation-20260913/command-filter-progress-standalone`、trace1,200、観測表1、
+差分0、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `F00E63294133615723AFB23D4B25C8A4019AEC9AEF008E3674D62CCF0798BC1C` です。
+
+`test-lz5-compression.ps1` は①の完全互換確認として `PayloadDisplay Normal` で実行し、legacy/A/W × enum/progress の
+**156 body pairs**を完了しました。99完全一致、初回未使用領域のみ除外57、独立LZ5デコード108、ゼロ初期スロット261、
+直前パケットスロット159、本文／ガードAPI **1,872件**が通過し、終了コード0です。実行workspaceは
+`build/integration-continuation-20260913/lz5-compression-normal-standalone`、書庫312、入力312、commands12、
+本文ログ624、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `340DD2E8A9F22A0D6CFF418F7D08780F299211EE9AE903FDC6C54F51D84E9D5B` です。
+
+`test-lh3-compression.ps1` は①の完全互換確認として `PayloadDisplay Normal` で実行し、legacy/A/W × 12仕様の
+**36 method/body/token pairs**を完了しました。安全な単一木修正18件、動的木本文の完全一致6件、複数ブロック6件、
+本文／ガードAPI **216件**が通過し、終了コード0です。実行workspaceは
+`build/integration-continuation-20260913/lh3-compression-normal-standalone`、書庫72、入力72、コマンド記録6、
+本文ログ72（216行）、一時ファイル0、終了後の `DesktopRunner.exe`／`CompatibilityTests.exe` 残留0件を確認しています。
+スクリプト SHA256 は `C843EC5E1112F28777988E50B2A797B4E24D846E0CAE72DE7B8031F23D687A1C`、候補DLL SHA256 は
+`9D2146CC75D23BDD4DA400D6592A0FE8B5CF706383CDF4CEB517416B78CF2DF8` です。
+
+`test-lh3-abort-recovery.ps1` はlegacy/A/Wそれぞれで、LH3本文の途中キャンセルを **34回**連続実行した後に
+再開圧縮を確認しました。結果105行（中断102、再開3）、私有メモリ増分は0/4,096/0 bytes、再開書庫3、
+本文／ガード9件がすべて一致し、未完成の `abort-*.lzh` と一時ファイル、終了後の
+`DesktopRunner.exe`／`CompatibilityTests.exe` 残留はいずれも0件、終了コード0です。実行workspaceは
+`build/integration-continuation-20260913/lh3-abort-recovery-standalone`（ファイル12、ディレクトリー3）です。
+スクリプト SHA256 は `22C16A63B6FCDCD715C9F6FEDAE7E76FFDCC692150BB087C091C6F8D52CE1972` です。
+
+`test-compression-parent-paths.ps1` の親相対パス検証で、統合断片の最後に残っていた
+`recursive-deep`・locale=1041・UnicodeMode=W・command=f の oracle/reimplementation 2ケースを単独再実行し、
+**12比較**（search/read、bytes、errors、working-directory）を終了コード0で完了しました。出力は
+`Compression parent paths: 12 A/W/legacy commands=f, search/read, bytes, errors, working-directory comparisons passed`
+（progress=False、enum=w64、MoveFile access-denied retry=0）です。実行workspaceは
+`build/integration-continuation-20260913/compression-parent-paths-missing-wf-standalone`、caseディレクトリー2、
+結果2、ファイル24、payload／一時ファイル0、残留0件です。
+
+`test-progress-directory-normalization.ps1` は、現行ソース7スクリプトの実際の置換式をASTから抽出し、
+引用欄内の `,source=` 保持、`name`／`dest`／`owner` の差分保持、未完了引用欄の不変性を **70チェック**確認しました。
+最終出力は `DIRECTORY normalization: 70 quoted-field and difference-preservation checks passed`、終了コード0です。
+スクリプト SHA256 は `EAB71EB236689389C83E23FD0B6DC49C82BE86EB6F5B0B587AD373E88E5C0CAA` です。
+
+`test-command-missing-crc.ps1` は `lh0-no-crc`／`lh0-good`／`pm0-9` を連結した4並びを、`l/v/t/p` × legacy/A/W ×
+raw/all/missing の **144比較**で oracle と照合しました。最終観測表は144行、差分0、書庫4、差分ファイル0、
+一時ファイル0、残留プロセス0で、終了コード0です。実行workspaceは
+`build/integration-continuation-20260913/command-missing-crc-standalone`、スクリプト SHA256 は
+`9DE7C03AAAF9C61AFB3C7921F25ACC5AB2BCB7EDEE05C57741CE5979EA3E1B79` です。
+
+`test-dictionaries.ps1` は辞書幅・API（W/A/memoryA/memoryW）・Unicode一時パス・`-e0`・無効指定を含む
+**51 method/API/Unicode cases**を実行し、oracle/candidate相互展開 **236件**、保持DLL状態系列2、失敗0を確認しました。
+終了出力は `Dictionaries: 51 method/API/Unicode cases, 236 successful cross-extractions, 2 retained-DLL state sequences, 0 failed cases`、
+終了コード0です。実行workspaceは `build/integration-continuation-20260913/dictionaries-standalone`、
+ファイル512、ディレクトリー376、書庫118、Unicode一時ディレクトリー4（内容0）、残留プロセス0件です。
+スクリプト SHA256 は `A741A6AA4888DF5EE010999938FF6BBDBBFECF54E3724208B2796B6AD28CE5AE` です。
+
+`test-attributes.ps1` はメモリ選択 fixture を基準に属性・API・選択・callback・進捗・復元を oracle と照合し、
+**172書庫、1,032 A/W metadata/memory snapshots、688 enum attribute fields、288 A/W restored-file cases、
+600 progress snapshots、288 selection/callback cases、36 non-extraction cases**を終了コード0で完了しました。
+実行workspaceは `build/integration-continuation-20260913/attributes-standalone`、書庫172、ファイル804、
+ディレクトリー1,304、差分0、一時物0、残留プロセス0件です。enum 用 `os-77-attr-33-level-2-mode--1.lzh` も生成済みです。
+スクリプト SHA256 は `79B462808FA972EA959807A8A8980DF8235152989A01019C031A7DCCCF804DB7` です。
+
+`test-enum-paths.ps1` の paths 範囲（**192条件**）、codepages 範囲（locale=1033/1041 × UnicodeMode=0/1、
+**72/96/72/96条件**）、progress 範囲（ProgressMode=0/2、各 **384条件**）を、いずれも oracle/candidate の
+callback・ログ・展開先・ファイル効果まで照合しました。全9スライスは終了コード0、差分0、一時物0、残留プロセス0です。
+workspace は `build/integration-continuation-20260913/enum-paths-standalone`、
+`enum-encoding-{1033,1041}-{false,true}-standalone`、`enum-progress-mode-{0,2}-standalone` に分離しています。
+スクリプト SHA256 は `A6662A82AB9E8C7F3779963B379F497FA052DE569E4B20FBD009B8999C5C97A1` です。
+
+`test-open-state.ps1` は `@valid`／NULL／空・不正・ディレクトリー・wildcard・欠落パスなど11入力、API6、
+owner有無、retry/settings/close/guard/API variant/compress-state等の状態遷移を比較し、除外条件を除く
+**1,176 failure/held-handle/API/owner sequences、12,564 state snapshots**を終了コード0で完了しました。
+実行workspaceは `build/integration-continuation-20260913/open-state-standalone`（入力2、差分0、一時物0、残留プロセス0件）、
+スクリプト SHA256 は `F74B3028535E3AEAACFA2B786105159EFFA7CB2920159B7319364D954D19A653` です。
+
+`test-archive-paths.ps1` は相対・絶対・冗長区切り・引用・欠落・Unicode名を含む **72 path/encoding cases** と
+**20,952 open/name/buffer/state snapshots**を oracle と照合しました。続く Unicode fixture の getter buffer/state
+**6,336行**、候補DLLのサイズ0安全性 **144件**も終了コード0で通過しています。実行workspaceは
+`build/integration-continuation-20260913/archive-paths-standalone`（書庫4、ディレクトリー2、差分0、一時物0、残留0件）、
+スクリプト SHA256 は `127065933925ADE6F3C1505D6D31AE3AC80E1EAFDB8268B830DA83D4C424CAC2` です。
+
+`test-config-registry.ps1` の All 範囲を実行し、Configuration **42**、overwrite **270**、archive search **11,440**、
+ignore-saved-settings **5,720**、memory selection **96**、Unicode memory **36**、Paths **190**、Lifetime **76**、
+Unicode extraction **8**系列を oracle と照合しました。全系列終了コード0、設定差分0です。実行workspaceは
+`build/integration-continuation-20260913/config-registry-standalone`（ファイル5,024、ディレクトリー2,606、差分0、
+一時物0、レジストリ残留ファイル0、残留プロセス0件）、スクリプト SHA256 は
+`6FB2502A7B64F0DA02187706A5FDA657A888BA62A14E9AB17B5C15F12BE46B68` です。
+
+`test-rewrite-comment-selection.ps1` は単一／複数メンバー、未選択／選択、欠落書庫、除外、コメント欠落、失敗後回復を
+legacy/A/W × 12条件の **36比較**で確認しました。各比較で result／compat-error／system-error／Win32、書庫の内容・作成日時・
+一時書庫残留を oracle と照合し、終了コード0で全件通過しています。実行workspaceは
+`build/integration-continuation-20260913/rewrite-comment-selection-standalone`（ファイル244、ディレクトリー113、
+results.json 1、差分0、一時物0、残留プロセス0件）、スクリプト SHA256 は
+`B2380895D11849E998BF08A3FA02161BA5FB4857825AE7C2D963CFEB1A325850` です。
+
+`test-unicode-header-paths.ps1` は Unicode 拡張ヘッダーの plain／日本語／非BMP／深い階層名5種について、
+locale2 × UTF-8 2 × API2 × layout2 × command2 × new/overwrite/number 3 の **480 extraction/overwrite/number比較**を完了しました。
+さらに候補専用の親階層脱出ガード **24件**、comment/delete のログ・書庫効果 **32件**、複数メンバー状態持越し **108件**も
+oracle と照合し、全て終了コード0です。実行workspaceは `build/integration-continuation-20260913/unicode-header-paths-standalone`
+（ファイル1,665、ディレクトリー3,162、書庫41、差分0、一時物0、残留プロセス0件）、スクリプト SHA256 は
+`118DFBA6BFED89923A5C05FDF7C4716A00BDC37EE6A061E2F346AEE10B397FAE` です。
+
+`test-extraction-times.ps1` は固定日時の Unicode level-2 fixture を使い、Files 範囲 **1,296比較**（9日時mask、
+通常／Wide／採番／skip／overwrite）、Directories 範囲 **180比較**、Selection 範囲 **128比較**（選択・既存長・read-only）を
+oracle と照合しました。3スライスとも終了コード0、差分0、一時物0、残留プロセス0です。実行workspaceは
+`build/integration-continuation-20260913/extraction-times-files-standalone`（ファイル3,249、書庫9）、
+`extraction-times-directories-standalone`（ファイル10、書庫10）、`extraction-times-selection-standalone`（ファイル321、書庫1）です。
+スクリプト SHA256 は `8E94F228EE18AED7D35F12E99EF8DF92179597E66DFDDB6683DE11EE4FB2C3ED` です。
+
+`test-memory-failure.ps1` は破損・切断・CRC・異常ヘッダー・圧縮本文の19書庫について、wide2 × selection3 × capacity4 の
+**456独立プローブ**を実行し、oracle/candidate の failure行、再利用状態、終了コードを全件一致させました。続く共有ヘッダー境界
+7書庫でも **168独立プローブ**を完了し、いずれも失敗0です。実行workspaceは
+`build/integration-continuation-20260913/memory-failure-cases-standalone`（summary456行、ログ912、ファイル913、
+ディレクトリー456）と `memory-failure-boundaries-standalone`（summary168行、ログ336、ファイル337、ディレクトリー168）で、
+差分0、一時物0、残留プロセス0です。スクリプト SHA256 は
+`B5CBFA45D5DF09A32DF9EB6D057C38C63EF059CDE917BBC4BF6CA7F5B9D65FBD` です。
+
+`test-dwm-monitor.ps1` の実DWM/WPRを使わない契約試験（CPU算出、連続高負荷判定、CIM/WPR失敗・timeout・trace lifecycle、
+子プロセスのready/stop handshake）を mock 環境で実行し、**50 assertions**を終了コード0で通過しました。試験専用の
+`build/dwm-monitor-test-*` はスクリプトの範囲検査後に削除されています。なお、別途実DWM統合監視では環境側の持続高負荷
+（Peak CPU 201.254%、138サンプル）により安全停止した既存summaryがあり、これは契約試験の成功とは分離して扱います。
+スクリプト SHA256 は `2BD611C7C2B9592831325926777ED1277E03E8AA78FD51564B01E239CD07CEFC` です。
+
+`test-command-filter-progress.ps1` は PM0／LH0／混在本文／level-2 の4書庫について、コマンド `l/v/t/p`、
+`-n0/-n1/-n2`、legacy/A/W、全選択・欠落・単一・拒否を組み合わせた選択・列挙・ログ・進捗 **576比較**と、
+項目開始キャンセル **24比較**（合計600）を実行しました。oracle/candidate の全行が一致し、差分ファイル0、
+終了コード0、入力書庫のハッシュ変化なしです。実行workspaceは
+`build/integration-continuation-20260914/command-filter-progress-20260914-1`（出力1,201ファイル、差分0）です。
+スクリプト SHA256 は `F00E63294133615723AFB23D4B25C8A4019AEC9AEF008E3674D62CCF0798BC1C` です。

@@ -83,7 +83,7 @@ $invalidResponses=@(
     @{Response='file:0000:1';Error='invalid dialog filename character'},
     @{Response='file:00720065006C00610074006900760065:1';Error='dialog filename requires an absolute path'},
     @{Response=('file:'+('0041'*512)+':1');Error='invalid dialog filename encoding'},
-    @{Response='file:0043003A005C0061:22:1';Error='filename cannot select a radio'}
+    @{Response='file:0043003A005C0061:22:1';Error='filename/text cannot select a radio'}
 )
 foreach($invalid in $invalidResponses){
     $rows=@(& $RunnerPath --timeout-seconds 10 $TestProgram --registry '' --command-dialog-probe `

@@ -13,6 +13,7 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $desktopRunner = Join-Path $repositoryRoot 'artifacts\Release\DesktopRunner.exe'
 if (-not $IsolatedChild) {
+    & (Join-Path $PSScriptRoot 'test-dwm-monitor.ps1')
     & (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release
     $shell = (Get-Process -Id $PID).Path
     $childArguments = @('-NoProfile', '-File', $PSCommandPath, '-IsolatedChild')
@@ -21,8 +22,11 @@ if (-not $IsolatedChild) {
     $childArguments += @('-CrcDialogCoverage', $CrcDialogCoverage)
     $childArguments += @('-CodecPayloadDisplay', $CodecPayloadDisplay)
     Write-Host 'Tests run on a separate, non-visible desktop.'
-    & $desktopRunner $shell @childArguments
-    if ($LASTEXITCODE -ne 0) { throw "隔離した検証に失敗しました (exit $LASTEXITCODE)。" }
+    . (Join-Path $PSScriptRoot 'invoke-dwm-monitored-test.ps1')
+    Invoke-DwmMonitoredTest -OutputRoot (Join-Path $repositoryRoot 'build\dwm-monitor') -TestAction {
+        & $desktopRunner $shell @childArguments
+        if ($LASTEXITCODE -ne 0) { throw "隔離した検証に失敗しました (exit $LASTEXITCODE)。" }
+    }
     return
 }
 & $desktopRunner --require-isolated
@@ -49,7 +53,17 @@ if (-not (Test-Path -LiteralPath $testProgram)) {
 
 if (Test-Path -LiteralPath $oracle) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    $installationPath = @(& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 } | Select-Object -First 1)
+    if (-not $installationPath) {
+        # 更新途中は vswhere の要求付き検索が空でも、既存の x86 dumpbin は利用できる。
+        # 同じインストールの実体を再探索し、見つからない場合だけ ABI 検査を失敗させる。
+        $installationPath = @(& $vswhere -all -products * -property installationPath |
+            Where-Object { $_ -and $_.Trim().Length -gt 0 } | Select-Object -First 1)
+    }
+    if (-not $installationPath) {
+        throw 'Visual Studio のインストール先を特定できません。'
+    }
     $dumpbin = Get-ChildItem -LiteralPath (Join-Path $installationPath 'VC\Tools\MSVC') -Directory |
         Sort-Object Name -Descending |
         ForEach-Object { Join-Path $_.FullName 'bin\Hostx86\x86\dumpbin.exe' } |
@@ -201,13 +215,30 @@ try {
         }
         Write-Host 'Command output: l/v/t/p formatting, payload capture, and header warnings compatible'
 
-        # 既定 UI の比較なので -gm1 は付けず、非表示のエラー待ちは失敗として打ち切る。
-        $oracleActions = @(& $desktopRunner --timeout-seconds 120 $testProgram --registry '' `
-            --action-output-probe $oracle (Join-Path $integrationRoot 'actions-oracle') 2>&1 |
-            ForEach-Object { "$_" } | Tee-Object -FilePath (Join-Path $integrationRoot 'actions-oracle.log'))
-        $oracleActionsExit = $LASTEXITCODE
+        # 既定 UI の比較なので -gm1 は付けない。原版の既存書庫置換では、
+        # MoveFile の共有待ちが一時的に 120 秒上限へ達することがあるため、
+        # oracle だけを新しい作業領域で最大 3 回まで再試行する。候補側と比較条件は変えない。
+        $oracleActions = @()
+        $oracleActionsExit = 124
+        for ($actionAttempt = 0; $actionAttempt -lt 3; $actionAttempt++) {
+            $actionSubdirectory = if ($actionAttempt -eq 0) {
+                'actions-oracle'
+            } else { "actions-oracle-attempt$actionAttempt" }
+            $actionLogName = if ($actionAttempt -eq 0) {
+                'actions-oracle.log'
+            } else { "actions-oracle-attempt$actionAttempt.log" }
+            $actionRoot = Join-Path $integrationRoot $actionSubdirectory
+            $actionLog = Join-Path $integrationRoot $actionLogName
+            $oracleActions = @(& $desktopRunner --timeout-seconds 120 $testProgram --registry '' `
+                --action-output-probe $oracle $actionRoot 2>&1 |
+                ForEach-Object { "$_" } | Tee-Object -FilePath $actionLog)
+            $oracleActionsExit = $LASTEXITCODE
+            if ($oracleActionsExit -eq 0) { break }
+            if ($oracleActionsExit -ne 124) { break }
+            Write-Host "原版 action-output-probe がタイムアウトしたため再試行します ($($actionAttempt + 1)/3)。ログ: $actionLog"
+        }
         if ($oracleActionsExit -ne 0) {
-            throw "原版の更新・展開系試験が終了できませんでした (exit $oracleActionsExit)。actions-oracle.log を確認してください。"
+            throw "原版の更新・展開系試験が終了できませんでした (exit $oracleActionsExit)。actions-oracle*.log を確認してください。"
         }
         $candidateActions = @(& $desktopRunner --timeout-seconds 120 $testProgram --registry '' `
             --action-output-probe $candidate (Join-Path $integrationRoot 'actions-candidate') 2>&1 |
@@ -228,9 +259,24 @@ try {
         }
         Write-Host 'Command output: a/u/f/m/d/e/x results, formatting, and effects compatible'
 
-        $oracleMatching = @(& $testProgram --match-options-probe $oracle `
-            (Join-Path $integrationRoot 'matching-oracle'))
-        $oracleMatchingExit = $LASTEXITCODE
+        # 原版の既存書庫置換では、共有中の一時ファイルへ MoveFile が一時的に失敗することがある。
+        # 比較対象を変えず、原版だけ新しい作業領域で最大 5 回再試行する。
+        $oracleMatching = @()
+        $oracleMatchingExit = 1
+        for ($matchingAttempt = 0; $matchingAttempt -lt 6; $matchingAttempt++) {
+            $matchingSubdirectory = if ($matchingAttempt -eq 0) {
+                'matching-oracle'
+            } else { "matching-oracle-attempt$matchingAttempt" }
+            $oracleMatching = @(& $testProgram --match-options-probe $oracle `
+                (Join-Path $integrationRoot $matchingSubdirectory))
+            $oracleMatchingExit = $LASTEXITCODE
+            $matchingMoveDenied = @($oracleMatching | Where-Object {
+                $_ -match 'result=32792' -and $_ -match 'MoveFile' -and $_ -match 'system=5'
+            }).Count -gt 0
+            if (!$matchingMoveDenied -or $matchingAttempt -ge 5) { break }
+            Write-Host "原版 match-options-probe が MoveFile 共有違反になったため再試行します ($($matchingAttempt + 1)/6)。"
+            Start-Sleep -Milliseconds 100
+        }
         $candidateMatching = @(& $testProgram --match-options-probe $candidate `
             (Join-Path $integrationRoot 'matching-candidate'))
         $candidateMatchingExit = $LASTEXITCODE
@@ -296,6 +342,10 @@ try {
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-order')
         & (Join-Path $PSScriptRoot 'test-thread-priority.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'thread-priority') | Out-Null
+        & (Join-Path $PSScriptRoot 'test-signal-handler.ps1') -TestProgram $testProgram `
+            -Candidate $candidate -Workspace (Join-Path $integrationRoot 'signal-handler')
+        & (Join-Path $PSScriptRoot 'test-concurrent-entry.ps1') -TestProgram $testProgram `
+            -Candidate $candidate -Workspace (Join-Path $integrationRoot 'concurrent-entry')
         # FRESH 拒否時のデータ保持は上の安全性試験、通常の状態保持は原版との比較で確認する。
         & (Join-Path $PSScriptRoot 'test-enum-state.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'enum-state') | Out-Null
@@ -354,6 +404,40 @@ try {
         & (Join-Path $PSScriptRoot 'test-wide-noncp932-commands.ps1') -TestProgram $testProgram `
             -Runner $desktopRunner -Oracle $oracle -Candidate $candidate `
             -Workspace (Join-Path $integrationRoot 'wide-noncp932-commands')
+        & (Join-Path $PSScriptRoot 'test-wide-compression-noncp932.ps1') -TestProgram $testProgram `
+            -Runner $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'wide-compression-noncp932')
+        & (Join-Path $PSScriptRoot 'test-wide-compression-selection.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'wide-compression-selection')
+        & (Join-Path $PSScriptRoot 'test-compression-temp-paths.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-temp-paths')
+        & (Join-Path $PSScriptRoot 'test-compression-temp-paths.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-temp-paths-ansi-wide') `
+            -TempNames japanese -UnicodeModes 0 -Apis W -ArchiveFileName 'Ā.lzh' -ProgressLayouts a32,a64
+        & (Join-Path $PSScriptRoot 'test-wide-wildcard-switches.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'wide-wildcard-switches')
+        & (Join-Path $PSScriptRoot 'test-compression-commit-failure.ps1') -TestProgram $testProgram `
+            -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-commit-failure')
+        & (Join-Path $PSScriptRoot 'probe-compression-commit-errors.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-commit-errors')
+        & (Join-Path $PSScriptRoot 'test-compression-implicit-update.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-implicit-update')
+        & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-code-pages-wide-noncp932') `
+            -Apis W -Layouts none -CodePages 932 -HeaderLevels 0,1,2 -UnicodeModes 0 `
+            -MemberName 'Ā.txt' -Locale 1041 -ArchiveFileName 'archive.lzh'
+        & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-code-pages-wide-noncp932-wildcard') `
+            -Apis W -Layouts none -CodePages 932 -HeaderLevels 0,1,2 -UnicodeModes 0 `
+            -MemberName 'Ā.txt' -Locale 1041 -ArchiveFileName 'archive.lzh' -UseSourceWildcard
         & (Join-Path $PSScriptRoot 'test-compression-code-pages.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'compression-code-pages-english-ansi') `
             -UnicodeModes 0 -Locale 1033 -Layouts none -CodePages 932,65001,1252 -HeaderLevels 0,1,2 `
@@ -492,7 +576,10 @@ try {
             -Repeat 3 -Workspace (Join-Path $integrationRoot 'compression-cancel-matrix')
         & (Join-Path $PSScriptRoot 'test-compression-progress-cancel.ps1') @compressionCancelArguments `
             -Commands a,u,m -Cases open,begin1,process1,finish,search -Profiles w64 -NewArchive -Repeat 3 `
-            -Workspace (Join-Path $integrationRoot 'compression-cancel-new')
+            -Workspace (Join-Path $integrationRoot 'compression-cancel-new') -AuditPublication
+        & (Join-Path $PSScriptRoot 'test-compression-progress-cancel.ps1') @compressionCancelArguments `
+            -Commands a -Cases open,process1,finish -Profiles w64 -Methods 0 -UseMappedFile 0 `
+            -FileBufferSize 8192 -InputSize 8119 -NewArchive -Repeat 1 -Workspace (Join-Path $integrationRoot 'compression-cancel-buffer-window') -AuditPublication
         & (Join-Path $PSScriptRoot 'test-compression-progress-cancel.ps1') @compressionCancelArguments `
             -Cases begin2,finish -Methods 0 -SourceDirectoryName ソース `
             -Workspace (Join-Path $integrationRoot 'compression-cancel-japanese-paths')
@@ -585,6 +672,12 @@ try {
         & (Join-Path $PSScriptRoot 'test-create-failure.ps1') -TestProgram $testProgram `
             -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W -EnumLayout none `
             -CaseNames skip,stop1 -Workspace (Join-Path $integrationRoot 'create-failure-noenum')
+        & (Join-Path $PSScriptRoot 'test-compression-create-parent-failure.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'compression-create-parent-failure')
+        & (Join-Path $PSScriptRoot 'test-compression-create-parent-failure.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate -Apis W -UnicodeModes 1 `
+            -CaseNames missing-parent -Workspace (Join-Path $integrationRoot 'compression-create-parent-failure-wide1')
         & (Join-Path $PSScriptRoot 'test-preparation-failure.ps1') -TestProgram $testProgram `
             -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
             -Workspace (Join-Path $integrationRoot 'preparation-failure')
@@ -845,6 +938,15 @@ try {
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'rewrite-levels')
         & (Join-Path $PSScriptRoot 'test-rewrite-times.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'rewrite-times')
+        & (Join-Path $PSScriptRoot 'test-rewrite-creation-time.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'rewrite-creation-time')
+        & (Join-Path $PSScriptRoot 'test-rewrite-comment-selection.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'rewrite-comment-selection')
+        & (Join-Path $PSScriptRoot 'test-rewrite-comment-dialog.ps1') -TestProgram $testProgram `
+            -RunnerPath $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -Workspace (Join-Path $integrationRoot 'rewrite-comment-dialog')
         & (Join-Path $PSScriptRoot 'test-rewrite-join-existing.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -FixturesRoot (Join-Path $integrationRoot 'rewrite-levels') `
             -Workspace (Join-Path $integrationRoot 'rewrite-join-existing')
@@ -1131,6 +1233,9 @@ try {
         & (Join-Path $PSScriptRoot 'test-config-registry.ps1') -TestProgram $testProgram `
             -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'registry') `
             -Archive $memorySelectionArchive
+        & (Join-Path $PSScriptRoot 'test-list-new-only.ps1') -TestProgram $testProgram `
+            -Oracle $oracle -Candidate $candidate -Workspace (Join-Path $integrationRoot 'list-new-only') `
+            -Archive $memorySelectionArchive
         foreach ($memoryArchive in @($memorySelectionArchive,
                 (Join-Path $memoryCompressedRoot 'selection.lzh'), $findUnicodeArchive)) {
             foreach ($callbackMode in @('none', 'a32', 'w32', 'a64', 'w64', 'reject', 'rename')) {
@@ -1144,6 +1249,7 @@ try {
                     $description = $memoryDifference | Select-Object -First 12 | Out-String
                     throw "メモリ展開 ($callbackMode, $memoryArchive) が元 DLL と一致しません。`n$description"
                 }
+                Write-Host "Memory selection: $memoryArchive / $callbackMode / 96 A/W cases compatible"
             }
         }
         $oracleMemoryState = @(& $testProgram --memory-state-probe $oracle $memorySelectionArchive)
@@ -1161,35 +1267,22 @@ try {
         & $testProgram --create-memory-damage-fixtures (Join-Path $memoryCompressedRoot 'selection.lzh') `
             $memoryDamageRoot
         if ($LASTEXITCODE -ne 0) { throw '破損した圧縮済みメモリ展開 fixture の作成に失敗しました。' }
-        $memoryFailureArchives = @(
+        $memoryFailureVariants = @(
             foreach ($variant in @('valid', 'bad-header', 'bad-data', 'truncated', 'empty', 'prefixed',
                     'bad-fourth', 'between-garbage', 'no-terminator', 'level2-bad-name', 'trailing',
                     'multi', 'level2-valid')) {
-                Join-Path $oracleCheckRoot ($variant + '.lzh')
+                [pscustomobject]@{ Name = $variant; Archive = Join-Path $oracleCheckRoot ($variant + '.lzh') }
             }
             foreach ($variant in @('body-zero', 'body-ff', 'body-flip', 'body-truncated',
                     'first-header-crc', 'second-header-crc')) {
-                Join-Path $memoryDamageRoot ($variant + '.lzh')
+                [pscustomobject]@{ Name = $variant; Archive = Join-Path $memoryDamageRoot ($variant + '.lzh') }
             }
         )
-        foreach ($memoryArchive in $memoryFailureArchives) {
-            $oracleFailure = @(& $testProgram --memory-failure-probe $oracle $memoryArchive `
-                (Join-Path $oracleCheckRoot 'valid.lzh'))
-            $oracleFailureExit = $LASTEXITCODE
-            $candidateFailure = @(& $testProgram --memory-failure-probe $candidate $memoryArchive `
-                (Join-Path $oracleCheckRoot 'valid.lzh'))
-            $candidateFailureExit = $LASTEXITCODE
-            if ($oracleFailureExit -ne 0 -or $candidateFailureExit -ne 0) {
-                throw "破損書庫のメモリ展開 ($memoryArchive) が異常終了しました。元=$oracleFailureExit 候補=$candidateFailureExit"
-            }
-            $failureDifference = @(Compare-Object $oracleFailure $candidateFailure -SyncWindow 0)
-            if ($failureDifference.Count -ne 0 -or
-                @($candidateFailure | Where-Object { $_ -match '^failure\.[01]\.[0-2]\.\d+=' }).Count -ne 24) {
-                $description = $failureDifference | Select-Object -First 12 | Out-String
-                throw "破損書庫のメモリ展開・エラー・状態保持 ($memoryArchive) が一致しません。`n$description"
-            }
-        }
-        Write-Host 'Memory damage: 456 A/W CRC/header/truncation, selection, capacity, and retained-state cases compatible'
+        & (Join-Path $PSScriptRoot 'test-memory-failure.ps1') -TestProgram $testProgram `
+            -Runner $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -ValidArchive (Join-Path $oracleCheckRoot 'valid.lzh') `
+            -Archives @($memoryFailureVariants | Select-Object -ExpandProperty Archive) `
+            -Workspace (Join-Path $integrationRoot 'memory-failure-cases')
 
         $huffmanArchive = Join-Path $memoryDamageRoot 'body-ff.lzh'
         & $testProgram --memory-failure-stress $candidate $huffmanArchive
@@ -1211,7 +1304,8 @@ try {
         $checkValidArchive = Join-Path $oracleCheckRoot 'valid.lzh'
         & $testProgram --create-check-boundary-fixtures $checkValidArchive $checkStateRoot
         if ($LASTEXITCODE -ne 0) { throw '書庫検査の境界 fixture の作成に失敗しました。' }
-        $checkStateArchives = @($memoryFailureArchives) + @((Join-Path $memoryCompressedRoot 'selection.lzh')) +
+        $checkStateArchives = @($memoryFailureVariants | Select-Object -ExpandProperty Archive) +
+            @((Join-Path $memoryCompressedRoot 'selection.lzh')) +
             @(Get-ChildItem -LiteralPath $checkStateRoot -Filter '*.lzh' | Select-Object -ExpandProperty FullName)
         if ($checkStateArchives.Count -ne 157) { throw '書庫検査の境界 fixture 件数が一致しません。' }
         foreach ($checkArchive in $checkStateArchives) {
@@ -1265,19 +1359,17 @@ try {
         }
         Write-Host 'CheckArchive arguments: 360 path, 54 reserved-mode, and 18 busy cases compatible; outer extraction preserved'
 
-        foreach ($variant in @('prefix-4060', 'prefix-4072', 'prefix-4073', 'prefix-8170',
-                'prefix-8190', 'prefix-8192', 'unknown-method')) {
-            $boundaryArchive = Join-Path $checkStateRoot ($variant + '.lzh')
-            $oracleBoundary = @(& $testProgram --memory-failure-probe $oracle $boundaryArchive $checkValidArchive)
-            $oracleBoundaryExit = $LASTEXITCODE
-            $candidateBoundary = @(& $testProgram --memory-failure-probe $candidate $boundaryArchive $checkValidArchive)
-            $candidateBoundaryExit = $LASTEXITCODE
-            if ($oracleBoundaryExit -ne 0 -or $candidateBoundaryExit -ne 0 -or
-                @($candidateBoundary | Where-Object { $_ -match '^failure\.[01]\.[0-2]\.\d+=' }).Count -ne 24 -or
-                [string]::Join("`n", $oracleBoundary) -cne [string]::Join("`n", $candidateBoundary)) {
-                throw "メモリ展開のヘッダー探索境界 ($variant) が一致しません。"
+        # 失敗後の同一プロセス再利用は元 DLL が停止するため、各ケースを独立プロセスで比較する。
+        $memoryBoundaryArchives = @(
+            foreach ($variant in @('prefix-4060', 'prefix-4072', 'prefix-4073', 'prefix-8170',
+                    'prefix-8190', 'prefix-8192', 'unknown-method')) {
+                Join-Path $checkStateRoot ($variant + '.lzh')
             }
-        }
+        )
+        & (Join-Path $PSScriptRoot 'test-memory-failure.ps1') -TestProgram $testProgram `
+            -Runner $desktopRunner -Oracle $oracle -Candidate $candidate `
+            -ValidArchive $checkValidArchive -Archives @($memoryBoundaryArchives) `
+            -Workspace (Join-Path $integrationRoot 'memory-failure-boundaries')
         Write-Host 'Shared header scanner: 168 memory extraction boundary and unknown-method cases compatible'
 
         $memoryWorkflowRoot = Join-Path $integrationRoot 'memory-workflow'
@@ -1458,13 +1550,13 @@ try {
         $candidateAbort = @(& $testProgram --progress-abort-probe $candidate $unicodeFixture $candidateAbortRoot)
         if ($LASTEXITCODE -ne 0 -or
             $candidateAbort -notcontains 'abort.set=1' -or
-            $candidateAbort -notcontains 'abort.command_result=-1' -or
+            $candidateAbort -notcontains 'abort.command_result=32800' -or
             $candidateAbort -notcontains 'abort.kill=1' -or
             $candidateAbort -notcontains 'abort.count=4' -or
             -not ($candidateAbort | Where-Object { $_ -like 'abort.entry3=msg=1,state=1,*' })) {
             throw '進捗コールバックの FALSE 返却による中断テストに失敗しました。'
         }
-        Write-Host 'Owner progress callback abort: stopped at INPROCESS and returned -1'
+        Write-Host 'Owner progress callback abort: stopped at INPROCESS and returned 32800'
 
         foreach ($mode in 0, 1, 2) {
             $oracleAddProgressRoot = Join-Path $integrationRoot "progress-add-oracle-$mode"

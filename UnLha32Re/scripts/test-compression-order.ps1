@@ -13,9 +13,47 @@ $ErrorActionPreference = 'Stop'
 $TestProgram = (Resolve-Path -LiteralPath $TestProgram).Path
 $Oracle = (Resolve-Path -LiteralPath $Oracle).Path
 $Candidate = (Resolve-Path -LiteralPath $Candidate).Path
+$runner = (Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $TestProgram) 'DesktopRunner.exe')).Path
 $Workspace = [IO.Path]::GetFullPath($Workspace)
 New-Item -ItemType Directory -Path $Workspace | Out-Null
 Write-Host "Compression order workspace: $Workspace"
+
+# 原版の断続的な停止で統合試験全体が無期限に待たないよう、各 native 呼び出しを
+# 非表示デスクトップ・30 秒制限の子プロセスとして実行する。出力は呼び出し元が
+# 既存の seed/command/metadata/payload ファイルへ保存し、タイムアウトも終了コードとして残す。
+$script:lastProbeExit = 0
+$script:lastProbeTimedOut = $false
+function Invoke-Probe([string[]]$Arguments) {
+    # 属性プローブは 12 回のメモリ展開 API と DLL 解放を 1 子プロセスで
+    # 行うため、原版・候補とも通常の単発プローブより終了に時間が掛かる。
+    # 出力後の解放待ちをタイムアウトと誤認しないよう、作業量に応じた枠を使う。
+    $timeoutSeconds = if ($Arguments.Count -gt 0 -and
+        $Arguments[0] -in @('--attribute-probe','--attribute-probe-audit')) { 60 } else { 30 }
+    $start = [Diagnostics.ProcessStartInfo]::new($runner)
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.WorkingDirectory = $Workspace
+    foreach ($argument in @('--timeout-seconds',([string]$timeoutSeconds),$TestProgram,'--registry','') + $Arguments) {
+        $start.ArgumentList.Add($argument)
+    }
+    $child = [Diagnostics.Process]::Start($start)
+    try {
+        $stdout = $child.StandardOutput.ReadToEndAsync()
+        $stderr = $child.StandardError.ReadToEndAsync()
+        $timedOut = !$child.WaitForExit(($timeoutSeconds + 10) * 1000)
+        if ($timedOut) { $child.Kill($true); $child.WaitForExit() }
+        $output = $stdout.GetAwaiter().GetResult()
+        $script:lastProbeTimedOut = $timedOut
+        $script:lastProbeExit = if ($timedOut) { 124 } else { $child.ExitCode }
+        $reader = [IO.StringReader]::new($output)
+        $rows = [Collections.Generic.List[string]]::new()
+        try { while ($null -ne ($line = $reader.ReadLine())) { $rows.Add($line) } }
+        finally { $reader.Dispose() }
+        return $rows.ToArray()
+    } finally { $child.Dispose() }
+}
 $cases = @(
     @{ Name='insert-first'; Seed=@('m.txt','z.txt'); Incoming=@('a.txt') },
     @{ Name='reversed-old'; Seed=@('z.txt','m.txt'); Incoming=@('a.txt') },
@@ -103,8 +141,8 @@ foreach ($case in $cases) {
             $seedArgs = $case.Seed -join ' '
             # h2 更新 CRC の別件を混ぜず、既存順と置換対象の対応を比較する。
             $seed = "a -h0 -gm1 -n1 -c1 -y1 -x1 `"$archive`" `"$root\`" $seedArgs"
-            $rows = @(& $TestProgram --registry '' --base-command-probe $Oracle $seed 1041 1 $api)
-            $seedExit = $LASTEXITCODE
+            $rows = @(Invoke-Probe @('--base-command-probe',$Oracle,$seed,'1041','1',$api))
+            $seedExit = $script:lastProbeExit
             [IO.File]::WriteAllLines((Join-Path $root 'seed.txt'),[string[]](@("probe-exit=$seedExit") + $rows))
             if ($seedExit -ne 0 -or $rows -notcontains 'result=0' -or -not (Test-Path -LiteralPath $archive)) {
                 if ($attempt -lt 5 -and (Test-OriginalMoveAccessDenied $rows)) {
@@ -124,8 +162,8 @@ foreach ($case in $cases) {
             }
             $incomingArgs = $case.Incoming -join ' '
             $line = "$command -h0 -gm1 -n1 -c1 -y1 -x1 `"$archive`" `"$root\`" $incomingArgs"
-            $rows = @(& $TestProgram --registry '' --base-command-probe $dll $line 1041 1 $api w64 0)
-            $commandExit = $LASTEXITCODE
+            $rows = @(Invoke-Probe @('--base-command-probe',$dll,$line,'1041','1',$api,'w64','0'))
+            $commandExit = $script:lastProbeExit
             [IO.File]::WriteAllLines((Join-Path $root 'command.txt'),[string[]](@("probe-exit=$commandExit") + $rows))
             if ($commandExit -ne 0 -or $rows -notcontains 'result=0' -or $rows -notcontains 'directory-preserved=1') {
                 if ($side -eq 'oracle' -and $attempt -lt 5 -and (Test-OriginalMoveAccessDenied $rows)) {
@@ -138,21 +176,21 @@ foreach ($case in $cases) {
                 throw "順序試験のコマンドに失敗しました: $label / $side`n$($rows -join "`n")"
             }
             # 通知順・格納名だけでなく、旧ヘッダー由来の全数値情報と追加ファイル名も比較する。
-            $metadata = @(& $TestProgram --registry '' --attribute-probe $Oracle $archive)
-            $metadataExit = $LASTEXITCODE
+            $metadata = @(Invoke-Probe @('--attribute-probe',$Oracle,$archive))
+            $metadataExit = $script:lastProbeExit
             [IO.File]::WriteAllLines((Join-Path $root 'metadata.txt'),[string[]](@("probe-exit=$metadataExit") + $metadata))
             if ($metadataExit -ne 0) { throw "順序試験の結果を原版で列挙できません: $label / $side" }
             $rows += $metadata
-            $contents = @(& $TestProgram --registry '' --command-probe-a $Oracle "p -+ `"$archive`"" A)
-            $contentsExit = $LASTEXITCODE
+            $contents = @(Invoke-Probe @('--command-probe-a',$Oracle,"p -+ `"$archive`"",'A'))
+            $contentsExit = $script:lastProbeExit
             [IO.File]::WriteAllLines((Join-Path $root 'payload.txt'),[string[]](@("probe-exit=$contentsExit") + $contents))
             if ($contentsExit -ne 0 -or $contents -notcontains 'result=0') {
                 throw "順序試験の内容を原版で展開できません: $label / $side (exit $contentsExit)`n$($contents -join "`n")"
             }
             if ($side -eq 'reimpl') {
                 # 候補が生成した順序・置換後の書庫を、候補自身の全列挙 API とメモリ展開 API でも読み返す。
-                $candidateMetadata = @(& $TestProgram --registry '' --attribute-probe $Candidate $archive)
-                $candidateMetadataExit = $LASTEXITCODE
+                $candidateMetadata = @(Invoke-Probe @('--attribute-probe',$Candidate,$archive))
+                $candidateMetadataExit = $script:lastProbeExit
                 [IO.File]::WriteAllLines((Join-Path $root 'candidate-metadata.txt'),[string[]](@("probe-exit=$candidateMetadataExit") + $candidateMetadata))
                 if ($candidateMetadataExit -ne 0) {
                     throw "順序試験の結果を候補自身で列挙できません: $label / $side"
@@ -162,8 +200,8 @@ foreach ($case in $cases) {
                     $details = $metadataDifference | Select-Object -First 12 | Out-String -Width 2000
                     throw "候補が生成した書庫の列挙・メモリ展開が原版と不一致です: $label`n$details"
                 }
-                $candidateContents = @(& $TestProgram --registry '' --command-probe-a $Candidate "p -+ `"$archive`"" A)
-                $candidateContentsExit = $LASTEXITCODE
+                $candidateContents = @(Invoke-Probe @('--command-probe-a',$Candidate,"p -+ `"$archive`"",'A'))
+                $candidateContentsExit = $script:lastProbeExit
                 [IO.File]::WriteAllLines((Join-Path $root 'candidate-payload.txt'),[string[]](@("probe-exit=$candidateContentsExit") + $candidateContents))
                 if ($candidateContentsExit -ne 0 -or $candidateContents -notcontains 'result=0') {
                     throw "順序試験の内容を候補自身で展開できません: $label / $side (exit $candidateContentsExit)`n$($candidateContents -join "`n")"

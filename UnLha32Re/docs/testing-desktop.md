@@ -26,7 +26,11 @@ $shell = (Get-Command pwsh).Source
 
 全体試験が失敗した場合は、診断に必要な入力・出力・一時書庫を生成先に残し、
 `Failed integration workspace retained:` にその絶対パスを表示します。
-正常終了した試験用ディレクトリーだけを自動削除します。失敗の再試行や期待値の緩和は行いません。
+正常終了した試験用ディレクトリーだけを自動削除します。期待値は緩和しません。
+共有・freshen・圧縮順序・Wide圧縮選択の個別試験では、原版の `execute_cmd (MoveFile)`、戻り値32792、
+システムエラー5がそろった場合に限り、初期書庫・入力・パス長をそろえた別領域で最大5回再試行します。
+各試行の入力・出力・終了コードを保存し、原因未確定の原版エラーと正常比較の結果を区別します。
+候補側の失敗、他のエラー、時間切れにはこの再試行を適用しません。
 
 分離の確認には、非表示側で実際の確認ダイアログを出して自動終了する診断を使います。
 
@@ -46,9 +50,34 @@ $shell = (Get-Command pwsh).Source
 
 非表示デスクトップでも、原版 DLL の進捗ダイアログ自体は生成・更新されます。
 `-gm1` はエラーメッセージの抑止であり、進捗表示の抑止は `-n1` です。
-試験の区切りで DWM の CPU・メモリが落ち着くか確認し、継続負荷が残る場合は
-計測結果を保存してから、許可された作業セッションの DWM 再起動を行います。
-権限が不足する場合は、管理者による操作が必要です。
+通常の `scripts/test.ps1` は、隔離試験の開始前から終了後まで、同じセッションの DWM を
+別の監視プロセスで計測します。約2秒間隔で、1論理コアを100%とする CPU 使用率を計算し、
+80%以上が5回連続した場合は継続高負荷として記録します。DWM の PID が変わった場合は
+差分計算と連続回数をリセットします。試験が失敗した場合も、終了後最低10秒間の計測を行い、
+取得が遅い環境では5回の観測が終わるまで延長します。
+
+継続高負荷では、実行ごとの専用 WPR セッションで `CPU.verbose` を使い、10秒間の CPU スタック採取を試みます。
+既存の WPR セッションを停止せず、DWM の再起動や管理者昇格も自動では行いません。
+WPR の権限不足・競合・失敗は採取結果へ明記します。採取に成功した ETL は WPA の
+`CPU Usage (Sampled)` で DWM の PID・Thread ID・Stack を絞って解析できます。
+採取成功は原因特定を意味せず、スタックの解析は別途必要です。
+Windows がプロファイル採取権限を拒否する場合（例: `0xc5585011`）は、
+管理者権限の PowerShell から通常の `scripts/test.ps1` を実行する必要があります。
+CPU 使用率の監視は通常権限でも動作します。監視自身の回帰テストは
+`scripts/test-dwm-monitor.ps1` で実行し、標準入口からも毎回実行します。
+
+結果は `build/dwm-monitor/run-*/summary.json` に保存します。継続高負荷、計測不能、
+監視プロセス異常は通常試験の失敗として報告し、互換試験自身の失敗理由も保持します。
+個別スクリプトや `CompatibilityTests.exe` の直接実行にはこの外側の監視は付きません。
+個別診断にも同じ監視を付ける場合は、次の入口を使用します。
+
+```powershell
+. .\scripts\invoke-dwm-monitored-test.ps1
+Invoke-DwmMonitoredTest -OutputRoot .\build\dwm-monitor -TestAction {
+    & $runner --timeout-seconds 10 $runner --probe-dialog
+    if ($LASTEXITCODE -ne 0) { throw "隔離診断に失敗しました: $LASTEXITCODE" }
+}
+```
 
 `test-compression-order.ps1` は `-CaseNames` に加えて `-Commands`（`a/u/f/m`）と
 `-Apis`（`legacy/A/W`）で比較行列を絞れます。複数値は `-Apis legacy,A,W` のように

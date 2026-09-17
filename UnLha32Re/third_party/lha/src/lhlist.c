@@ -66,10 +66,18 @@ print_stamp(time_t t)
     if (!threshold) {
         time_t now = time(0);
         p = localtime(&now);
-        threshold = p->tm_year * 12 + p->tm_mon - 6;
+        if (p != NULL)
+            threshold = p->tm_year * 12 + p->tm_mon - 6;
     }
 
     p = localtime(&t);
+    if (p == NULL) {
+        if (verbose_listing && verbose)
+            printf("                   "); /* 19 spaces */
+        else
+            printf("            "); /* 12 spaces */
+        return;
+    }
 
     if (verbose_listing && verbose)
         printf("%04d-%02d-%02d %02d:%02d:%02d",

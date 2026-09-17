@@ -201,6 +201,9 @@ foreach ($case in $sequenceCases) {
                 $output = @(Invoke-RegistryProbe $dll $seed @('--registry-path-sequence-probe',
                     $Archive, $case.Initial, $command, $variant))
             } finally { Pop-Location }
+            if ($output -notcontains 'phase=initial' -or $output -notcontains 'phase=second') {
+                throw "設定シーケンスの観測行が欠落しました: $kind / $($case.Initial) / $variant"
+            }
             $normalized = foreach ($line in $output) {
                 $line.Replace($root.Replace('\', '\\'), '<ROOT>').Replace($root.Replace('\', '/'), '<ROOT>').Replace(
                     $root.Replace('\', '/').ToUpperInvariant(), '<ROOT>')

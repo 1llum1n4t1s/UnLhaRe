@@ -16,14 +16,20 @@ param(
     [ValidateRange(1,16)][int]$Repeat=1,
     [ValidateSet('source','ソース','日本語')][string]$SourceDirectoryName='source',
     [ValidateSet(-1,0,1)][int]$UseMappedFile=-1,
+    [int]$FileBufferSize=-1,
     [ValidateRange(1,16777216)][int]$InputSize=19,
-    [switch]$NewArchive
+    [switch]$NewArchive,
+    [switch]$AuditPublication
 )
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath($Workspace)
 if(Test-Path -LiteralPath $workspace){throw '新しい試験領域を指定してください'}
 if($NewArchive -and ('f' -in $Commands -or @($Cases | Where-Object {$_ -in 'begin2','begin3'}).Count)){
     throw '新規書庫では存在しない旧項目や f の中断条件を指定できません'
+}
+if($AuditPublication -and !$NewArchive){throw '公開時点の監査は新規書庫だけを対象に指定してください'}
+if($FileBufferSize -ne -1 -and ($FileBufferSize -lt 8192 -or $FileBufferSize -gt 524288)){
+    throw 'FileBufferSize は -1 または 8192～524288 の範囲で指定してください'
 }
 if('f' -in $Commands -and 'search' -in $Cases){throw 'f は検索通知を送りません'}
 $TestProgram=(Resolve-Path -LiteralPath $TestProgram).Path
@@ -34,7 +40,10 @@ $seed=(Resolve-Path -LiteralPath $SeedArchive).Path
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'test-enum-state.ps1'),[ref]$null,[ref]$null)
 $helper=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-EnumProbe'},$true)
 if(!$helper){throw '隔離プローブがありません'}
-$registrySeed=if($UseMappedFile -lt 0){''}else{"L:UseMFile=$UseMappedFile"}
+$registryParts=@()
+if($UseMappedFile -ge 0){$registryParts+="L:UseMFile=$UseMappedFile"}
+if($FileBufferSize -ge 0){$registryParts+="L:FileBufferSize=$FileBufferSize"}
+$registrySeed=$registryParts -join ';'
 . ([scriptblock]::Create($helper.Extent.Text.Replace("'--registry',''", "'--registry',`$registrySeed")))
 New-Item -ItemType Directory -Path $workspace | Out-Null
 $hashes=@{}
@@ -44,13 +53,26 @@ $stamp=[datetime]'2024-01-02T03:04:06Z'
 $fixedTime=$stamp.ToFileTimeUtc()
 $results=[Collections.Generic.List[object]]::new()
 $releases=0
+$originalRetryCount=0
+function Test-OriginalMoveAccessDenied([string]$Root) {
+    $texts = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue })
+    $text = $texts -join "`n"
+    return $text -match 'result=32792' -and $text -match 'compat-system-error=5' -and
+        $text -match 'on execute_cmd \(MoveFile\)'
+}
 Write-Host "Compression cancellation: candidate=$($hashes[$candidate]), probe=$($hashes[$TestProgram]), oracle=$($hashes[$oracle])"
 Write-Host "Compression cancellation registry sandbox: $registrySeed"
 foreach($command in $Commands){foreach($caseName in $Cases){foreach($profile in $Profiles){foreach($method in $Methods){foreach($language in $Languages){
     $label="$command-$caseName-$profile-jm$method-lang$language"
     $snapshots=@()
     foreach($side in 'oracle','reimpl'){
-        $root=Join-Path $workspace ('case-{0:D4}-{1}' -f $results.Count,$side)
+        $completed=$false
+        for($attempt=0;$attempt -lt 6;$attempt++){
+        # 再試行先も元の case-* と同じパス長にし、出力の output-length を比較可能に保つ。
+        $root=if($attempt -eq 0){Join-Path $workspace ('case-{0:D4}-{1}' -f $results.Count,$side)}
+            else {Join-Path $workspace ('try{0}-{1:D4}-{2}' -f $attempt,$results.Count,$side)}
+        try {
         $source=Join-Path $root $SourceDirectoryName
         New-Item -ItemType Directory -Path $source | Out-Null
         $inputPath=Join-Path $source 'a.txt'
@@ -71,6 +93,7 @@ foreach($command in $Commands){foreach($caseName in $Cases){foreach($profile in 
         $line="$command -+ -h2 -jm$method -gm$SuppressDialogs -y1 -n1 `"$archive`" `"$($source.Replace('\','/'))/`" a.txt"
         $case=$caseMap[$caseName]
         $steps=@("@language:$language","@audit-access:$inputPath",'@audit-find-access','@full-progress-paths')
+        if($AuditPublication){$steps+=@("@audit-progress-archive:$archive",'@audit-progress-archive-prefix')}
         for($iteration=0;$iteration -lt $Repeat;$iteration++){
             $steps+=@("@count:$seed","@abort-state:$($case[0])","@abort-occurrence:$($case[1])",$line,
                 "@audit-archive-release:$archive","@audit-archive-release:$inputPath",'@handle-count')
@@ -80,6 +103,10 @@ foreach($command in $Commands){foreach($caseName in $Cases){foreach($profile in 
         $started=[datetime]::UtcNow.ToFileTimeUtc()
         $rows=@(Invoke-EnumProbe (Join-Path $root 'sequence') (@('--sequence-dialog-probe',$dll,((@('2')*$Repeat)-join ','),$profile,'1041','1',$api,$profile)+$steps) $root)
         $ended=[datetime]::UtcNow.ToFileTimeUtc()
+        if($side -eq 'oracle' -and (Test-OriginalMoveAccessDenied $root)){
+            # プローブ自体は終了コード 0 でも、連続呼び出し内の MoveFile 失敗をログへ記録する。
+            throw '原版の MoveFile 共有違反を検出しました。'
+        }
         $returns=@($rows -match '^result=')
         if($returns.Count -ne $Repeat+1 -or $returns[-1] -cne 'result=0' -or @($returns[0..($Repeat-1)] -cne 'result=32800').Count){throw "中断と再利用の戻り値が不正: $label/$side"}
         if(@($rows -ceq 'compat-error=32800').Count -ne $Repeat -or @($rows -ceq 'compat-system-error=1223').Count -ne $Repeat){throw "中断エラー情報が不正: $label/$side"}
@@ -124,12 +151,33 @@ foreach($command in $Commands){foreach($caseName in $Cases){foreach($profile in 
             }
         })
         $snapshots+=,$normalized
+        $completed=$true
+        break
+        } catch {
+            if($side -eq 'oracle' -and $attempt -lt 5 -and (Test-OriginalMoveAccessDenied $root)){
+                [IO.File]::WriteAllText((Join-Path $root 'original-command-failure.txt'),$_.Exception.Message)
+                $originalRetryCount++
+                Write-Host "Compression cancellation: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+                Start-Sleep -Milliseconds 100
+                continue
+            }
+            throw
+        }
+        }
+        if(!$completed){throw "圧縮中断試験の原版取得を再試行できませんでした: $label"}
     }
     $difference=@(Compare-Object $snapshots[0] $snapshots[1] -SyncWindow 0)
-    if($difference.Count){$difference | Export-Csv -LiteralPath (Join-Path $workspace "$($results.Count)-diff.tsv") -Delimiter "`t" -NoTypeInformation;throw "中断後の通知・ログ・状態が不一致: $label"}
-    $results.Add([pscustomobject]@{Case=$label;Rows=$snapshots[0].Count})
+        if($difference.Count){$difference | Export-Csv -LiteralPath (Join-Path $workspace "$($results.Count)-diff.tsv") -Delimiter "`t" -NoTypeInformation;throw "中断後の通知・ログ・状態が不一致: $label"}
+        if($AuditPublication){
+            foreach($sideIndex in 0,1){
+                $auditRows=@($snapshots[$sideIndex] | Where-Object {$_ -like 'progress.entry=*,audit-archive-size=*,audit-archive-prefix=*,*'})
+                $allProgress=@($snapshots[$sideIndex] | Where-Object {$_ -like 'progress.entry=*'})
+                if($auditRows.Count -ne $allProgress.Count -or !$auditRows.Count){throw "公開時点監査の記録が不足しています: $label/$(@('oracle','reimpl')[$sideIndex])"}
+            }
+        }
+        $results.Add([pscustomobject]@{Case=$label;Rows=$snapshots[0].Count})
     if($results.Count % 32 -eq 0){Write-Host "Compression cancellation: $($results.Count) comparisons passed"}
 }}}}}
 foreach($path in $hashes.Keys){if((Get-FileHash -LiteralPath $path).Hash -cne $hashes[$path]){throw "検証資産が変更されました: $path"}}
 $results | Export-Csv -LiteralPath (Join-Path $workspace 'observations.tsv') -Delimiter "`t" -NoTypeInformation
-Write-Host "Compression cancellation: $($results.Count) comparisons, $releases exclusive opens; archive/source/temp/handle/continuation checks passed"
+Write-Host "Compression cancellation: $($results.Count) comparisons, $releases exclusive opens, $originalRetryCount original MoveFile retries; archive/source/temp/handle/continuation checks passed"

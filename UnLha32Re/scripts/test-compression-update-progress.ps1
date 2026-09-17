@@ -48,8 +48,10 @@ foreach ($commandName in $Commands) { foreach ($selection in $Selections) { fore
     foreach ($config in $configs | Where-Object { $_.Name -in $ConfigurationNames }) {
         $label = "$commandName/$selection/$age/$($config.Name)"
         $snapshots = @()
+        $sharedAttempt = 0
         foreach ($side in 'oracle','reimpl') {
-            $root = Join-Path $Workspace ('case-{0:D3}-{1}' -f $count,$side)
+            $attemptSuffix = if ($sharedAttempt -gt 0) { "-attempt$sharedAttempt" } else { '' }
+            $root = Join-Path $Workspace ('case-{0:D3}-{1}{2}' -f $count,$side,$attemptSuffix)
             New-Item -ItemType Directory -Path $root | Out-Null
             foreach ($name in 'a.txt','b.txt','m.txt','z.txt') {
                 Set-ProgressFixture (Join-Path $root $name) ("new-$name-payload-with-more-bytes" * $PayloadRepeats) $(if ($age -eq 'newer') { 2024 } else { 2018 })
@@ -62,6 +64,32 @@ foreach ($commandName in $Commands) { foreach ($selection in $Selections) { fore
             $rows = @(& $TestProgram --registry '' --progress-sequence-probe $dll $config.Enum $config.Locale $config.Utf8 $config.Api $config.Progress $command "@check:$archive")
             if ($LASTEXITCODE -ne 0) { throw "更新進捗プローブが異常終了しました: $label/$side" }
             [IO.File]::WriteAllLines((Join-Path $root 'trace.txt'),$rows)
+            $moveText = [string]::Join("`n", $rows)
+            $moveDenied = $side -eq 'oracle' -and $moveText -match 'result=32792' -and
+                $moveText -match 'on execute_cmd \(MoveFile\)' -and
+                $moveText -match 'compat-system-error=5'
+            for ($attempt = 1; $moveDenied -and $attempt -lt 6; $attempt++) {
+                Write-Host "原版の更新進捗プローブが MoveFile 共有違反になったため再試行します ($attempt/6): $label"
+                Start-Sleep -Milliseconds 100
+                $sharedAttempt = $attempt
+                $root = Join-Path $Workspace ('case-{0:D3}-{1}-attempt{2}' -f $count,$side,$attempt)
+                New-Item -ItemType Directory -Path $root | Out-Null
+                foreach ($name in 'a.txt','b.txt','m.txt','z.txt') {
+                    Set-ProgressFixture (Join-Path $root $name) ("new-$name-payload-with-more-bytes" * $PayloadRepeats) $(if ($age -eq 'newer') { 2024 } else { 2018 })
+                }
+                $archive = Join-Path $root 'result.lzh'
+                Copy-Item -LiteralPath $seed -Destination $archive
+                $beforeHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+                $command = "$commandName -+ -h$HeaderLevel -n1 -gm1 -y1 `"$archive`" `"$($root.Replace('\','/'))/`" $($selectedInputs[$selection] -join ' ')"
+                $rows = @(& $TestProgram --registry '' --progress-sequence-probe $dll $config.Enum $config.Locale $config.Utf8 $config.Api $config.Progress $command "@check:$archive")
+                if ($LASTEXITCODE -ne 0) { throw "更新進捗プローブが異常終了しました: $label/$side" }
+                [IO.File]::WriteAllLines((Join-Path $root 'trace.txt'),$rows)
+                $moveText = [string]::Join("`n", $rows)
+                $moveDenied = $moveText -match 'result=32792' -and
+                    $moveText -match 'on execute_cmd \(MoveFile\)' -and
+                    $moveText -match 'compat-system-error=5'
+            }
+            if ($moveDenied) { throw "更新進捗プローブの原版 MoveFile 共有違反を再試行できませんでした: $label/$side" }
             if ($rows -notcontains 'result=0' -or $rows -notcontains 'compat-error=0' -or
                 $rows -notcontains 'check=1' -or $rows -notcontains 'progress.set=1' -or $rows -notcontains 'progress.kill=1') {
                 throw "更新・生成書庫の検査・通知登録のいずれかに失敗しました: $label/$side"

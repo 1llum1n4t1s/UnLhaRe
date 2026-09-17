@@ -524,9 +524,11 @@ extract_one(FILE *afp,  /* archive file */
             }
 #endif
 
+#ifndef LHA_LIBRARY
             signal(SIGINT, interrupt);
 #ifdef SIGHUP
             signal(SIGHUP, interrupt);
+#endif
 #endif
 
 #ifndef LHA_LIBRARY
@@ -576,9 +578,11 @@ extract_one(FILE *afp,  /* archive file */
 #endif
             remove_extracting_file_when_interrupt = FALSE;
             g_infp = NULL;
+#ifndef LHA_LIBRARY
             signal(SIGINT, SIG_DFL);
 #ifdef SIGHUP
             signal(SIGHUP, SIG_DFL);
+#endif
 #endif
             if (!fp)
                 return read_size;

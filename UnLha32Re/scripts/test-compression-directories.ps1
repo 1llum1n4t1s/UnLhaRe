@@ -70,11 +70,16 @@ $modes = @(
     @{ Api='W'; Layout='w64'; Utf8=1; Locale=1033 }
 )
 $count = 0
+$originalRetryCount = 0
 foreach ($case in $cases) { foreach ($command in 'a','u','m') { foreach ($mode in $modes) {
     $label = "$($case.Name)/$command/$($mode.Api)/$($mode.Layout)/$($mode.Locale)/$($mode.Utf8)"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
-        $root = Join-Path $Workspace ("case-{0:D3}-$side" -f $count)
+        $sideSucceeded = $false
+        for ($attempt = 0; $attempt -lt 6 -and -not $sideSucceeded; $attempt++) {
+        # 再試行先も初回と同長の接頭辞を使い、ANSI output-length を厳密比較する。
+        $attemptName = if ($attempt -eq 0) { 'case' } else { "try$attempt" }
+        $root = Join-Path $Workspace ("{0}-{1:D3}-$side" -f $attemptName,$count)
         $inputDirectory = Join-Path $root 'input'
         New-Item -ItemType Directory -Path (Join-Path $inputDirectory 'tree/sub'),(Join-Path $inputDirectory 'empty') | Out-Null
         foreach ($name in $allFiles) { Set-DirectoryFixture (Join-Path $inputDirectory $name) "input-$name-value" 2024 }
@@ -83,6 +88,16 @@ foreach ($case in $cases) { foreach ($command in 'a','u','m') { foreach ($mode i
         $dll = if ($side -eq 'oracle') { $Oracle } else { $Candidate }
         $line = "$command -h0 -n1 -gm1 -y1 -c1 $($case.Flags) `"$archive`" `"$($inputDirectory.Replace('\','/'))/`" $($case.Input)"
         $rows = @(& $TestProgram --registry '' --base-command-probe $dll $line $mode.Locale $mode.Utf8 $mode.Api $mode.Layout 0)
+        $moveText = $rows -join [Environment]::NewLine
+        $moveDenied = $side -eq 'oracle' -and $attempt -lt 5 -and
+            $moveText -match 'result=32792' -and $moveText -match 'MoveFile' -and $moveText -match 'compat-system-error=5'
+        if ($moveDenied) {
+            $originalRetryCount++
+            [IO.File]::WriteAllText((Join-Path $root 'oracle-movefile-failure.log'), $moveText, [Text.UTF8Encoding]::new($false))
+            Write-Host "Compression directories: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+            Start-Sleep -Milliseconds 100
+            continue
+        }
         if ($LASTEXITCODE -ne 0 -or $rows -notcontains 'result=0' -or $rows -notcontains 'directory-preserved=1') {
             throw "ディレクトリー入力の試験に失敗しました: $label/$side`n$($rows -join "`n")"
         }
@@ -133,6 +148,9 @@ foreach ($case in $cases) { foreach ($command in 'a','u','m') { foreach ($mode i
             $rows = @(Normalize-NewDirectoryRows $rows $side $expectedEntries)
         }
         $results += ,@($rows | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
+        $sideSucceeded = $true
+        }
+        if (-not $sideSucceeded) { throw "ディレクトリー入力の原版試験を再試行回数内に完了できません: $label/$side" }
     }
     $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
     if ($difference.Count) { throw "検索・列挙通知・ログ・エラーが一致しません: $label`n$($difference | Select-Object -First 10 | Out-String -Width 2000)" }
@@ -142,3 +160,4 @@ Write-Host "Compression directories: $($case.Name), $count comparisons passed"
 }
 $operation = if ($NewArchive) { 'new' } else { 'existing' }
 Write-Host "Compression directories: $count $operation a/u/m r0/r1/r2 selection, callbacks, source retention, directory retention, and full extracted-content comparisons passed"
+Write-Host "Compression directories: $originalRetryCount original MoveFile access-denied retries (cause unconfirmed; failure logs retained)"

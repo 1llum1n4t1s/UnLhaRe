@@ -899,6 +899,7 @@ cleanup()
 }
 #endif
 
+#ifndef LHA_LIBRARY
 RETSIGTYPE
 interrupt(int signo)
 {
@@ -912,6 +913,7 @@ interrupt(int signo)
 #endif
     kill(getpid(), signo);
 }
+#endif
 
 /* ------------------------------------------------------------------------ */
 /*                                                                          */
@@ -1255,6 +1257,13 @@ free_files(int filec, char **filev)
 int
 build_temporary_name()
 {
+#ifdef _MSC_VER
+#ifdef LHA_LIBRARY
+    /* DLL 版は原版と同じ GetTempFileNameA の LHT<番号>.tmp を使う。 */
+    return Lha_BuildCompressionTemporaryName(temporary_name,
+                                             sizeof(temporary_name));
+#endif
+#endif
 #ifdef TMP_FILENAME_TEMPLATE
     /* "/tmp/lhXXXXXX" etc. */
     if (extract_directory == NULL) {

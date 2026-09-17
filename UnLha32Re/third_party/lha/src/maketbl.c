@@ -14,7 +14,7 @@ make_table(short nchar, unsigned char bitlen[], short tablebits, unsigned short 
     unsigned short  count[17];  /* count of bitlen */
     unsigned short  weight[17]; /* 0x10000ul >> bitlen */
     unsigned short  start[17];  /* first code of bitlen */
-    unsigned short  total;
+    unsigned int    total;
     unsigned int    i, l;
     int             j, k, m, n, avail;
     unsigned short *p;
@@ -41,10 +41,14 @@ make_table(short nchar, unsigned char bitlen[], short tablebits, unsigned short 
     /* calculate first code */
     total = 0;
     for (i = 1; i <= 16; i++) {
-        start[i] = total;
-        total += weight[i] * count[i];
+        start[i] = (unsigned short)total;
+        total += (unsigned int)weight[i] * count[i];
+        if (total > 0x10000U) {
+            error("make_table(): Bad table (case b)");
+            exit(1);
+        }
     }
-    if ((total & 0xffff) != 0 || tablebits > 16) { /* 16 for weight below */
+    if (total != 0x10000U || tablebits > 16) { /* 16 for weight below */
         error("make_table(): Bad table (case b)");
         exit(1);
     }

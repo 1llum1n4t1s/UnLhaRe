@@ -109,6 +109,7 @@ void Lha_RecordCommandEvent(const char* action, const char* name, int value);
 void Lha_RecordHeaderCommandEvent(const char* action, const LzHeader* header, int value);
 char* Lha_FullPath(char* output, const char* path, size_t capacity);
 FILE* Lha_TemporaryFile(void);
+int Lha_BuildCompressionTemporaryName(char* output, size_t capacity);
 int Lha_CommandPatternMatches(const char* pattern, const char* name, int exclusion);
 int Lha_CommandHeaderPatternMatches(const char* pattern, const LzHeader* header, int exclusion);
 void Lha_EncodeHeaderName(LzHeader* header);
@@ -116,6 +117,8 @@ int Lha_EncodeStoredHeaderDirectory(const LzHeader* header, char* directory, siz
 void Lha_EncodeStoredHeaderName(LzHeader* header);
 int Lha_GetHeaderPath(const LzHeader* header, char* path, size_t capacity);
 int Lha_CompareCompressionHeader(const LzHeader* old_header, const char* source);
+int Lha_IsExistingCompressionInput(const char* source);
+int Lha_CommitCompressionArchive(const char* source, const char* destination);
 void Lha_OrderCompressionInputs(int count, char** files);
 void Lha_RestoreCompressionInputOrder(int count, char** files);
 unsigned int Lha_GetPathCodePage(void);

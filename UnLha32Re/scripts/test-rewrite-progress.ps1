@@ -53,6 +53,14 @@ foreach($leaf in 'nested.txt','other.txt'){
 }
 if($offset -ne $seedBytes.Length-1 -or $seedBytes[$offset] -ne 0){throw '種書庫の終端が不正です。'}
 $hasMemberProgress=@($selectedPacked | Where-Object {($_ -gt 0 -and $_ -lt 100) -or $_ -gt 262144}).Count -gt 0
+$originalRetryCount=0
+function Test-OriginalMoveAccessDenied([string]$Root) {
+    $texts = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue })
+    $text = $texts -join "`n"
+    return $text -match 'result=32792' -and $text -match 'compat-system-error=5' -and
+        $text -match 'on execute_cmd \(MoveFile\)'
+}
 $cases=@()
 foreach($mode in 0,1,2){foreach($selected in 0,1){$cases+=@{Mode=$mode;Selected=$selected;Abort=-1}}}
 if(!$NormalOnly){
@@ -66,7 +74,12 @@ foreach($layout in $Layouts){
         foreach($case in $cases){
             $logs=@{}; $archives=@{}
             foreach($side in 'oracle','reimpl'){
-                $folder=Join-Path $Workspace "$layout-$command-n$($case.Mode)-s$($case.Selected)-b$($case.Abort)-$side"
+                $completed=$false
+                for($attempt=0;$attempt -lt 6 -and !$completed;$attempt++){
+                    # 再試行先も元の layout-command-* と同じパス長にし、通知のパスを比較可能に保つ。
+                    $folder=if($attempt -eq 0){Join-Path $Workspace "$layout-$command-n$($case.Mode)-s$($case.Selected)-b$($case.Abort)-$side"}
+                        else {Join-Path $Workspace "try$attempt-$layout-$command-n$($case.Mode)-s$($case.Selected)-b$($case.Abort)-$side"}
+                    try {
                 New-Item -ItemType Directory -Path $folder | Out-Null
                 $archive=Join-Path $folder $(if($UnicodeArchive){'source-'+[char]0x100+'.lzh'}else{'source.lzh'})
                 Copy-Item -LiteralPath $seed -Destination $archive
@@ -103,6 +116,19 @@ foreach($layout in $Layouts){
                     if($position -ne $bytes.Length-1 -or $bytes[$position] -ne 0 -or $memberNames.Count -ne 2 -or @($memberNames | Where-Object {$_ -ceq '変更後.txt'}).Count -ne 1){throw "項目名が実際に変更されていません: $folder"}
                 }
                 if(@(Get-ChildItem -LiteralPath $folder -Filter '*.tmp').Count){throw "一時書庫が残っています: $folder"}
+                $completed=$true
+                    } catch {
+                        if($side -eq 'oracle' -and $attempt -lt 5 -and (Test-OriginalMoveAccessDenied $folder)){
+                            [IO.File]::WriteAllText((Join-Path $folder 'original-command-failure.txt'),$_.Exception.Message)
+                            $originalRetryCount++
+                            Write-Host "Rewrite progress: original MoveFile access denied; retrying in a fresh directory ($layout/$command/$($case.Mode)/$($case.Selected)/$($case.Abort)/$attempt)"
+                            Start-Sleep -Milliseconds 100
+                            continue
+                        }
+                        throw
+                    }
+                }
+                if(!$completed){throw "進捗試験の原版取得を再試行できませんでした: $layout/$command/$($case.Mode)/$($case.Selected)/$($case.Abort)"}
             }
             if($archives.oracle -cne $archives.reimpl){throw "書庫内容不一致: $layout/$command/$($case.Mode)/$($case.Selected)/$($case.Abort)"}
             if(@(Compare-Object $logs.oracle $logs.reimpl -SyncWindow 0).Count){throw "通知・ログ不一致: $layout/$command/$($case.Mode)/$($case.Selected)/$($case.Abort)"}
@@ -114,4 +140,4 @@ foreach($layout in $Layouts){
 }
 foreach($path in $hashes.Keys){if((Get-FileHash -LiteralPath $path).Hash -cne $hashes[$path]){throw '検証中にバイナリが変わりました。'}}
 if((Get-FileHash -LiteralPath $seed).Hash -cne $seedHash -or $pairs -ne 2*$cases.Count*$Layouts.Count){throw '入力保持または検証件数が不正です。'}
-Write-Host "Rewrite progress: $pairs notification/output/archive comparisons passed, including $cancellations cancellation preservation cases; layouts=$($Layouts -join ','); member-rename=$RenameMember"
+Write-Host "Rewrite progress: $pairs notification/output/archive comparisons passed, including $cancellations cancellation preservation cases, $originalRetryCount original MoveFile retries; layouts=$($Layouts -join ','); member-rename=$RenameMember"

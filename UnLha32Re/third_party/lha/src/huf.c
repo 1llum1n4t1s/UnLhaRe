@@ -44,6 +44,13 @@ static int pbit;
 static int np;
 static unsigned short lx1_position_mode;
 
+static void
+invalid_huffman_code(void)
+{
+    error("Invalid Huffman code");
+    exit(1);
+}
+
 /* lh3 encoder */
 #define ST0_NC              286
 #define ST0_NP              128
@@ -532,8 +539,12 @@ read_pt_len(short nn, short nbit, short i_special)
     int           i, c, n;
 
     n = getbits(nbit);
+    if (n > nn)
+        invalid_huffman_code();
     if (n == 0) {
         c = getbits(nbit);
+        if (c >= nn)
+            invalid_huffman_code();
         for (i = 0; i < nn; i++)
             pt_len[i] = 0;
         for (i = 0; i < 256; i++)
@@ -574,8 +585,12 @@ read_c_len( /* void */ )
     short           i, c, n;
 
     n = getbits(CBIT);
+    if (n > NC)
+        invalid_huffman_code();
     if (n == 0) {
         c = getbits(CBIT);
+        if (c >= NC)
+            invalid_huffman_code();
         for (i = 0; i < NC; i++)
             c_len[i] = 0;
         for (i = 0; i < 4096; i++)
@@ -587,6 +602,8 @@ read_c_len( /* void */ )
             if (c >= NT) {
                 unsigned short  mask = 1 << (16 - 9);
                 do {
+                    if (c >= 2 * NT - 1)
+                        invalid_huffman_code();
                     if (bitbuf & mask)
                         c = right[c];
                     else
@@ -594,6 +611,8 @@ read_c_len( /* void */ )
                     mask >>= 1;
                 } while (c >= NT && (mask || c != left[c])); /* CVE-2006-4338 */
             }
+            if (c >= NT)
+                invalid_huffman_code();
             fillbuf(pt_len[c]);
             if (c <= 2) {
                 if (c == 0)
@@ -602,6 +621,8 @@ read_c_len( /* void */ )
                     c = getbits(4) + 3;
                 else
                     c = getbits(CBIT) + 20;
+                if (c > NC - i)
+                    invalid_huffman_code();
                 while (--c >= 0)
                     c_len[i++] = 0;
             }
@@ -628,12 +649,16 @@ decode_c_st1_symbol(void)
         fillbuf(12);
         mask = 1 << (16 - 1);
         do {
+            if (j >= 2 * NC - 1)
+                invalid_huffman_code();
             if (bitbuf & mask)
                 j = right[j];
             else
                 j = left[j];
             mask >>= 1;
         } while (j >= NC && (mask || j != left[j])); /* CVE-2006-4338 */
+        if (j >= NC)
+            invalid_huffman_code();
         fillbuf(c_len[j] - 12);
     }
     return j;
@@ -762,16 +787,18 @@ decode_p_st1_wide(void)
         fillbuf(8);
         mask = 1 << (16 - 1);
         do {
+            if (j >= 2 * np - 1)
+                invalid_huffman_code();
             if (bitbuf & mask)
                 j = right[j];
             else
                 j = left[j];
             mask >>= 1;
         } while (j >= np && (mask || j != left[j])); /* CVE-2006-4338 */
+        if (j >= np)
+            invalid_huffman_code();
         fillbuf(pt_len[j] - 8);
     }
-    if (j >= np)
-        fatal_error("Invalid position code");
     if (j == 0) return 0;
     if (j > 17) {
         extra = (unsigned int)getbits(j - 17) << 16;

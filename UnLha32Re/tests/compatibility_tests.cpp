@@ -7,7 +7,9 @@
 #include "isolated_desktop.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -1330,7 +1332,8 @@ int run_progress_probe(const wchar_t* dll_path, const wchar_t* archive_path,
     progress_expected_owner = message_window;
     progress_records.clear();
     const std::wstring abort_destination = make_mode_destination("abort");
-    const std::wstring abort_command = L"x -n1 -y " + quote_argument(archive_path) + L" " +
+    // 非表示デスクトップでは中断報告の同期ダイアログを表示せず、戻り値を観測する。
+    const std::wstring abort_command = L"x -n1 -y -gm1 " + quote_argument(archive_path) + L" " +
                                        quote_argument(abort_destination + L"\\");
     const BOOL abort_set = set_64(message_window, progress_probe, sizeof(EXTRACTINGINFOEX64W));
     wchar_t abort_output[4096]{};
@@ -2530,63 +2533,88 @@ int create_memory_damage_fixtures(const wchar_t* archive_path, const wchar_t* wo
     return 0;
 }
 
+int run_memory_failure_case_probe(const wchar_t* dll_path, const wchar_t* archive_path,
+                                  const wchar_t* valid_archive, unsigned wide,
+                                  unsigned selection, DWORD capacity);
+
 int run_memory_failure_probe(const wchar_t* dll_path, const wchar_t* archive_path,
                              const wchar_t* valid_archive) {
+    // 原版は失敗展開を同一 DLL インスタンスで連続実行すると、次の呼び出しへ
+    // 戻らない入力がある。各ケースは同じ初期展開・失敗展開・後続展開を保った
+    // まま DLL を再ロードし、比較対象の 24 状態をすべて独立に採取する。
+    for (unsigned wide = 0; wide < 2; ++wide)
+    for (unsigned selection = 0; selection < 3; ++selection)
+    for (const DWORD capacity : {1U, 1024U, 4096U, 8192U}) {
+        if (run_memory_failure_case_probe(dll_path, archive_path, valid_archive,
+                                           wide, selection, capacity) != 0)
+            return 1;
+    }
+    return 0;
+}
+
+// 破損書庫の 1 ケースだけを実行する。原版は同じ DLL インスタンスで
+// 失敗展開を繰り返すと、次の展開へ戻らない入力があるため、統合試験では
+// この単位を別プロセスから呼び出して原版・候補の出力と後続展開を比較する。
+int run_memory_failure_case_probe(const wchar_t* dll_path, const wchar_t* archive_path,
+                                  const wchar_t* valid_archive, const unsigned wide,
+                                  const unsigned selection, const DWORD capacity) {
+    if (wide > 1 || selection > 2 || capacity == 0 || capacity > 1024U * 1024U)
+        throw std::runtime_error("invalid memory failure case");
     Module module(dll_path);
     proc<FnBoolBool>(module.handle, "UnlhaSetUnicodeMode")(TRUE);
     const auto extract_w = proc<FnExtractMemW>(module.handle, "UnlhaExtractMemW");
     const auto extract_a = proc<int(WINAPI*)(HWND, LPCSTR, LPBYTE, DWORD, time_t*, LPWORD, LPDWORD)>(
         module.handle, "UnlhaExtractMemA");
-    const auto invoke = [&](const bool wide, const std::wstring& command,
-                            std::vector<unsigned char>& buffer, const DWORD capacity,
-                            time_t& timestamp, WORD& attributes, DWORD& written) {
+    const auto invoke = [&](const std::wstring& command, std::vector<unsigned char>& buffer,
+                            const DWORD size, time_t& timestamp, WORD& attributes, DWORD& written) {
         char narrow[8192]{};
         if (!WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, narrow, sizeof(narrow), nullptr, nullptr))
-            throw std::runtime_error("memory failure: command conversion failed");
-        return wide ? extract_w(nullptr, command.c_str(), buffer.data(), capacity, &timestamp, &attributes, &written)
-                    : extract_a(nullptr, narrow, buffer.data(), capacity, &timestamp, &attributes, &written);
+            throw std::runtime_error("memory failure case: command conversion failed");
+        return wide ? extract_w(nullptr, command.c_str(), buffer.data(), size,
+                                &timestamp, &attributes, &written)
+                    : extract_a(nullptr, narrow, buffer.data(), size,
+                                &timestamp, &attributes, &written);
     };
     enum_layout = EnumLayout::W32;
-    proc<FnSetEnum>(module.handle, "UnlhaSetEnumMembersProcW")(enum_probe);
-    for (unsigned wide = 0; wide < 2; ++wide)
-    for (unsigned selection = 0; selection < 3; ++selection)
-    for (const DWORD capacity : {1U, 1024U, 4096U, 8192U}) {
-        enum_result = TRUE;
-        std::vector<unsigned char> seed(8192);
-        time_t timestamp = 0;
-        WORD attributes = 0;
-        DWORD written = 0;
-        const std::wstring valid = L"-gm1 " + quote_argument(valid_archive) + L" *";
-        if (invoke(wide != 0, valid, seed, static_cast<DWORD>(seed.size()), timestamp, attributes, written) != 0)
-            throw std::runtime_error("memory failure: initial valid extraction failed");
-        enum_result = selection == 2 ? FALSE : TRUE;
-        enum_replacement_file_w.clear();
-        enum_replacement_add_w.clear();
-        enum_records.clear();
-        std::vector<unsigned char> buffer(capacity + 16, 0xcc);
-        timestamp = 123456;
-        attributes = 12345;
-        written = 123456;
-        const std::wstring command = L"-gm1 " + quote_argument(archive_path) +
-                                     (selection == 1 ? L" missing" : L" *");
-        const int result = invoke(wide != 0, command, buffer, capacity, timestamp, attributes, written);
-        DWORD system = 0;
-        const int error = proc<FnLastError>(module.handle, "UnlhaGetLastError")(&system);
-        std::uint32_t hash = 2166136261U;
-        for (size_t index = 0; index < capacity; ++index) hash = (hash ^ buffer[index]) * 16777619U;
-        const bool guard = std::all_of(buffer.begin() + capacity, buffer.end(),
-            [](unsigned char value) { return value == 0xcc; });
-        std::cout << "failure." << wide << '.' << selection << '.' << capacity << '=' << result
-                  << ",error=" << error << ",system=" << system << ",written=" << written
-                  << ",time=" << timestamp << ",attr=" << attributes << ",hash=" << hash
-                  << ",guard=" << guard << ",enum=" << enum_records.size() << '\n';
-        for (const auto& record : enum_records) std::cout << "failure.member=" << record << '\n';
-        std::cout.flush();
-        enum_result = TRUE;
-        if (invoke(wide != 0, valid, seed, static_cast<DWORD>(seed.size()), timestamp, attributes, written) != 0)
-            throw std::runtime_error("memory failure: subsequent valid extraction failed");
-    }
     enum_result = TRUE;
+    if (!proc<FnSetEnum>(module.handle, "UnlhaSetEnumMembersProcW")(enum_probe))
+        throw std::runtime_error("memory failure case: callback registration failed");
+
+    std::vector<unsigned char> seed(8192);
+    time_t timestamp = 0;
+    WORD attributes = 0;
+    DWORD written = 0;
+    const std::wstring valid = L"-gm1 " + quote_argument(valid_archive) + L" *";
+    if (invoke(valid, seed, static_cast<DWORD>(seed.size()), timestamp, attributes, written) != 0)
+        throw std::runtime_error("memory failure case: initial valid extraction failed");
+
+    enum_result = selection == 2 ? FALSE : TRUE;
+    enum_replacement_file_w.clear();
+    enum_replacement_add_w.clear();
+    enum_records.clear();
+    std::vector<unsigned char> buffer(static_cast<size_t>(capacity) + 16U, 0xcc);
+    timestamp = 123456;
+    attributes = 12345;
+    written = 123456;
+    const std::wstring command = L"-gm1 " + quote_argument(archive_path) +
+        (selection == 1 ? L" missing" : L" *");
+    const int result = invoke(command, buffer, capacity, timestamp, attributes, written);
+    DWORD system = 0;
+    const int error = proc<FnLastError>(module.handle, "UnlhaGetLastError")(&system);
+    std::uint32_t hash = 2166136261U;
+    for (size_t index = 0; index < capacity; ++index) hash = (hash ^ buffer[index]) * 16777619U;
+    const bool guard = std::all_of(buffer.begin() + capacity, buffer.end(),
+        [](unsigned char value) { return value == 0xcc; });
+    std::cout << "failure." << wide << '.' << selection << '.' << capacity << '=' << result
+              << ",error=" << error << ",system=" << system << ",written=" << written
+              << ",time=" << timestamp << ",attr=" << attributes << ",hash=" << hash
+              << ",guard=" << guard << ",enum=" << enum_records.size() << '\n';
+    for (const auto& record : enum_records) std::cout << "failure.member=" << record << '\n';
+    std::cout.flush();
+
+    enum_result = TRUE;
+    if (invoke(valid, seed, static_cast<DWORD>(seed.size()), timestamp, attributes, written) != 0)
+        throw std::runtime_error("memory failure case: subsequent valid extraction failed");
     return 0;
 }
 
@@ -2948,7 +2976,9 @@ int run_memory_selection_probe(const wchar_t* dll_path, const wchar_t* archive_p
     const DWORD sizes[] = {0, 1, 3, 4, 8, 15, 16, 32, 79, 80, 81, 8192};
     for (int wide = 0; wide < 2; ++wide) {
         for (size_t pattern = 0; pattern < _countof(patterns); ++pattern) {
-            const std::wstring command = quote_argument(archive_path) + L" " + quote_argument(patterns[pattern]);
+            // メモリ API の容量・選択境界では既定のエラー UI を表示せず、
+            // 原版／候補とも同じ表示抑止条件で戻り値と出力を比較する。
+            const std::wstring command = L"-gm1 " + quote_argument(archive_path) + L" " + quote_argument(patterns[pattern]);
             char command_a[8192]{};
             WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, command_a, sizeof(command_a), nullptr, nullptr);
             for (const DWORD capacity : sizes) {
@@ -3971,6 +4001,154 @@ int run_command_probe(const wchar_t* dll_path, const wchar_t* command, const HWN
     return 0;
 }
 
+void host_sigint_handler(int) {}
+
+int run_signal_handler_probe(const wchar_t* dll_path, const wchar_t* command) {
+    Module module(dll_path);
+    const auto previous = std::signal(SIGINT, host_sigint_handler);
+    if (previous == SIG_ERR) throw std::runtime_error("cannot install host SIGINT handler");
+    std::vector<wchar_t> output(65536);
+    const int result = proc<FnUnlhaW>(module.handle, "UnlhaW")(
+        nullptr, command, output.data(), static_cast<DWORD>(output.size()));
+    const auto installed = std::signal(SIGINT, SIG_IGN);
+    if (std::signal(SIGINT, previous) == SIG_ERR)
+        throw std::runtime_error("cannot restore host SIGINT handler");
+    std::cout << "result=" << result << '\n';
+    std::cout << "handler-preserved=" << (installed == host_sigint_handler) << '\n';
+    std::cout << "output=" << quote_wide(output.data()) << '\n';
+    return 0;
+}
+
+std::atomic<LONG> concurrent_callbacks(0);
+std::atomic<LONG> concurrent_completed(0);
+LONG concurrent_worker_count = 0;
+HANDLE concurrent_release_event = nullptr;
+thread_local bool concurrent_callback_seen = false;
+
+BOOL CALLBACK concurrent_entry_callback(LPVOID) {
+    if (!concurrent_callback_seen) {
+        concurrent_callback_seen = true;
+        const LONG callbacks = concurrent_callbacks.fetch_add(1) + 1;
+        if (callbacks + concurrent_completed.load() >= concurrent_worker_count)
+            SetEvent(concurrent_release_event);
+    }
+    return WaitForSingleObject(concurrent_release_event, 10000) == WAIT_OBJECT_0;
+}
+
+struct ConcurrentCommandContext final {
+    FnUnlhaW command = nullptr;
+    HANDLE start_event = nullptr;
+    std::wstring text;
+    int result = INT_MIN;
+};
+
+DWORD WINAPI concurrent_command_thread(LPVOID raw_context) {
+    auto& context = *static_cast<ConcurrentCommandContext*>(raw_context);
+    if (WaitForSingleObject(context.start_event, 10000) != WAIT_OBJECT_0) return 1;
+    wchar_t output[128]{};
+    context.result = context.command(nullptr, context.text.c_str(), output, _countof(output));
+    const LONG completed = concurrent_completed.fetch_add(1) + 1;
+    if (completed + concurrent_callbacks.load() >= concurrent_worker_count)
+        SetEvent(concurrent_release_event);
+    return 0;
+}
+
+int run_concurrent_entry_probe(const wchar_t* dll_path, const wchar_t* archive_path,
+                               const int workers, const int iterations) {
+    if (workers < 2 || workers > 64 || iterations < 1 || iterations > 100)
+        throw std::runtime_error("invalid concurrent entry dimensions");
+    Module module(dll_path);
+    const auto command = proc<FnUnlhaW>(module.handle, "UnlhaW");
+    const auto set_enum = proc<FnSetEnum>(module.handle, "UnlhaSetEnumMembersProcW");
+    const auto clear_enum = proc<FnBool0>(module.handle, "UnlhaClearEnumMembersProc");
+    const auto running = proc<FnBool0>(module.handle, "UnlhaGetRunning");
+    if (!set_enum(concurrent_entry_callback)) throw std::runtime_error("cannot register concurrent callback");
+    const std::wstring text = L"l -gm1 " + quote_argument(archive_path);
+    int successful = 0;
+    int busy = 0;
+    try {
+        for (int iteration = 0; iteration < iterations; ++iteration) {
+            HANDLE start_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            concurrent_release_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (!start_event || !concurrent_release_event) {
+                if (start_event) CloseHandle(start_event);
+                if (concurrent_release_event) CloseHandle(concurrent_release_event);
+                throw std::runtime_error("cannot create concurrent entry events");
+            }
+            concurrent_worker_count = workers;
+            concurrent_callbacks = 0;
+            concurrent_completed = 0;
+            std::vector<ConcurrentCommandContext> contexts(static_cast<size_t>(workers));
+            std::vector<HANDLE> threads(static_cast<size_t>(workers), nullptr);
+            int created_threads = 0;
+            for (int index = 0; index < workers; ++index) {
+                contexts[index].command = command;
+                contexts[index].start_event = start_event;
+                contexts[index].text = text;
+                threads[index] = CreateThread(nullptr, 0, concurrent_command_thread,
+                                               &contexts[index], 0, nullptr);
+                if (!threads[index]) break;
+                ++created_threads;
+            }
+            if (created_threads != workers) {
+                SetEvent(start_event);
+                SetEvent(concurrent_release_event);
+                if (created_threads != 0 &&
+                    WaitForMultipleObjects(static_cast<DWORD>(created_threads), threads.data(), TRUE, 5000) !=
+                        WAIT_OBJECT_0) {
+                    TerminateProcess(GetCurrentProcess(), 3);
+                    return 3;
+                }
+                for (int index = 0; index < created_threads; ++index) CloseHandle(threads[index]);
+                CloseHandle(start_event);
+                CloseHandle(concurrent_release_event);
+                concurrent_release_event = nullptr;
+                throw std::runtime_error("cannot create concurrent entry thread");
+            }
+            SetEvent(start_event);
+            DWORD wait = WaitForMultipleObjects(static_cast<DWORD>(threads.size()),
+                                                threads.data(), TRUE, 15000);
+            if (wait != WAIT_OBJECT_0) {
+                SetEvent(concurrent_release_event);
+                wait = WaitForMultipleObjects(static_cast<DWORD>(threads.size()),
+                                              threads.data(), TRUE, 5000);
+                if (wait != WAIT_OBJECT_0) {
+                    // 隔離プロセスを終え、実行中スレッドが参照する context や DLL を破棄しない。
+                    TerminateProcess(GetCurrentProcess(), 3);
+                    return 3;
+                }
+            }
+            int iteration_successful = 0;
+            int iteration_busy = 0;
+            for (int index = 0; index < workers; ++index) {
+                DWORD thread_code = 0;
+                GetExitCodeThread(threads[index], &thread_code);
+                CloseHandle(threads[index]);
+                if (thread_code != 0) throw std::runtime_error("concurrent entry worker failed");
+                if (contexts[index].result == 0) ++iteration_successful;
+                else if (contexts[index].result == ERROR_ALREADY_RUNNING) ++iteration_busy;
+            }
+            CloseHandle(start_event);
+            CloseHandle(concurrent_release_event);
+            concurrent_release_event = nullptr;
+            if (iteration_successful != 1 || iteration_busy != workers - 1 ||
+                concurrent_callbacks.load() != 1 || running()) {
+                throw std::runtime_error("concurrent entry was not serialized");
+            }
+            successful += iteration_successful;
+            busy += iteration_busy;
+        }
+    } catch (...) {
+        if (concurrent_release_event) SetEvent(concurrent_release_event);
+        clear_enum();
+        throw;
+    }
+    if (!clear_enum()) throw std::runtime_error("cannot clear concurrent callback");
+    std::cout << "iterations=" << iterations << ",workers=" << workers
+              << ",success=" << successful << ",busy=" << busy << '\n';
+    return 0;
+}
+
 int run_registry_lifecycle_probe(const wchar_t* dll_path, const wchar_t* archive_path,
                                   RegistrySandbox& registry) {
     Module retained(dll_path);
@@ -4047,6 +4225,9 @@ int run_command_probe_a(const wchar_t* dll_path, const wchar_t* command, const c
     std::cout << "win32-error=" << win32_error << '\n';
     std::cout << "compat-error=" << compat_error << '\n';
     std::cout << "compat-system-error=" << system_error << '\n';
+    // 隔離ランナーのパイプへ結果を確実に渡してから DLL を解放する。
+    std::cout.flush();
+    if (!std::cout.good()) throw std::runtime_error("command probe: cannot flush output");
     return 0;
 }
 
@@ -4189,8 +4370,14 @@ DWORD WINAPI command_dialog_probe_thread(LPVOID raw_context) {
                 RECT work_area{};
                 if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0))
                     throw std::runtime_error("cannot read dialog probe work area");
-                SetWindowPos(owner, nullptr, work_area.right - 20, work_area.bottom - 20,
-                    700, 480, SWP_NOZORDER | SWP_NOACTIVATE);
+                    SetWindowPos(owner, nullptr, work_area.right - 20, work_area.bottom - 20,
+                        700, 480, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            // WS_VISIBLE だけでは非表示デスクトップ上の所有者が描画待ちになることがある。
+            // 画面配置の比較では、可視指定を明示的に確定させてから DLL を呼び出す。
+            if (context.owner_mode != 1) {
+                ShowWindow(window.handle, SW_SHOWNOACTIVATE);
+                UpdateWindow(window.handle);
             }
         }
         Module retained(context.dll_path);
@@ -4458,7 +4645,14 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
     }
     if (steps && command_steps.empty())
         throw std::runtime_error("dialog command sequence required after initial language");
-    struct DialogResponse final { int radio; int button; std::wstring file; };
+    struct DialogResponse final {
+        int radio;
+        int button;
+        bool close;
+        std::wstring file;
+        std::wstring text;
+        bool text_present;
+    };
     std::vector<DialogResponse> buttons;
     int owner_mode = 0;
     if (std::wcsncmp(responses, L"inspect-layout:", 15) == 0) {
@@ -4473,6 +4667,17 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
         const wchar_t* cursor = responses;
         while (*cursor) {
             std::wstring selected_file;
+            std::wstring selected_text;
+            bool text_present = false;
+            bool close = false;
+            if (std::wcsncmp(cursor, L"close", 5) == 0 &&
+                (cursor[5] == L'\0' || cursor[5] == L',')) {
+                close = true;
+                cursor += 5;
+                buttons.push_back({0, 0, close, {}, {}, false});
+                if (*cursor) ++cursor;
+                continue;
+            }
             if (std::wcsncmp(cursor, L"file:", 5) == 0) {
                 cursor += 5;
                 const wchar_t* hex_end = std::wcschr(cursor, L':');
@@ -4496,6 +4701,27 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
                     (selected_file[2] != L'\\' && selected_file[2] != L'/'))
                     throw std::runtime_error("dialog filename requires an absolute path");
                 ++cursor;
+            } else if (std::wcsncmp(cursor, L"text:", 5) == 0) {
+                text_present = true;
+                cursor += 5;
+                const wchar_t* hex_end = std::wcschr(cursor, L':');
+                if (!hex_end || (hex_end - cursor) % 4 != 0 ||
+                    (hex_end - cursor) / 4 >= 0x1000)
+                    throw std::runtime_error("invalid dialog text encoding");
+                while (cursor < hex_end) {
+                    unsigned value = 0;
+                    for (int digit = 0; digit < 4; ++digit, ++cursor) {
+                        const wchar_t character = *cursor;
+                        const int number = character >= L'0' && character <= L'9' ? character - L'0' :
+                            character >= L'A' && character <= L'F' ? character - L'A' + 10 :
+                            character >= L'a' && character <= L'f' ? character - L'a' + 10 : -1;
+                        if (number < 0) throw std::runtime_error("invalid dialog text encoding");
+                        value = value * 16 + static_cast<unsigned>(number);
+                    }
+                    if (value < 32) throw std::runtime_error("invalid dialog text character");
+                    selected_text.push_back(static_cast<wchar_t>(value));
+                }
+                ++cursor;
             }
             wchar_t* end = nullptr;
             long button = std::wcstol(cursor, &end, 10);
@@ -4503,7 +4729,8 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
                 throw std::runtime_error("invalid dialog button sequence");
             int radio = 0;
             if (*end == L':') {
-                if (!selected_file.empty()) throw std::runtime_error("filename cannot select a radio");
+                if (!selected_file.empty() || !selected_text.empty())
+                    throw std::runtime_error("filename/text cannot select a radio");
                 radio = static_cast<int>(button);
                 cursor = end + 1;
                 button = std::wcstol(cursor, &end, 10);
@@ -4511,7 +4738,8 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
                     throw std::runtime_error("invalid dialog radio response");
             }
             if (*end && *end != L',') throw std::runtime_error("invalid dialog button sequence");
-            buttons.push_back({radio, static_cast<int>(button), std::move(selected_file)});
+            buttons.push_back({radio, static_cast<int>(button), close, std::move(selected_file),
+                               std::move(selected_text), text_present});
             cursor = *end ? end + 1 : end;
         }
         if (buttons.empty()) throw std::runtime_error("dialog response required");
@@ -4630,6 +4858,41 @@ int run_command_dialog_probe(const wchar_t* dll_path, const wchar_t* command,
                 buttons[count].file != actual)
                 stop_command_dialog_probe(126, "cannot enter the selected dialog filename", records);
             records.push_back("command-dialog.file=" + quote_wide(actual));
+        }
+        if (buttons[count].text_present) {
+            struct TextEdit final { HWND window = nullptr; unsigned count = 0; } edit;
+            EnumChildWindows(snapshot.dialog, [](HWND child, LPARAM data) -> BOOL {
+                auto& found = *reinterpret_cast<TextEdit*>(data);
+                wchar_t class_name[64]{};
+                if (GetDlgCtrlID(child) == 101 && IsWindowVisible(child) && IsWindowEnabled(child) &&
+                    GetClassNameW(child, class_name, _countof(class_name)) &&
+                    _wcsicmp(class_name, L"Edit") == 0) {
+                    found.window = child;
+                    ++found.count;
+                }
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&edit));
+            DWORD_PTR delivered = 0;
+            wchar_t actual[0x1000]{};
+            if (edit.count != 1 ||
+                !SendMessageTimeoutW(edit.window, EM_SETSEL, 0, -1,
+                    SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &delivered) ||
+                !SendMessageTimeoutW(edit.window, EM_REPLACESEL, TRUE,
+                    reinterpret_cast<LPARAM>(buttons[count].text.c_str()),
+                    SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &delivered) ||
+                !SendMessageTimeoutW(edit.window, WM_GETTEXT, _countof(actual),
+                    reinterpret_cast<LPARAM>(actual), SMTO_ABORTIFHUNG | SMTO_BLOCK, 500, &delivered) ||
+                buttons[count].text != actual)
+                stop_command_dialog_probe(126, "cannot enter the dialog comment", records);
+            records.push_back("command-dialog.text=" + quote_wide(actual));
+        }
+        if (buttons[count].close) {
+            records.push_back("command-dialog.response=close");
+            answered = snapshot.dialog;
+            ++count;
+            if (!PostMessageW(snapshot.dialog, WM_CLOSE, 0, 0))
+                stop_command_dialog_probe(126, "cannot close dialog", records);
+            continue;
         }
         const int button = buttons[count].button;
         const HWND control = GetDlgItem(snapshot.dialog, button);
@@ -4844,6 +5107,211 @@ struct ScopedImportOverride final {
         if (slot) { try { assign(original); } catch (...) { std::terminate(); } }
     }
 };
+
+enum class CompressionCommitFault {
+    Off,
+    CopyFail,
+    FlushFail,
+    ReplaceFail,
+    CopySuccess,
+};
+
+using MoveFileExWFunction = BOOL(WINAPI*)(LPCWSTR, LPCWSTR, DWORD);
+using CopyFileWFunction = BOOL(WINAPI*)(LPCWSTR, LPCWSTR, BOOL);
+using FlushFileBuffersFunction = BOOL(WINAPI*)(HANDLE);
+
+struct CompressionCommitFaultState {
+    CompressionCommitFault mode = CompressionCommitFault::Off;
+    MoveFileExWFunction move_file = nullptr;
+    CopyFileWFunction copy_file = nullptr;
+    FlushFileBuffersFunction flush_file = nullptr;
+    std::wstring source;
+    std::wstring archive;
+    std::wstring stage;
+    unsigned initial_move_calls = 0;
+    unsigned copy_calls = 0;
+    unsigned flush_calls = 0;
+    unsigned final_move_calls = 0;
+    unsigned partial_bytes = 0;
+    bool source_present_at_failure = false;
+    bool stage_present_at_failure = false;
+
+    void clear_observations() {
+        source.clear();
+        archive.clear();
+        stage.clear();
+        initial_move_calls = copy_calls = flush_calls = final_move_calls = partial_bytes = 0;
+        source_present_at_failure = stage_present_at_failure = false;
+    }
+};
+
+static CompressionCommitFaultState compression_commit_fault;
+
+static bool compression_commit_temp_name(const wchar_t* path, const wchar_t* prefix) {
+    if (!path) return false;
+    const wchar_t* slash = std::wcsrchr(path, L'/');
+    const wchar_t* backslash = std::wcsrchr(path, L'\\');
+    const wchar_t* leaf = slash && backslash ? (std::max)(slash, backslash) + 1
+                        : slash ? slash + 1 : backslash ? backslash + 1 : path;
+    const size_t length = std::wcslen(leaf);
+    return length > 7 && _wcsnicmp(leaf, prefix, 3) == 0 &&
+           _wcsicmp(leaf + length - 4, L".tmp") == 0;
+}
+
+static std::wstring compression_commit_normalize_path(const wchar_t* path) {
+    if (!path) return {};
+    std::wstring value(path);
+    if (value.rfind(L"\\\\?\\UNC\\", 0) == 0) value = L"\\\\" + value.substr(8);
+    else if (value.rfind(L"\\\\?\\", 0) == 0) value.erase(0, 4);
+    std::replace(value.begin(), value.end(), L'/', L'\\');
+    return value;
+}
+
+static bool compression_commit_same_path(const wchar_t* left, const std::wstring& right) {
+    const std::wstring normalized = compression_commit_normalize_path(left);
+    return !normalized.empty() && !right.empty() &&
+           CompareStringOrdinal(normalized.c_str(), -1, right.c_str(), -1, TRUE) == CSTR_EQUAL;
+}
+
+static std::wstring compression_commit_handle_path(HANDLE file) {
+    const DWORD flags = FILE_NAME_NORMALIZED | VOLUME_NAME_DOS;
+    wchar_t value[32768]{};
+    const DWORD written = GetFinalPathNameByHandleW(file, value, _countof(value), flags);
+    if (!written || written >= _countof(value)) return {};
+    return compression_commit_normalize_path(value);
+}
+
+static unsigned compression_commit_write_partial(const wchar_t* source, const wchar_t* destination) {
+    const HANDLE input = CreateFileW(source, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (input == INVALID_HANDLE_VALUE) return 0;
+    const HANDLE output = CreateFileW(destination, GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (output == INVALID_HANDLE_VALUE) {
+        CloseHandle(input);
+        return 0;
+    }
+    unsigned char bytes[64]{};
+    DWORD read = 0, written = 0;
+    if (ReadFile(input, bytes, sizeof(bytes), &read, nullptr) && read) {
+        const DWORD requested = read > 1 ? (std::min)(read / 2, 32UL) : 1;
+        if (!WriteFile(output, bytes, requested, &written, nullptr)) written = 0;
+    }
+    CloseHandle(output);
+    CloseHandle(input);
+    return written;
+}
+
+static BOOL WINAPI compression_commit_move_file(LPCWSTR source, LPCWSTR destination, DWORD flags) {
+    try {
+        auto& state = compression_commit_fault;
+        // 圧縮が所有する LHT から公開書庫への初回置換だけを別ボリューム扱いにする。
+        if (state.mode != CompressionCommitFault::Off &&
+            flags == (MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) &&
+            compression_commit_temp_name(source, L"LHT") &&
+            !compression_commit_temp_name(destination, L"LHT") &&
+            !compression_commit_temp_name(destination, L"LHC") &&
+            (state.source.empty() || compression_commit_same_path(source, state.source)) &&
+            (state.archive.empty() || compression_commit_same_path(destination, state.archive))) {
+            if (state.source.empty()) {
+                state.source = compression_commit_normalize_path(source);
+                state.archive = compression_commit_normalize_path(destination);
+            }
+            ++state.initial_move_calls;
+            SetLastError(ERROR_NOT_SAME_DEVICE);
+            return FALSE;
+        }
+        if (state.mode != CompressionCommitFault::Off && !state.stage.empty() &&
+            flags == (MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) &&
+            compression_commit_temp_name(source, L"LHC") &&
+            compression_commit_same_path(source, state.stage) &&
+            compression_commit_same_path(destination, state.archive)) {
+            ++state.final_move_calls;
+            if (state.mode == CompressionCommitFault::ReplaceFail) {
+                state.source_present_at_failure = GetFileAttributesW(state.source.c_str()) != INVALID_FILE_ATTRIBUTES;
+                state.stage_present_at_failure = GetFileAttributesW(state.stage.c_str()) != INVALID_FILE_ATTRIBUTES;
+                SetLastError(ERROR_ACCESS_DENIED);
+                return FALSE;
+            }
+        }
+        return state.move_file(source, destination, flags);
+    } catch (...) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+}
+
+static BOOL WINAPI compression_commit_copy_file(LPCWSTR source, LPCWSTR destination, BOOL fail_if_exists) {
+    try {
+        auto& state = compression_commit_fault;
+        if (state.mode != CompressionCommitFault::Off && !state.source.empty() &&
+            !fail_if_exists &&
+            compression_commit_same_path(source, state.source) &&
+            compression_commit_temp_name(destination, L"LHC") &&
+            (state.stage.empty() || compression_commit_same_path(destination, state.stage))) {
+            if (state.stage.empty()) state.stage = compression_commit_normalize_path(destination);
+            ++state.copy_calls;
+            if (state.mode == CompressionCommitFault::CopyFail) {
+                // 空ファイルだけの誤検出を避け、部分書き込み後の容量不足を再現する。
+                state.partial_bytes += compression_commit_write_partial(source, destination);
+                state.source_present_at_failure = GetFileAttributesW(state.source.c_str()) != INVALID_FILE_ATTRIBUTES;
+                state.stage_present_at_failure = GetFileAttributesW(state.stage.c_str()) != INVALID_FILE_ATTRIBUTES;
+                SetLastError(ERROR_DISK_FULL);
+                return FALSE;
+            }
+        }
+        return state.copy_file(source, destination, fail_if_exists);
+    } catch (...) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+}
+
+static BOOL WINAPI compression_commit_flush_file(HANDLE file) {
+    try {
+        auto& state = compression_commit_fault;
+        if (state.mode != CompressionCommitFault::Off && !state.stage.empty() &&
+            compression_commit_same_path(compression_commit_handle_path(file).c_str(), state.stage)) {
+            ++state.flush_calls;
+            if (state.mode == CompressionCommitFault::FlushFail) {
+                state.source_present_at_failure = GetFileAttributesW(state.source.c_str()) != INVALID_FILE_ATTRIBUTES;
+                state.stage_present_at_failure = GetFileAttributesW(state.stage.c_str()) != INVALID_FILE_ATTRIBUTES;
+                SetLastError(ERROR_WRITE_FAULT);
+                return FALSE;
+            }
+        }
+        return state.flush_file(file);
+    } catch (...) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+}
+
+static const char* compression_commit_fault_name(CompressionCommitFault mode) {
+    switch (mode) {
+    case CompressionCommitFault::CopyFail: return "copy-fail";
+    case CompressionCommitFault::FlushFail: return "flush-fail";
+    case CompressionCommitFault::ReplaceFail: return "replace-fail";
+    case CompressionCommitFault::CopySuccess: return "copy-success";
+    default: return "off";
+    }
+}
+
+static void print_compression_commit_fault_audit() {
+    const auto& state = compression_commit_fault;
+    std::cout << "compression-commit-fault=" << compression_commit_fault_name(state.mode)
+              << ",initial-move=" << state.initial_move_calls
+              << ",copy=" << state.copy_calls
+              << ",partial-bytes=" << state.partial_bytes
+              << ",flush=" << state.flush_calls
+              << ",final-move=" << state.final_move_calls
+              << ",source-recorded=" << !state.source.empty()
+              << ",stage-recorded=" << !state.stage.empty()
+              << ",source-present-at-failure=" << state.source_present_at_failure
+              << ",stage-present-at-failure=" << state.stage_present_at_failure << '\n';
+}
 
 using SaveFileNameWFunction = BOOL(WINAPI*)(LPOPENFILENAMEW);
 static SaveFileNameWFunction filename_dialog_real = nullptr;
@@ -5221,6 +5689,41 @@ int run_enum_sequence_probe(const wchar_t* dll_path, const wchar_t* layout, cons
     ScopedImportOverride sleep_override;
     ScopedImportOverride priority_override;
     ScopedImportOverride priority_get_override;
+    std::unique_ptr<ScopedImportOverride> compression_move_override;
+    std::unique_ptr<ScopedImportOverride> compression_copy_override;
+    std::unique_ptr<ScopedImportOverride> compression_flush_override;
+    compression_commit_fault.mode = CompressionCommitFault::Off;
+    compression_commit_fault.clear_observations();
+    compression_commit_fault.move_file = proc<MoveFileExWFunction>(GetModuleHandleW(L"kernel32.dll"), "MoveFileExW");
+    compression_commit_fault.copy_file = proc<CopyFileWFunction>(GetModuleHandleW(L"kernel32.dll"), "CopyFileW");
+    compression_commit_fault.flush_file = proc<FlushFileBuffersFunction>(GetModuleHandleW(L"kernel32.dll"), "FlushFileBuffers");
+    const auto disable_compression_commit_fault = [&]() {
+        // 同じ DLL の次コマンドへ影響させないよう、IAT をその場で元へ戻す。
+        compression_flush_override.reset();
+        compression_copy_override.reset();
+        compression_move_override.reset();
+        compression_commit_fault.mode = CompressionCommitFault::Off;
+        compression_commit_fault.clear_observations();
+    };
+    const auto enable_compression_commit_fault = [&](CompressionCommitFault mode) {
+        if (compression_move_override || compression_copy_override || compression_flush_override)
+            throw std::runtime_error("compression commit fault already enabled");
+        compression_commit_fault.clear_observations();
+        compression_move_override = std::make_unique<ScopedImportOverride>();
+        compression_copy_override = std::make_unique<ScopedImportOverride>();
+        compression_flush_override = std::make_unique<ScopedImportOverride>();
+        compression_move_override->install(retained.handle, "MoveFileExW",
+            reinterpret_cast<DWORD>(compression_commit_fault.move_file),
+            reinterpret_cast<DWORD>(&compression_commit_move_file));
+        compression_copy_override->install(retained.handle, "CopyFileW",
+            reinterpret_cast<DWORD>(compression_commit_fault.copy_file),
+            reinterpret_cast<DWORD>(&compression_commit_copy_file));
+        compression_flush_override->install(retained.handle, "FlushFileBuffers",
+            reinterpret_cast<DWORD>(compression_commit_fault.flush_file),
+            reinterpret_cast<DWORD>(&compression_commit_flush_file));
+        compression_commit_fault.mode = mode;
+        std::cout << "compression-commit-hooks=on,mode=" << compression_commit_fault_name(mode) << '\n';
+    };
     priority_fail_call = priority_call_count = 0;
     priority_get_fail_call = priority_get_call_count = 0;
     struct ProbeThreadPriorityScope final {
@@ -5336,7 +5839,28 @@ int run_enum_sequence_probe(const wchar_t* dll_path, const wchar_t* layout, cons
         if (progress_kind) progress_records.clear();
         const std::wstring step = steps[index];
         std::cout << "phase=" << index << '\n' << std::flush;
-        if (step.rfind(L"@audit-dialog-archive:", 0) == 0) {
+        if (step.rfind(L"@compression-commit-fault:", 0) == 0) {
+            const std::wstring mode = step.substr(26);
+            if (mode == L"off") {
+                if (!compression_move_override || !compression_copy_override || !compression_flush_override)
+                    throw std::runtime_error("compression commit fault is not enabled");
+                print_compression_commit_fault_audit();
+                disable_compression_commit_fault();
+                std::cout << "compression-commit-hooks=off\n";
+            } else if (mode == L"copy-fail") {
+                enable_compression_commit_fault(CompressionCommitFault::CopyFail);
+            } else if (mode == L"flush-fail") {
+                enable_compression_commit_fault(CompressionCommitFault::FlushFail);
+            } else if (mode == L"replace-fail") {
+                enable_compression_commit_fault(CompressionCommitFault::ReplaceFail);
+            } else if (mode == L"copy-success") {
+                enable_compression_commit_fault(CompressionCommitFault::CopySuccess);
+            } else throw std::runtime_error("unknown compression commit fault mode");
+        } else if (step == L"@compression-commit-audit") {
+            if (!compression_move_override || !compression_copy_override || !compression_flush_override)
+                throw std::runtime_error("compression commit fault is not enabled");
+            print_compression_commit_fault_audit();
+        } else if (step.rfind(L"@audit-dialog-archive:", 0) == 0) {
             // ダイアログ監視側が呼び出し開始前に読み取る固定の観測対象。
         } else if (step == L"@handle-count") {
             const DWORD previous_error = GetLastError();
@@ -5663,12 +6187,42 @@ int run_enum_sequence_probe(const wchar_t* dll_path, const wchar_t* layout, cons
     enum_mutate_metadata = false;
     enum_result = TRUE;
     progress_abort_after_start = false;
+    disable_compression_commit_fault();
     return 0;
 }
 
 int run_registry_path_sequence_probe(const wchar_t* dll_path, const wchar_t* archive_path,
                                       const wchar_t* initial, const wchar_t* second,
                                       const wchar_t* variant) {
+    // 観測行を CRT の標準出力から分離し、DLL 呼び出し後に保護したハンドルへ送る。
+    struct ObservationOutput {
+        std::ostringstream buffer;
+        std::streambuf* previous = nullptr;
+        HANDLE output = nullptr;
+        ObservationOutput() {
+            std::cout.flush();
+            if (!DuplicateHandle(GetCurrentProcess(), GetStdHandle(STD_OUTPUT_HANDLE),
+                    GetCurrentProcess(), &output, 0, FALSE, DUPLICATE_SAME_ACCESS))
+                throw std::runtime_error("cannot protect observation output");
+            previous = std::cout.rdbuf(buffer.rdbuf());
+        }
+        ~ObservationOutput() {
+            std::cout.rdbuf(previous);
+            CloseHandle(output);
+        }
+        void publish() {
+            const std::string text = buffer.str();
+            size_t offset = 0;
+            while (offset < text.size()) {
+                DWORD written = 0;
+                if (!WriteFile(output, text.data() + offset,
+                        static_cast<DWORD>(text.size() - offset), &written, nullptr) || !written)
+                    throw std::runtime_error("cannot publish observation output");
+                offset += written;
+            }
+        }
+    };
+    ObservationOutput observations;
     Module retained(dll_path);
     std::cout << "phase=initial\n";
     std::wstringstream operations(initial);
@@ -5698,8 +6252,10 @@ int run_registry_path_sequence_probe(const wchar_t* dll_path, const wchar_t* arc
         }
     }
     std::cout << "phase=second\n";
-    return _wcsicmp(variant, L"A") == 0
+    const int result = _wcsicmp(variant, L"A") == 0
         ? run_command_probe_a(dll_path, second) : run_command_probe(dll_path, second);
+    observations.publish();
+    return result;
 }
 
 int run_command_probe_a_summary(const wchar_t* dll_path, const wchar_t* command) {
@@ -7314,6 +7870,8 @@ void print_snapshot(const std::vector<std::string>& values) {
     }
 }
 
+#include "compression_move_probe.h"
+
 } // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -7445,6 +8003,19 @@ int wmain(int argc, wchar_t** argv) {
         if (argc == 5 && std::wcscmp(argv[1], L"--memory-failure-probe") == 0) {
             return run_memory_failure_probe(argv[2], argv[3], argv[4]);
         }
+        if (argc == 8 && std::wcscmp(argv[1], L"--memory-failure-case-probe") == 0) {
+            wchar_t* wide_end = nullptr;
+            wchar_t* selection_end = nullptr;
+            wchar_t* capacity_end = nullptr;
+            const unsigned wide = static_cast<unsigned>(std::wcstoul(argv[5], &wide_end, 10));
+            const unsigned selection = static_cast<unsigned>(std::wcstoul(argv[6], &selection_end, 10));
+            const unsigned long long capacity = std::wcstoull(argv[7], &capacity_end, 10);
+            if (!wide_end || *wide_end || !selection_end || *selection_end ||
+                !capacity_end || *capacity_end || capacity > 0xffffffffULL)
+                throw std::runtime_error("invalid memory failure case arguments");
+            return run_memory_failure_case_probe(argv[2], argv[3], argv[4], wide, selection,
+                                                 static_cast<DWORD>(capacity));
+        }
         if (argc == 4 && std::wcscmp(argv[1], L"--create-memory-damage-fixtures") == 0) {
             return create_memory_damage_fixtures(argv[2], argv[3]);
         }
@@ -7509,6 +8080,15 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (argc == 4 && std::wcscmp(argv[1], L"--command-probe") == 0) {
             return run_command_probe(argv[2], argv[3]);
+        }
+        if (argc == 4 && std::wcscmp(argv[1], L"--signal-handler-probe") == 0) {
+            return run_signal_handler_probe(argv[2], argv[3]);
+        }
+        if (argc == 6 && std::wcscmp(argv[1], L"--concurrent-entry-probe") == 0) {
+            return run_concurrent_entry_probe(argv[2], argv[3], std::stoi(argv[4]), std::stoi(argv[5]));
+        }
+        if (argc == 6 && std::wcscmp(argv[1], L"--compression-move-probe") == 0) {
+            return run_compression_move_probe(argv[2], argv[3], argv[4], argv[5]);
         }
         if ((argc == 7 || argc == 9) && std::wcscmp(argv[1], L"--base-command-probe") == 0) {
             wchar_t before[32768]{}, after[32768]{};
@@ -7661,7 +8241,7 @@ int wmain(int argc, wchar_t** argv) {
                          "       CompatibilityTests --verify-dictionary-fixture <dll> <workspace> [member]\n"
                          "       CompatibilityTests --utf8-path-probe <dll> <workspace> <W|A|legacy> [defaults]\n"
                          "       CompatibilityTests --command-dialog-probe <dll> <command> <buttons|inspect> <layout> <unicode-mode> <W|A|legacy> [locale [language [audit-archive]]]\n"
-                         "         buttons: comma-separated button IDs or radio:button pairs\n"
+                         "         buttons: comma-separated button IDs, radio:button, text:<hex>:button, or close\n"
                          "         inspect-layout: inspect dialog geometry without responding\n"
                          "         inspect-layout:hidden|visible|child|offscreen: inspect with a test owner window\n"
                          "         sequence @initial-language:0|1033|1041 sets language before callback registration\n"
@@ -7683,6 +8263,7 @@ int wmain(int argc, wchar_t** argv) {
                          "       CompatibilityTests --create-open-size-fixtures <empty-archive> <workspace>\n"
                          "       CompatibilityTests --archive-tail-probe <dll> <archive> [quiet]\n"
                          "       CompatibilityTests --memory-progress-dialog-probe <dll> <archive> [switches capacity [observe|complete|cancel|quit [language]]]\n"
+                         "       CompatibilityTests --memory-failure-case-probe <dll> <archive> <valid-archive> <wide> <selection> <capacity>\n"
                          "       CompatibilityTests --unicode-memory-probe <dll> <workspace>\n"
                          "       CompatibilityTests --unicode-command-probe <dll> <workspace>\n"
                          "       CompatibilityTests --sfx-probe <dll> <workspace> [dos|win|winm]\n"
@@ -7699,6 +8280,9 @@ int wmain(int argc, wchar_t** argv) {
                          "       CompatibilityTests --memory-failure-stress <dll> <damaged-huffman-archive>\n"
                          "       CompatibilityTests --config-dialog-probe <dll> <mode> <cancel|ok|expand|main:ids|local:ids|local-save:ids> <a|w|anull|wnull>\n"
                          "       CompatibilityTests --command-probe <dll> <wide-command-line>\n"
+                         "       CompatibilityTests --signal-handler-probe <dll> <wide-command-line>\n"
+                         "       CompatibilityTests --concurrent-entry-probe <dll> <archive> <workers> <iterations>\n"
+                         "       CompatibilityTests --compression-move-probe <dll> <command> <archive> <observe|deny>\n"
                          "       CompatibilityTests --base-command-probe <dll> <command> <locale> <unicode-mode> <legacy|A|W> [none|a32|w32|a64|w64 progress]\n"
                          "       CompatibilityTests --command-probe-a <dll> <ansi-command-line> [A]\n"
                          "       CompatibilityTests --command-probe-a-summary <dll> <ansi-command-line>\n"

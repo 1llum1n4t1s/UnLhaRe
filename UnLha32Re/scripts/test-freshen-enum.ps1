@@ -29,12 +29,17 @@ function Set-FreshenFixture([string]$Path, [string]$Value, [int]$Year) {
     [IO.File]::SetLastAccessTimeUtc($Path,$when)
 }
 $count = 0
+function Test-OriginalMoveAccessDenied([string[]]$Rows) {
+    return $Rows -contains 'result=32792' -and $Rows -contains 'compat-system-error=5' -and
+        @($Rows -like '*on execute_cmd (MoveFile)*').Count -ne 0
+}
 foreach ($locale in 1033,1041) { foreach ($utf8 in 0,1) {
  foreach ($api in 'legacy','A','W') { foreach ($layout in 'a32','w32','a64','w64') {
     $label = "$locale-$utf8-$api-$layout"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
-        $root = Join-Path $Workspace "$label-$side"
+      for ($commandAttempt = 0; $commandAttempt -lt 6; $commandAttempt++) {
+        $root = Join-Path $Workspace "$label-$side-attempt$commandAttempt"
         $caller = Join-Path $root 'caller'
         $search = Join-Path $caller '..source'
         $seed = Join-Path $root 'seed'
@@ -52,6 +57,13 @@ foreach ($locale in 1033,1041) { foreach ($utf8 in 0,1) {
             # 検索名 caller/..source/literal.txt は存在するが、通常の読込名 source/literal.txt は存在しない。
             $command = "f -h2 -n1 -gm1 -y1 -c1 `"$archive`" `"../source/`" literal.txt"
             $rows = @(Invoke-EnumProbe (Join-Path $root 'command') @('--command-enum-probe',$dll,$command,$layout,'1',$replacement,"$locale","$utf8",$api) $caller)
+            # 原版の MoveFile エラー5は発生原因未確定。初期書庫・入力・パス長を
+            # そろえた別領域で限定再試行し、失敗した試行の入力とログを保持する。
+            if ($side -eq 'oracle' -and (Test-OriginalMoveAccessDenied $rows) -and $commandAttempt -lt 5) {
+                Write-Host "Freshen enum: original MoveFile access denied; retrying in a fresh directory ($label/$commandAttempt)"
+                Start-Sleep -Milliseconds 100
+                continue
+            }
             if ($rows -notcontains 'result=0' -or $rows -notcontains 'enum.count=1') {
                 throw "f の列挙による欠落入力の差し替えが失敗しました: $label/$side`n$($rows -join "`n")"
             }
@@ -69,6 +81,8 @@ foreach ($locale in 1033,1041) { foreach ($utf8 in 0,1) {
         $results += ,@($rows | ForEach-Object {
             $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>')
         })
+        break
+      }
     }
     $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
     if ($difference.Count) {

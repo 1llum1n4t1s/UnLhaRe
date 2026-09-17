@@ -35,12 +35,17 @@ $cases = @(
     @{ Name='success'; Failure=''; Order=@('z.txt','m.txt','a.txt'); Remain=@() }
 )
 $count = 0
+$originalRetryCount = 0
 $layouts = if ($NewArchive) { @('none') } else { @('none','a32','w32','a64','w64') }
 foreach ($case in $cases) { foreach ($locale in 1033,1041) { foreach ($utf8 in 0,1) { foreach ($api in 'legacy','A','W') { foreach ($layout in $layouts) {
     $label = "$($case.Name)/$locale/$utf8/$api/$layout"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
-        $root = Join-Path $Workspace ("case-{0:D3}-$side" -f $count)
+        $sideSucceeded = $false
+        for ($attempt = 0; $attempt -lt 6 -and -not $sideSucceeded; $attempt++) {
+        # 再試行先も初回と同じ長さの名前にし、ANSI output-length を厳密比較する。
+        $attemptName = if ($attempt -eq 0) { 'case' } else { "try$attempt" }
+        $root = Join-Path $Workspace ("{0}-{1:D3}-$side" -f $attemptName,$count)
         $inputDirectory = Join-Path $root 'input'
         New-Item -ItemType Directory -Path $inputDirectory | Out-Null
         foreach ($name in 'a.txt','m.txt','z.txt') { Set-DeleteFixture (Join-Path $inputDirectory $name) "input-$name-value" 2024 }
@@ -58,6 +63,16 @@ foreach ($case in $cases) { foreach ($locale in 1033,1041) { foreach ($utf8 in 0
             $rows = @(& $TestProgram --registry '' --base-command-probe $dll $command $locale $utf8 $api $layout 0)
             if ($LASTEXITCODE -ne 0) { throw "削除失敗の試験が異常終了しました: $label/$side" }
         } finally { if ($holder) { $holder.Dispose() } }
+        $moveText = $rows -join [Environment]::NewLine
+        $moveDenied = $side -eq 'oracle' -and $attempt -lt 5 -and
+            $moveText -match 'result=32792' -and $moveText -match 'MoveFile' -and $moveText -match 'compat-system-error=5'
+        if ($moveDenied) {
+            $originalRetryCount++
+            [IO.File]::WriteAllText((Join-Path $root 'oracle-movefile-failure.log'), ($rows -join [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+            Write-Host "Move deletion: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+            Start-Sleep -Milliseconds 100
+            continue
+        }
         $expectedResult = if ($case.Failure) { 32828 } else { 0 }
         $expectedSystem = if ($case.ReadOnly) { 5 } elseif ($case.Failure) { 32 } else { 18 }
         if ($rows -notcontains "result=$expectedResult" -or $rows -notcontains "compat-error=$expectedResult" -or $rows -notcontains "compat-system-error=$expectedSystem") {
@@ -89,7 +104,10 @@ foreach ($case in $cases) { foreach ($locale in 1033,1041) { foreach ($utf8 in 0
                 }
             }
         }
-        $results += ,@($rows | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
+       $results += ,@($rows | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
+        $sideSucceeded = $true
+        }
+        if (-not $sideSucceeded) { throw "削除失敗の原版試験を再試行回数内に完了できません: $label/$side" }
     }
     $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
     if ($difference.Count) { throw "削除失敗のログ・通知・エラーが一致しません: $label`n$($difference | Select-Object -First 10 | Out-String -Width 2000)" }
@@ -97,3 +115,4 @@ foreach ($case in $cases) { foreach ($locale in 1033,1041) { foreach ($utf8 in 0
 } } } } }
 $operation = if ($NewArchive) { 'new' } else { 'existing' }
 Write-Host "Move deletion: $count $operation first/middle/last/reverse/readonly/success error, source-order, retained-content, and complete-archive comparisons passed"
+Write-Host "Move deletion: $originalRetryCount original MoveFile access-denied retries (cause unconfirmed; failure logs retained)"

@@ -86,13 +86,25 @@ function Invoke-EnumProbe([string]$LogPrefix, [string[]]$Arguments, [string]$Wor
     } finally { $child.Dispose() }
 }
 $count = 0
+$originalRetryCount = 0
+function Test-OriginalMoveAccessDenied([string]$Root) {
+    $texts = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue })
+    $text = $texts -join "`n"
+    return $text -match 'result=32792' -and $text -match 'compat-system-error=5' -and
+        $text -match 'on execute_cmd \(MoveFile\)'
+}
 foreach ($variant in $Variants) {
  foreach ($locale in $Locales) { foreach ($utf8 in $UnicodeModes) {
   foreach ($api in $Apis) { foreach ($layout in $Layouts) {
     $label = "$variant-$locale-$utf8-$api-$layout"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
-        $root = Join-Path $Workspace "$label-$side"
+        $completed = $false
+        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        try {
+        # 原版の MoveFile 共有違反は新しい試験領域で再試行し、両側のパス長を揃える。
+        $root = Join-Path $Workspace ("{0}-{1}-attempt{2}" -f $label,$side,$attempt)
         $inputPath = Join-Path $root 'input'
         $nextPath = Join-Path $root 'next'
         New-Item -ItemType Directory -Path $inputPath, $nextPath | Out-Null
@@ -141,6 +153,10 @@ foreach ($variant in $Variants) {
         })
         $dll = if ($side -eq 'oracle') { $Oracle } else { $Candidate }
         $rows = @(Invoke-EnumProbe (Join-Path $root 'sequence') (@('--enum-sequence-probe',$dll,$layout,"$locale","$utf8",$api) + $steps))
+        if ($side -eq 'oracle' -and (Test-OriginalMoveAccessDenied $root)) {
+            # プローブ自体は終了コード 0 でも、連続呼び出し内の MoveFile 失敗をログへ記録する。
+            throw '原版の MoveFile 共有違反を検出しました。'
+        }
         if (@($rows | Where-Object { $_ -match '^enum\.count=\d+$' }).Count -ne $steps.Count -or $rows[-1] -cne 'enum.clear=1') {
             throw "列挙状態の連続呼び出しログが不足しています: $label/$side"
         }
@@ -161,6 +177,20 @@ foreach ($variant in $Variants) {
             $rows += @($data | ForEach-Object { "data.$_" })
         }
         $results += ,@(Normalize-EnumRows $rows $root | Tee-Object -FilePath (Join-Path $root 'comparable.log'))
+        $completed = $true
+        break
+        } catch {
+            if ($side -eq 'oracle' -and $attempt -lt 5 -and (Test-OriginalMoveAccessDenied $root)) {
+                [IO.File]::WriteAllText((Join-Path $root 'original-command-failure.txt'),$_.Exception.Message)
+                $originalRetryCount++
+                Write-Host "Enum state: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+                Start-Sleep -Milliseconds 100
+                continue
+            }
+            throw
+        }
+        }
+        if (!$completed) { throw "列挙状態試験の原版取得を再試行できませんでした: $label" }
     }
     $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
     if ($difference.Count) {

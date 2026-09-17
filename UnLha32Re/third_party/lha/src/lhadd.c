@@ -22,6 +22,22 @@ static int      added_member_count;
 extern int Lha_GetEnableTotalProgress();
 extern void Lha_SetTotalProgressInfo(__int64 total_bytes, int total_files);
 
+static int
+is_excluded_compression_input(const char *name)
+{
+    int i;
+    /* a/u/m の旧項目は -x の対象外。f と新規項目の除外は維持する。 */
+#ifdef LHA_LIBRARY
+    if (Lha_IsExistingCompressionInput(name)) return FALSE;
+#endif
+    for (i = 0; exclude_files && exclude_files[i]; i++) {
+        if (fnmatch(exclude_files[i], basename(name),
+                    FNM_PATHNAME|FNM_NOESCAPE|FNM_PERIOD) == 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
 static void
 set_progress_file_destination(const char *name)
 {
@@ -476,9 +492,11 @@ build_temporary_file()
 {
     FILE *afp;
 
+#ifndef LHA_LIBRARY
     signal(SIGINT, interrupt);
 #ifdef SIGHUP
     signal(SIGHUP, interrupt);
+#endif
 #endif
 
     temporary_fd = build_temporary_name();
@@ -500,9 +518,11 @@ build_backup_file()
     build_backup_name(backup_archive_name, archive_name,
                       sizeof(backup_archive_name));
     if (!noexec) {
+#ifndef LHA_LIBRARY
         signal(SIGINT, SIG_IGN);
 #ifdef SIGHUP
         signal(SIGHUP, SIG_IGN);
+#endif
 #endif
         if (rename(archive_name, backup_archive_name) < 0) {
 #if __MINGW32__
@@ -514,9 +534,11 @@ build_backup_file()
             fatal_error("Cannot make backup file \"%s\"", archive_name);
         }
         recover_archive_when_interrupt = TRUE;
+#ifndef LHA_LIBRARY
         signal(SIGINT, interrupt);
 #ifdef SIGHUP
         signal(SIGHUP, interrupt);
+#endif
 #endif
     }
 }
@@ -545,11 +567,17 @@ temporary_to_new_archive_file(off_t new_archive_size)
 #endif
     }
     else {
+#ifdef LHA_LIBRARY
+        if (Lha_CommitCompressionArchive(temporary_name, new_archive_name) < 0)
+            fatal_error("Cannot replace archive file \"%s\"", new_archive_name);
+        return;
+#else
         unlink(new_archive_name);
         if (rename(temporary_name, new_archive_name) == 0)
             return;
         nafp = xfopen(new_archive_name, WRITE_BINARY);
         writing_filename = archive_name;
+#endif
     }
 
     oafp = xfopen(temporary_name, READ_BINARY);
@@ -791,16 +819,10 @@ cmd_add()
         __int64 total_bytes = 0;
         int total_files = 0;
         for (i = 0; i < cmd_filec; i++) {
-            int j;
             if (strcmp(cmd_filev[i], archive_name) == 0) {
                 continue;
             }
-            /* exclude files specified by -x option */
-            for (j = 0; exclude_files && exclude_files[j]; j++) {
-                if (fnmatch(exclude_files[j], basename(cmd_filev[i]),
-                            FNM_PATHNAME|FNM_NOESCAPE|FNM_PERIOD) == 0)
-                    goto skip_scan;
-            }
+            if (is_excluded_compression_input(cmd_filev[i])) goto skip_scan;
 
             scan_add_files_recursive(cmd_filev[i], &total_bytes, &total_files);
 
@@ -824,12 +846,7 @@ cmd_add()
             continue;
         }
 
-        /* exclude files specified by -x option */
-        for (j = 0; exclude_files && exclude_files[j]; j++) {
-            if (fnmatch(exclude_files[j], basename(cmd_filev[i]),
-                        FNM_PATHNAME|FNM_NOESCAPE|FNM_PERIOD) == 0)
-                goto next;
-        }
+        if (is_excluded_compression_input(cmd_filev[i])) goto next;
 
         oafp = append_it(cmd_filev[i], oafp, nafp);
         if (Lha_ShouldDiscardCompressionUpdate()) break;
@@ -916,8 +933,11 @@ cmd_add()
     if (!noexec) {
         if (added_member_count > 0) {
             Lha_SetProgressDestination(new_archive_name);
-            Lha_SendCompatProgressMessage(4, archive_name, 0, new_archive_size);
-            if (Lha_SendCompatProgressMessage(1, archive_name,
+            /* 既存書庫の更新では、原版は公開前の完成一時書庫を COPY の
+             * source として通知する。新規書庫では temporary_name が最終名
+             * のため、従来の通知内容を保つ。 */
+            Lha_SendCompatProgressMessage(4, temporary_name, 0, new_archive_size);
+            if (Lha_SendCompatProgressMessage(1, temporary_name,
                                               new_archive_size, new_archive_size))
                 fatal_error("User cancelled.");
         }
@@ -927,11 +947,15 @@ cmd_add()
             if (Lha_SendCompatProgressMessage(1, archive_name, new_archive_size, 0))
                 fatal_error("User cancelled.");
         }
+#ifdef LHA_LIBRARY
+        if (!direct_new_archive)
+            temporary_to_new_archive_file(new_archive_size);
+#else
         if (!direct_new_archive && (strcmp(new_archive_name, "-") == 0 ||
             rename(temporary_name, new_archive_name) < 0)) {
-
             temporary_to_new_archive_file(new_archive_size);
         }
+#endif
 
         /* set new archive file mode/group */
         set_archive_file_mode();
@@ -1022,8 +1046,12 @@ cmd_delete()
 
     /* copy temporary file to new archive file */
     if (!noexec) {
+#ifdef LHA_LIBRARY
+        temporary_to_new_archive_file(new_archive_size);
+#else
         if (rename(temporary_name, new_archive_name) < 0)
             temporary_to_new_archive_file(new_archive_size);
+#endif
 
         /* set new archive file mode/group */
         set_archive_file_mode();

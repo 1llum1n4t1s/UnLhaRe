@@ -37,12 +37,17 @@ function Normalize-MoveRecoveryRows([string[]]$Rows, [string]$Variant, [string]$
     if ($Variant -eq 'new' -and $initialEntries -ne 3) { throw '初回 ADD 通知の件数が違います。' }
 }
 $count = 0
+$originalRetryCount = 0
 foreach ($layout in 'a32','w32','a64','w64') { foreach ($locale in 1033,1041) { foreach ($utf8 in 0,1) { foreach ($api in 'legacy','A','W') { foreach ($variant in 'existing','new') {
     $label = "$layout/$locale/$utf8/$api/$variant"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
+        $sideSucceeded = $false
+        for ($attempt = 0; $attempt -lt 6 -and -not $sideSucceeded; $attempt++) {
         # ログの文字数とパスを同時に比較できるよう、両側のディレクトリ名を同長にする。
-        $root = Join-Path $Workspace ("case-{0:D3}-$side" -f $count)
+        # 再試行先も case と同じ長さの接頭辞を使い、output-length の比較を保つ。
+        $attemptName = if ($attempt -eq 0) { 'case' } else { "try$attempt" }
+        $root = Join-Path $Workspace ("{0}-{1:D3}-$side" -f $attemptName,$count)
         foreach ($stage in 'first','second','final') {
             $directory = Join-Path $root $stage
             New-Item -ItemType Directory -Path $directory | Out-Null
@@ -71,6 +76,16 @@ foreach ($layout in 'a32','w32','a64','w64') { foreach ($locale in 1033,1041) { 
             $rows = @(& $TestProgram --registry '' --enum-sequence-probe $dll $layout $locale $utf8 $api $first "@count:$archive" "@check:$archive" $second "@count:$archive" "@check:$archive" $final "@check:$archive")
             if ($LASTEXITCODE -ne 0) { throw "削除失敗後の連続呼び出しが異常終了しました: $label/$side" }
         } finally { $holder.Dispose() }
+        $moveText = $rows -join [Environment]::NewLine
+        $moveDenied = $side -eq 'oracle' -and $attempt -lt 5 -and
+            $moveText -match 'result=32792' -and $moveText -match 'MoveFile' -and $moveText -match 'compat-system-error=5'
+        if ($moveDenied) {
+            $originalRetryCount++
+            [IO.File]::WriteAllText((Join-Path $root 'oracle-movefile-failure.log'), $moveText, [Text.UTF8Encoding]::new($false))
+            Write-Host "Move deletion recovery: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+            Start-Sleep -Milliseconds 100
+            continue
+        }
         [IO.File]::WriteAllLines((Join-Path $root 'sequence.log'),[string[]]$rows)
         $commandResults = @($rows | Where-Object { $_ -match '^result=' })
         if (($commandResults -join ',') -cne 'result=32828,result=32828,result=0' -or
@@ -108,7 +123,10 @@ foreach ($layout in 'a32','w32','a64','w64') { foreach ($locale in 1033,1041) { 
                 }
             }
         }
-        $results += ,@(Normalize-MoveRecoveryRows $rows $variant $side | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
+       $results += ,@(Normalize-MoveRecoveryRows $rows $variant $side | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
+        $sideSucceeded = $true
+        }
+        if (-not $sideSucceeded) { throw "削除失敗後の原版試験を再試行回数内に完了できません: $label/$side" }
     }
     $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
     if ($difference.Count) { throw "削除失敗後の状態・出力が一致しません: $label`n$($difference | Select-Object -First 12 | Out-String -Width 2000)" }
@@ -117,3 +135,4 @@ foreach ($layout in 'a32','w32','a64','w64') { foreach ($locale in 1033,1041) { 
 Write-Host "Move deletion recovery: $layout/$locale/$utf8/$api, $count sequences passed"
 } } } }
 Write-Host "Move deletion recovery: $count shared-delete failure, readonly failure, success, count/check, retained-enum-state, and input-order sequences passed"
+Write-Host "Move deletion recovery: $originalRetryCount original MoveFile access-denied retries (cause unconfirmed; failure logs retained)"

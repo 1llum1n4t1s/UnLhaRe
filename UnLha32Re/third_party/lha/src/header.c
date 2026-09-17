@@ -480,12 +480,20 @@ static long
 unix_to_generic_stamp(time_t t)
 {
     struct tm *tm = localtime(&t);
+    int year;
 
-    tm->tm_year -= 80;
-    tm->tm_mon += 1;
+    /* MSVC の localtime は 1970 年未満など表現範囲外で NULL を返す。
+       level 0/1 の DOS 日時へ収まらない値は、表現可能な端へ固定する。 */
+    if (tm == NULL)
+        return t < 0 ? 0L : (long)0xff9fbf7dUL;
+    year = tm->tm_year + 1900;
+    if (year < 1980)
+        return 0L;
+    if (year > 2107)
+        return (long)0xff9fbf7dUL;
 
-    return ((long)(tm->tm_year << 25) +
-            (tm->tm_mon  << 21) +
+    return ((long)((year - 1980) << 25) +
+            ((tm->tm_mon + 1) << 21) +
             (tm->tm_mday << 16) +
             (tm->tm_hour << 11) +
             (tm->tm_min  << 5) +

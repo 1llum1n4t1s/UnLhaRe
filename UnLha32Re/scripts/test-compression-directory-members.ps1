@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$Oracle,
     [Parameter(Mandatory)][string]$Candidate,
     [Parameter(Mandatory)][string]$Workspace,
+    [ValidateRange(0,315)][int]$StartCount = 0,
     [ValidateSet('new','files','directories')][string[]]$ArchiveStates = @('new','files','directories')
 )
 $ErrorActionPreference = 'Stop'
@@ -11,7 +12,9 @@ $TestProgram = (Resolve-Path -LiteralPath $TestProgram).Path
 $Oracle = (Resolve-Path -LiteralPath $Oracle).Path
 $Candidate = (Resolve-Path -LiteralPath $Candidate).Path
 $Workspace = [IO.Path]::GetFullPath($Workspace)
-New-Item -ItemType Directory -Path $Workspace | Out-Null
+if (-not (Test-Path -LiteralPath $Workspace -PathType Container)) {
+    New-Item -ItemType Directory -Path $Workspace | Out-Null
+}
 Write-Host "Directory members workspace: $Workspace"
 # 新規格納時の未初期化通知は、通常ファイル検索と同じ安全性契約で検査する。
 $helperAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'test-compression-directories.ps1'),[ref]$null,[ref]$null)
@@ -63,11 +66,25 @@ $modes = @(
     @{ Api='W'; Layout='w64'; Utf8=1; Locale=1033 }
 )
 $count = 0
+$originalRetryCount = 0
+function Test-OriginalMoveAccessDenied([string[]]$Rows) {
+    return $Rows -contains 'result=32792' -and
+        $Rows -contains 'compat-system-error=5' -and
+        @($Rows -like '*on execute_cmd (MoveFile)*').Count -ne 0
+}
 foreach ($state in $ArchiveStates) { foreach ($case in $cases) { foreach ($command in 'a','u','m') { foreach ($mode in $modes) {
+    if ($count -lt $StartCount) { $count++; continue }
     $label = "$state/$($case.Name)/$command/$($mode.Api)/$($mode.Layout)"
     $results = @()
     foreach ($side in 'oracle','reimpl') {
-        $root = Join-Path $Workspace ("case-{0:D3}-$side" -f $count)
+        $completed = $false
+        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        # 初回にも一桁の試行番号を付け、原版だけ再試行しても両側のパス長を揃える。
+        $root = Join-Path $Workspace ("case-{0:D3}-{1}-attempt{2}" -f $count,$side,$attempt)
+        if (Test-Path -LiteralPath $root -PathType Container) {
+            # 途中停止した再開では、既存試行の副作用を再利用せず次の試行領域へ進む。
+            continue
+        }
         $inputDirectory = Join-Path $root 'input'
         New-MemberFixture $inputDirectory 'input' 2024
         $archive = Join-Path $root 'result.lzh'
@@ -75,7 +92,16 @@ foreach ($state in $ArchiveStates) { foreach ($case in $cases) { foreach ($comma
         $dll = if ($side -eq 'oracle') { $Oracle } else { $Candidate }
         $line = "$command -h0 -n1 -gm1 -y1 -c1 $($case.Flags) `"$archive`" `"$($inputDirectory.Replace('\','/'))/`" $($case.Input)"
         $rows = @(& $TestProgram --registry '' --base-command-probe $dll $line $mode.Locale $mode.Utf8 $mode.Api $mode.Layout 0)
-        if ($LASTEXITCODE -ne 0 -or $rows -notcontains 'result=0' -or $rows -notcontains 'directory-preserved=1') { throw "ディレクトリー格納に失敗しました: $label/$side`n$($rows -join "`n")" }
+        if ($LASTEXITCODE -ne 0 -or $rows -notcontains 'result=0' -or $rows -notcontains 'directory-preserved=1') {
+            if ($side -eq 'oracle' -and $attempt -lt 5 -and (Test-OriginalMoveAccessDenied $rows)) {
+                [IO.File]::WriteAllLines((Join-Path $root 'original-command-failure.txt'),[string[]]$rows)
+                $originalRetryCount++
+                Write-Host "Directory members: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+                Start-Sleep -Milliseconds 100
+                continue
+            }
+            throw "ディレクトリー格納に失敗しました: $label/$side`n$($rows -join "`n")"
+        }
         [IO.File]::WriteAllLines((Join-Path $root 'command.txt'),$rows)
         foreach ($name in $sourceFiles) {
             $path = Join-Path $inputDirectory $name
@@ -130,6 +156,10 @@ foreach ($state in $ArchiveStates) { foreach ($case in $cases) { foreach ($comma
             $rows = @(Normalize-NewDirectoryRows $rows $side $expectedEntries)
         }
         $results += ,@(($rows + $entries) | ForEach-Object { $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>') })
+        $completed = $true
+        break
+        }
+        if (!$completed) { throw "ディレクトリー格納の原版取得を再試行できませんでした: $label / $side" }
     }
     $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
     if ($difference.Count) { throw "ディレクトリー格納の通知・ログ・エラー・並びが一致しません: $label`n$($difference | Select-Object -First 8 | Out-String -Width 2000)" }
@@ -138,3 +168,4 @@ foreach ($state in $ArchiveStates) { foreach ($case in $cases) { foreach ($comma
 Write-Host "Directory members: $state/$($case.Name), $count comparisons passed"
 } }
 Write-Host "Directory members: $count a/u/m creation/update, enumeration, member order, no-duplicate, CRC check, extraction, and source-retention comparisons passed"
+Write-Host "Directory members: $originalRetryCount original MoveFile access-denied retries (cause unconfirmed; failure logs retained)"

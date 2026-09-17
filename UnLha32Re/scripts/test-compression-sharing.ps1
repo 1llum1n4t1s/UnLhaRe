@@ -16,6 +16,14 @@ $ErrorActionPreference = 'Stop'
 $TestProgram = (Resolve-Path -LiteralPath $TestProgram).Path
 $Oracle = (Resolve-Path -LiteralPath $Oracle).Path
 $Candidate = (Resolve-Path -LiteralPath $Candidate).Path
+$runner = (Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $TestProgram) 'DesktopRunner.exe')).Path
+# 他の列挙試験と同じ分離・時間制限・EOF 待機・個別ログ保存を使用する。
+$parseErrors = $null
+$helperAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'test-enum-state.ps1'), [ref]$null, [ref]$parseErrors)
+if ($parseErrors.Count) { throw '列挙プローブのヘルパーを解析できません。' }
+$helper = $helperAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-EnumProbe'}, $true)
+if (!$helper) { throw '列挙プローブのヘルパーがありません。' }
+. ([scriptblock]::Create($helper.Extent.Text))
 $Workspace = [IO.Path]::GetFullPath($Workspace)
 New-Item -ItemType Directory -Path $Workspace | Out-Null
 Write-Host "Compression sharing workspace: $Workspace"
@@ -31,13 +39,18 @@ function Normalize-SharingRows($Rows, [string]$Root) {
         $_.Replace($Root.Replace('\','/'),'<ROOT>').Replace($Root.Replace('\','\\'),'<ROOT>')
     })
 }
+function Test-OriginalMoveAccessDenied([string[]]$Rows) {
+    return $Rows -contains 'result=32792' -and
+        $Rows -contains 'compat-system-error=5' -and
+        @($Rows -like '*on execute_cmd (MoveFile)*').Count -ne 0
+}
 $seedDirectory = Join-Path $Workspace 'seed'
 New-Item -ItemType Directory -Path $seedDirectory | Out-Null
 foreach ($name in 'a.txt','z.txt') { Set-SharingFixture (Join-Path $seedDirectory $name) "old-$name-value" 2020 }
 $seedArchive = Join-Path $Workspace 'seed.lzh'
 $seedCommand = "a -h0 -n1 -gm1 -y1 -c1 `"$seedArchive`" `"$seedDirectory\`" a.txt z.txt"
-$seedRows = @(& $TestProgram --registry '' --command-probe $Oracle $seedCommand)
-if ($LASTEXITCODE -ne 0 -or $seedRows -notcontains 'result=0') { throw '共有試験の元書庫を作成できません。' }
+$seedRows = @(Invoke-EnumProbe (Join-Path $Workspace 'seed-command') @('--command-probe',$Oracle,$seedCommand))
+if ($seedRows -notcontains 'result=0') { throw '共有試験の元書庫を作成できません。' }
 $seedHash = (Get-FileHash -LiteralPath $seedArchive -Algorithm SHA256).Hash
 $cases = @(
     @{ Name='exclusive-first'; Share=[IO.FileShare]::None; Access=[IO.FileAccess]::ReadWrite; Locked='a.txt'; Options=''; Failure=$true },
@@ -56,6 +69,16 @@ $cases = @(
 if ($Variants.Count) { $cases = @($cases | Where-Object Name -in $Variants) }
 if (-not $cases.Count) { throw '共有試験の条件がありません。' }
 $count = 0
+$originalRetryCount = 0
+$completedPath = Join-Path $Workspace 'comparisons.tsv'
+"case`tlabel" | Set-Content -LiteralPath $completedPath -Encoding utf8
+[pscustomobject]@{
+    StartedUtc = [datetime]::UtcNow.ToString('o')
+    NewArchive = [bool]$NewArchive; Commands = $Commands; Layouts = $Layouts
+    Locales = $Locales; UnicodeModes = $UnicodeModes; Apis = $Apis; Variants = $cases.Name
+    Files = @($TestProgram,$Oracle,$Candidate,$runner,$PSCommandPath,(Join-Path $PSScriptRoot 'test-enum-state.ps1') |
+        ForEach-Object { [pscustomobject]@{ Path=$_; SHA256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash } })
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Workspace 'run.json') -Encoding utf8
 foreach ($case in $cases) { foreach ($commandName in $Commands) { foreach ($layout in $Layouts) {
     # 新規作成時の未初期化列挙情報は一致対象外。ここでは通知なしで原子性を検証する。
     if ($NewArchive -and ($commandName -eq 'f' -or $layout -ne 'none')) { continue }
@@ -66,7 +89,9 @@ foreach ($case in $cases) { foreach ($commandName in $Commands) { foreach ($layo
         $label = "$($case.Name)/$commandName/$layout/$locale/$unicode/$api"
         $results = @()
         foreach ($side in 'oracle','reimpl') {
-            $root = Join-Path $Workspace ("case-{0:D4}-$side" -f $count)
+          for ($commandAttempt = 0; $commandAttempt -lt 6; $commandAttempt++) {
+            # 再試行でも初期書庫・入力・パス長を一致させ、失敗した試行を個別に残す。
+            $root = Join-Path $Workspace ("case-{0:D4}-$side-attempt$commandAttempt" -f $count)
             $inputDirectory = Join-Path $root 'input'
             New-Item -ItemType Directory -Path $inputDirectory | Out-Null
             foreach ($name in 'a.txt','z.txt') { Set-SharingFixture (Join-Path $inputDirectory $name) "new-$name-updated-value" 2024 }
@@ -84,9 +109,16 @@ foreach ($case in $cases) { foreach ($commandName in $Commands) { foreach ($layo
             if ($commandName -eq 'm' -and -not $case.Failure) { $share = $share -bor [IO.FileShare]::Delete }
             $holder = [IO.File]::Open((Join-Path $inputDirectory $case.Locked),[IO.FileMode]::Open,$case.Access,$share)
             try {
-                $rows = @(& $TestProgram --registry '' --command-enum-probe $dll $command $layout 1 $replacement $locale $unicode $api 0)
-                if ($LASTEXITCODE -ne 0) { throw "共有試験のプロセスが異常終了しました: $label/$side" }
+                $rows = @(Invoke-EnumProbe (Join-Path $root 'command') @('--command-enum-probe',$dll,$command,$layout,'1',$replacement,"$locale","$unicode",$api,'0'))
             } finally { $holder.Dispose() }
+            # 原版の MoveFile エラー5は発生原因未確定。該当する診断だけを限定再試行し、
+            # 変更済みかもしれない fixture は再利用しない。候補・他エラー・時間切れは再試行しない。
+            if ($side -eq 'oracle' -and (Test-OriginalMoveAccessDenied $rows) -and $commandAttempt -lt 5) {
+                $originalRetryCount++
+                Write-Host "Compression sharing: original MoveFile access denied; retrying in a fresh directory ($label/$commandAttempt)"
+                Start-Sleep -Milliseconds 100
+                continue
+            }
             $expectedResult = if ($case.Failure) { 32816 } else { 0 }
             $expectedSystem = if ($case.Failure) { 32 } elseif ($commandName -eq 'm') { 18 } else { 38 }
             if ($rows -notcontains "result=$expectedResult" -or
@@ -103,17 +135,16 @@ foreach ($case in $cases) { foreach ($commandName in $Commands) { foreach ($layo
             }
             foreach ($name in 'a.txt','z.txt') {
                 if (-not $case.Failure) {
-                    $data = @(& $TestProgram --registry '' --command-probe-a $Oracle "p -+ `"$archive`" $name" A)
+                    $data = @(Invoke-EnumProbe (Join-Path $root "data-$name") @('--command-probe-a',$Oracle,"p -+ `"$archive`" $name",'A'))
                     $expected = if ($case.Redirect) { 'redirected-value' } else { "new-$name-updated-value" }
-                    if ($LASTEXITCODE -ne 0 -or $data -notcontains 'result=0' -or $data -notcontains "output=`"$expected`"") {
+                    if ($data -notcontains 'result=0' -or $data -notcontains "output=`"$expected`"") {
                         throw "共有入力の圧縮内容が違います: $label/$side/$name`n$($data -join "`n")"
                     }
                     if ($side -eq 'reimpl') {
                         # 候補が生成した書庫を、候補自身のメモリ展開 API でも読み返す。
                         $readCommand = 'p -+ "' + $archive + '" ' + $name
-                        $candidateData = @(& $TestProgram --registry '' --command-probe-a $Candidate $readCommand A)
-                        $candidateDataExit = $LASTEXITCODE
-                        if ($candidateDataExit -ne 0 -or $candidateData -notcontains 'result=0') {
+                        $candidateData = @(Invoke-EnumProbe (Join-Path $root "self-data-$name") @('--command-probe-a',$Candidate,$readCommand,'A'))
+                        if ($candidateData -notcontains 'result=0') {
                             throw "共有入力の圧縮内容を候補自身で読み取れません: $label/$side/$name"
                         }
                         $payloadDifference = @(Compare-Object $data $candidateData -CaseSensitive -SyncWindow 0)
@@ -132,14 +163,19 @@ foreach ($case in $cases) { foreach ($commandName in $Commands) { foreach ($layo
                 }
             }
             $results += ,@(Normalize-SharingRows $rows $root)
+            break
+          }
         }
         $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
         if ($difference.Count) {
             throw "共有入力の列挙・ログ・エラーが一致しません: $label`n$($difference | Select-Object -First 10 | Out-String -Width 2000)"
         }
         $count++
+        "$count`t$label" | Add-Content -LiteralPath $completedPath -Encoding utf8
+        if ($count % 24 -eq 0) { Write-Host "Compression sharing: $count comparisons passed ($label)" }
     } } }
 } } }
 if ($count -eq 0) { throw '有効な共有試験の条件がありません。' }
 $operation = if ($NewArchive) { 'new' } else { 'existing' }
 Write-Host "Compression sharing: $count $operation input-open, rollback, jso switches, callback redirection, data, and source-retention comparisons passed (jss deletion excluded)"
+Write-Host "Compression sharing: original MoveFile retries=$originalRetryCount (individual attempt logs retained)"

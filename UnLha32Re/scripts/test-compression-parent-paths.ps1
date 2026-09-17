@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$Oracle,
     [Parameter(Mandatory)][string]$Candidate,
     [Parameter(Mandatory)][string]$Workspace,
+    [ValidateRange(0,210)][int]$StartCount = 0,
     [switch]$Progress,
     [ValidateSet('none','a32','w32','a64','w64')][string]$EnumLayout = 'none',
     [ValidateSet('a','u','f','m')][string[]]$Commands = @('a','u','f','m'),
@@ -19,6 +20,7 @@ $Workspace = [IO.Path]::GetFullPath($Workspace)
 New-Item -ItemType Directory -Path $Workspace | Out-Null
 Write-Host "Compression parent paths workspace: $Workspace"
 $count = 0
+$originalRetryCount = 0
 $when = [DateTime]::new(2024,1,2,3,4,6,[DateTimeKind]::Utc)
 
 foreach ($variant in $Variants) {
@@ -26,11 +28,17 @@ foreach ($variant in $Variants) {
   foreach ($utf8 in 0,1) {
    foreach ($api in 'legacy','A','W') {
     foreach ($command in $Commands) {
+        if ($count -lt $StartCount) { $count++; continue }
         $label = "$variant-$locale-$utf8-$api-$command"
         $results = @()
         foreach ($side in 'oracle','reimpl') {
             $dll = if ($side -eq 'oracle') { $Oracle } else { $Candidate }
-            $root = Join-Path $Workspace "$label-$side"
+            $sideSucceeded = $false
+            for ($attempt = 0; $attempt -lt 6 -and -not $sideSucceeded; $attempt++) {
+            # 原版だけに一時的な MoveFile 共有違反が出る環境があるため、同長の
+            # 新しい作業領域で最大 5 回再試行する。候補側の比較条件は変えない。
+            $attemptName = if ($attempt -eq 0) { 'case' } else { "try$attempt" }
+            $root = Join-Path $Workspace ("{0}-{1}-$side" -f $attemptName,$label)
             $caller = Join-Path $root 'caller'
             New-Item -ItemType Directory -Path $caller,(Join-Path $caller 'source') | Out-Null
             $files = [ordered]@{
@@ -93,6 +101,16 @@ foreach ($variant in $Variants) {
                 $probeExit = $LASTEXITCODE
             } finally { Pop-Location }
             if ($probeExit -ne 0 -or $rows -notcontains 'directory-preserved=1') {
+                $moveText = $rows -join [Environment]::NewLine
+                if ($side -eq 'oracle' -and $attempt -lt 5 -and
+                    $moveText -match 'result=32792' -and $moveText -match 'MoveFile' -and
+                    $moveText -match 'compat-system-error=5') {
+                    $originalRetryCount++
+                    [IO.File]::WriteAllText((Join-Path $root 'oracle-movefile-failure.log'),$moveText,[Text.UTF8Encoding]::new($false))
+                    Write-Host "Compression parent paths: original MoveFile access denied; retrying in a fresh directory ($label/$attempt)"
+                    Start-Sleep -Milliseconds 100
+                    continue
+                }
                 throw "親相対パスの呼び出しに失敗しました: $label / $side`n$($rows -join "`n")"
             }
             $exists = Test-Path -LiteralPath $archive
@@ -138,6 +156,9 @@ foreach ($variant in $Variants) {
                 $_.Replace($root.Replace('\','/'),'<ROOT>').Replace($root.Replace('\','\\'),'<ROOT>')
             })
             $results += ,$rows
+            $sideSucceeded = $true
+            }
+            if (-not $sideSucceeded) { throw "親相対パスの原版試験を再試行回数内に完了できません: $label / $side" }
         }
         $difference = @(Compare-Object $results[0] $results[1] -SyncWindow 0)
         if ($difference.Count) {
@@ -152,3 +173,4 @@ foreach ($variant in $Variants) {
  Write-Host "Compression parent paths: $variant, $count comparisons passed"
 }
 Write-Host "Compression parent paths: $count A/W/legacy commands=$($Commands -join '/'), search/read, bytes, errors, working-directory comparisons passed; progress=$($Progress.IsPresent); enum=$EnumLayout"
+Write-Host "Compression parent paths: $originalRetryCount original MoveFile access-denied retries (cause unconfirmed; failure logs retained)"
