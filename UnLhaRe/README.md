@@ -2,11 +2,11 @@
 
 Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
 
-## バージョン1.0.2の配布
+## バージョン1.0.3の配布
 
-[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.2)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
+[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.3)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
 
-旧互換版の `v1.0.0` とは別の `unlhare-v1.0.2` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
+旧互換版の `v1.0.0` とは別の `unlhare-v1.0.3` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
 
 ## 機能と制限
 
@@ -34,9 +34,9 @@ Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / 
 
 Cの結果JSONは通知中だけ有効で、長さはNULを含まないバイト数です。結果通知からは中断できません。圧縮結果を通知する時点で書庫は確定しています。.NETからの使い方は [バインディングの追加API](bindings/dotnet/README.md#api-level-3) を参照してください。
 
-## Unreleased API level 4
+## API level 4
 
-ABI 1と既存関数のシグネチャを維持した開発中の追加APIです。
+バージョン1.0.3で追加したAPIです。ABI 1と既存関数のシグネチャを維持します。
 
 - `unlhare_last_error_kind()` は呼び出しスレッドの直前エラーを、I/O、書庫形式、非対応機能、上限、無効パス、既存出力、無効引数、キャンセル、バッファ不足、内部エラーへ分類します。メッセージと同様に成功では消去しません。
 - `unlhare_create_json_report` のcreate要求へ `"fail_if_all_skipped":true` を指定すると、1件も書き込めなかった場合は一時書庫だけを破棄して失敗します。省略時はAPI level 3と同じく有効な空書庫と項目別結果を返します。

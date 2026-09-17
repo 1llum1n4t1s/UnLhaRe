@@ -1,6 +1,6 @@
 # Kagayoi.UnLhaRe for .NET
 
-`Kagayoi.UnLhaRe` 1.0.2 is the .NET 10 binding for the 64-bit UnLhaRe native
+`Kagayoi.UnLhaRe` 1.0.3 is the .NET 10 binding for the 64-bit UnLhaRe native
 library. The package contains native assets for Windows x64 and Windows ARM64,
 uses UTF-8 throughout the native boundary, and is compatible with trimming and
 NativeAOT publishing.
@@ -13,7 +13,7 @@ NuGet package currently bundles Windows native libraries only.
 Add the package to your own project and select the architecture you publish for:
 
 ```powershell
-dotnet add package Kagayoi.UnLhaRe --version 1.0.2
+dotnet add package Kagayoi.UnLhaRe --version 1.0.3
 dotnet restore --use-lock-file
 dotnet publish -c Release -r win-x64
 # Use win-arm64 instead for Windows ARM64.
@@ -108,7 +108,9 @@ relative separators in archive entry names and validate after normalizing to `/`
 The encoder still retains one source entry in memory; per-entry limits continue
 to apply. These APIs do not yet provide streaming compression.
 
-## Unreleased API level 4
+## API level 4
+
+These additions are available in package 1.0.3.
 
 The parameterless `ArchiveClient.List(path)` automatically uses the API level 3
 single-scan result callback when the loaded native library supports it. API

@@ -9,7 +9,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <PackageId>Kagayoi.UnLhaRe</PackageId>
-    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.2</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.3</PackageVersion>
     <Authors>Kagayoi</Authors>
     <Description>NativeAOT-compatible .NET bindings for the 64-bit UnLhaRe library.</Description>
     <PackageTags>lha;lzh;archive;nativeaot</PackageTags>
