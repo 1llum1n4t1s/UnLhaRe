@@ -1,5 +1,6 @@
 # OS間で同じソースとシェルスクリプトを使用する。
 UnLhaRe/** text eol=lf
+UnLhaRe/**/*.png binary -eol
 .github/workflows/modern.yml text eol=lf
 # 第三者の告知原文は空白・改行を含めて保持する。
 UnLhaRe/THIRD_PARTY_LICENSES.txt -text -whitespace
