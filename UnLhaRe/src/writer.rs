@@ -1,44 +1,54 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, hash_map::Entry};
+#[cfg(windows)]
+use std::fs::OpenOptions;
 use std::fs::{self, File, Metadata};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
-use oxiarc_lzhuf::{LzhMethod, encode_lzh};
+use oxiarc_lzhuf::{LzhEncoder, LzhMethod};
 use tempfile::NamedTempFile;
 
 use crate::operation::checkpoint;
 use crate::pathname::validate_entry_name;
-use crate::{CreateOptions, Error, Method, Progress, Result, SourceEntry};
+use crate::{
+    CreateEntryResult, CreateEntryStatus, CreateOptions, CreateReport, Error, Method, Progress,
+    Result, SourceEntry,
+};
+use cap_std::fs::Dir;
+use crc_fast::{CrcAlgorithm, Digest, checksum};
 
 const CODE_PAGE_UTF8: u32 = 65_001;
 const LEVEL2_FIXED_HEADER_SIZE: usize = 26;
 
 struct ArchiveName {
-    key: String,
     basename: String,
     directories: Vec<String>,
 }
 
 impl ArchiveName {
-    fn parse(name: &str) -> Result<Self> {
-        let _ = validate_entry_name(name)?;
+    fn parse(name: &str) -> Result<(Self, String, String)> {
+        let normalized = name.replace('\\', "/");
+        let _ = validate_entry_name(&normalized)?;
 
-        // LHA uses its own separators. Splitting both forms keeps archive names
-        // identical on Windows and Unix hosts.
-        let parts: Vec<_> = name
-            .split(['/', '\\'])
+        // LHA uses slash separators regardless of the host operating system.
+        let parts: Vec<_> = normalized
+            .split('/')
             .filter(|part| !part.is_empty())
             .collect();
         let (basename, directories) = parts
             .split_last()
-            .ok_or_else(|| Error::InvalidPath(name.to_owned()))?;
+            .ok_or_else(|| Error::InvalidPath(normalized.clone()))?;
 
-        Ok(Self {
-            key: parts.join("/").to_lowercase(),
-            basename: (*basename).to_owned(),
-            directories: directories.iter().map(|part| (*part).to_owned()).collect(),
-        })
+        let key = parts.join("/").to_lowercase();
+        Ok((
+            Self {
+                basename: (*basename).to_owned(),
+                directories: directories.iter().map(|part| (*part).to_owned()).collect(),
+            },
+            key,
+            normalized.trim_end_matches('/').to_owned(),
+        ))
     }
 
     fn utf8_directory(&self) -> Vec<u8> {
@@ -76,6 +86,44 @@ impl ArchiveName {
 struct PreparedEntry<'a> {
     source: &'a SourceEntry,
     archive_name: ArchiveName,
+    normalized_name: String,
+    index: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FileIdentity {
+    volume: u64,
+    file: u64,
+}
+
+struct ScannedSource {
+    metadata: Metadata,
+    identity: Option<FileIdentity>,
+}
+
+struct ReadSource {
+    data: Vec<u8>,
+    crc16: u16,
+}
+
+#[derive(Debug)]
+struct OpenedRegularFile {
+    file: File,
+    metadata: Metadata,
+}
+
+enum PackedData {
+    Source,
+    Compressed,
+}
+
+impl PackedData {
+    fn as_slice<'a>(&self, source: &'a [u8], compressed: &'a [u8]) -> &'a [u8] {
+        match self {
+            Self::Source => source,
+            Self::Compressed => compressed,
+        }
+    }
 }
 
 /// Creates a new LHA level-2 archive without replacing an existing destination.
@@ -98,6 +146,50 @@ pub fn create_archive_with_progress(
     options: &CreateOptions,
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<()> {
+    create_archive_with_progress_impl(destination, entries, options, callback, None, false)?;
+    Ok(())
+}
+
+/// Creates an archive while reporting source entries skipped due to I/O errors.
+///
+/// Only I/O errors raised while scanning or reading an input source are
+/// recoverable. Invalid names, resource limits, cancellation, compression
+/// failures, and destination I/O errors still abort the entire operation.
+pub fn create_archive_with_report(
+    destination: &Path,
+    entries: &[SourceEntry],
+    options: &CreateOptions,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<CreateReport> {
+    create_archive_with_progress_impl(destination, entries, options, callback, None, true)?
+        .ok_or_else(|| Error::InvalidArgument("create report was not generated".to_owned()))
+}
+
+pub(crate) fn create_archive_beneath(
+    destination: &Path,
+    source_root: &Dir,
+    entries: &[SourceEntry],
+    options: &CreateOptions,
+) -> Result<()> {
+    create_archive_with_progress_impl(
+        destination,
+        entries,
+        options,
+        &mut |_| true,
+        Some(source_root),
+        false,
+    )?;
+    Ok(())
+}
+
+fn create_archive_with_progress_impl(
+    destination: &Path,
+    entries: &[SourceEntry],
+    options: &CreateOptions,
+    callback: &mut dyn FnMut(Progress) -> bool,
+    source_root: Option<&Dir>,
+    skip_source_io: bool,
+) -> Result<Option<CreateReport>> {
     reject_existing_destination(destination)?;
 
     let entry_count = u64::try_from(entries.len())
@@ -111,20 +203,36 @@ pub fn create_archive_with_progress(
 
     checkpoint(callback, 1, 0, entry_count)?;
     let prepared = prepare_entries(entries)?;
+    let mut report_entries = skip_source_io.then(|| {
+        let mut values = Vec::with_capacity(prepared.len());
+        values.resize_with(prepared.len(), || None);
+        values
+    });
     let mut scanned = Vec::with_capacity(prepared.len());
     let mut total_bytes = 0_u64;
     for (index, entry) in prepared.into_iter().enumerate() {
-        let metadata = fs::symlink_metadata(&entry.source.path)?;
-        reject_unsupported_source(&entry.source.path, &metadata)?;
-        if metadata.is_file() {
+        let scanned_source = match scan_source(source_root, &entry.source.path) {
+            Ok(scanned_source) => scanned_source,
+            Err(Error::Io(error)) if skip_source_io => {
+                set_report_result(
+                    &mut report_entries,
+                    entry.index,
+                    skipped_result(entry.normalized_name, error),
+                );
+                checkpoint(callback, 1, index as u64 + 1, entry_count)?;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        if scanned_source.metadata.is_file() {
             enforce_file_limits(
                 &entry.source.path,
-                metadata.len(),
+                scanned_source.metadata.len(),
                 &mut total_bytes,
                 options,
             )?;
         }
-        scanned.push((entry, metadata));
+        scanned.push((entry, scanned_source));
         checkpoint(callback, 1, index as u64 + 1, entry_count)?;
     }
 
@@ -134,52 +242,82 @@ pub fn create_archive_with_progress(
         .unwrap_or_else(|| Path::new("."));
     let mut temporary = NamedTempFile::new_in(parent)?;
     let mut completed_bytes = 0_u64;
+    let mut encoder = None;
+    let mut compressed = Vec::new();
     checkpoint(callback, 2, 0, total_bytes)?;
 
-    for (entry, metadata) in scanned {
-        if metadata.is_dir() {
+    for (entry, scanned_source) in scanned {
+        if scanned_source.metadata.is_dir() {
             let header = build_level2_header(
                 b"-lhd-",
                 0,
                 0,
                 0,
-                unix_timestamp(&metadata),
+                unix_timestamp(&scanned_source.metadata),
                 &entry.archive_name,
             )?;
             temporary.write_all(&header)?;
+            set_report_result(
+                &mut report_entries,
+                entry.index,
+                written_result(entry.normalized_name),
+            );
             continue;
         }
 
-        let data = read_regular_file(
+        let source = match read_regular_file(
+            source_root,
             &entry.source.path,
-            &metadata,
+            &scanned_source,
             options,
             completed_bytes,
             total_bytes,
             callback,
-        )?;
-        let file_crc = crc16(&data);
+        ) {
+            Ok(source) => source,
+            Err(Error::Io(error)) if skip_source_io => {
+                completed_bytes = completed_bytes
+                    .checked_add(scanned_source.metadata.len())
+                    .ok_or_else(|| Error::Limit("source progress overflowed u64".to_owned()))?;
+                set_report_result(
+                    &mut report_entries,
+                    entry.index,
+                    skipped_result(entry.normalized_name, error),
+                );
+                checkpoint(callback, 2, completed_bytes, total_bytes)?;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        let data = source.data;
         // OxiArc's encoder progress sink cannot abort an encode. This
         // checkpoint keeps cancellation responsive between entries without
         // presenting the current entry as complete before compression.
         checkpoint(callback, 2, completed_bytes, total_bytes)?;
-        let (method_id, packed) = compress_entry(&data, options.method)?;
+        let (method_id, packed) =
+            compress_entry(&data, options.method, &mut encoder, &mut compressed)?;
+        let packed = packed.as_slice(&data, &compressed);
         completed_bytes = completed_bytes
-            .checked_add(metadata.len())
+            .checked_add(scanned_source.metadata.len())
             .ok_or_else(|| Error::Limit("source progress overflowed u64".to_owned()))?;
         checkpoint(callback, 2, completed_bytes, total_bytes)?;
         let header = build_level2_header(
-            method_id,
+            &method_id,
             u64::try_from(packed.len())
                 .map_err(|_| Error::Limit("packed size does not fit in u64".to_owned()))?,
             u64::try_from(data.len())
                 .map_err(|_| Error::Limit("source size does not fit in u64".to_owned()))?,
-            file_crc,
-            unix_timestamp(&metadata),
+            source.crc16,
+            unix_timestamp(&scanned_source.metadata),
             &entry.archive_name,
         )?;
         temporary.write_all(&header)?;
-        temporary.write_all(&packed)?;
+        temporary.write_all(packed)?;
+        set_report_result(
+            &mut report_entries,
+            entry.index,
+            written_result(entry.normalized_name),
+        );
     }
 
     // A zero byte terminates both non-empty archives and a valid empty archive.
@@ -193,7 +331,38 @@ pub fn create_archive_with_progress(
             Error::Io(error.error)
         }
     })?;
-    Ok(())
+    Ok(report_entries.map(|entries| CreateReport {
+        entries: entries
+            .into_iter()
+            .map(|entry| entry.expect("every prepared entry receives a create result"))
+            .collect(),
+    }))
+}
+
+fn set_report_result(
+    report_entries: &mut Option<Vec<Option<CreateEntryResult>>>,
+    index: usize,
+    result: CreateEntryResult,
+) {
+    if let Some(entries) = report_entries {
+        entries[index] = Some(result);
+    }
+}
+
+fn written_result(name: String) -> CreateEntryResult {
+    CreateEntryResult {
+        name,
+        status: CreateEntryStatus::Written,
+        error: None,
+    }
+}
+
+fn skipped_result(name: String, error: io::Error) -> CreateEntryResult {
+    CreateEntryResult {
+        name,
+        status: CreateEntryStatus::Skipped,
+        error: Some(Error::Io(error).to_string()),
+    }
 }
 
 fn reject_existing_destination(destination: &Path) -> Result<()> {
@@ -205,19 +374,26 @@ fn reject_existing_destination(destination: &Path) -> Result<()> {
 }
 
 fn prepare_entries(entries: &[SourceEntry]) -> Result<Vec<PreparedEntry<'_>>> {
-    let mut seen = HashSet::with_capacity(entries.len());
+    let mut seen = HashMap::with_capacity(entries.len());
     let mut prepared = Vec::with_capacity(entries.len());
-    for source in entries {
-        let archive_name = ArchiveName::parse(&source.name)?;
-        if !seen.insert(archive_name.key.clone()) {
-            return Err(Error::InvalidArgument(format!(
-                "duplicate archive entry name: {}",
-                archive_name.key
-            )));
+    for (index, source) in entries.iter().enumerate() {
+        let (archive_name, key, normalized_name) = ArchiveName::parse(&source.name)?;
+        match seen.entry(key) {
+            Entry::Occupied(entry) => {
+                return Err(Error::InvalidArgument(format!(
+                    "duplicate archive entry name: {}",
+                    entry.key()
+                )));
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(());
+            }
         }
         prepared.push(PreparedEntry {
             source,
             archive_name,
+            normalized_name,
+            index,
         });
     }
     Ok(prepared)
@@ -238,6 +414,133 @@ fn reject_unsupported_source(path: &Path, metadata: &Metadata) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+fn scan_source(source_root: Option<&Dir>, path: &Path) -> Result<ScannedSource> {
+    let metadata = if let Some(root) = source_root {
+        let link_metadata = root.symlink_metadata(path)?;
+        let file_type = link_metadata.file_type();
+        if file_type.is_symlink() || (!file_type.is_file() && !file_type.is_dir()) {
+            return Err(Error::Unsupported(format!(
+                "source is not a regular file or directory: {}",
+                path.display()
+            )));
+        }
+        if link_metadata.is_dir() {
+            root.open_dir(path)?.into_std_file().metadata()?
+        } else {
+            root.open(path)?.into_std().metadata()?
+        }
+    } else {
+        fs::symlink_metadata(path).map_err(|error| source_io_error(path, error))?
+    };
+    reject_unsupported_source(path, &metadata)?;
+    if metadata.is_dir() {
+        return Ok(ScannedSource {
+            metadata,
+            identity: None,
+        });
+    }
+
+    // Open without following the final path component. This closes the race
+    // between the symlink check above and acquiring the file used for identity.
+    let file = open_regular_file(source_root, path)?;
+    let opened = file.metadata()?;
+    reject_unsupported_source(path, &opened)?;
+    Ok(ScannedSource {
+        identity: Some(file_identity(&file, &opened)?),
+        metadata: opened,
+    })
+}
+
+#[cfg(windows)]
+fn open_regular_file_nofollow(path: &Path) -> io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
+
+fn open_regular_file(source_root: Option<&Dir>, path: &Path) -> Result<File> {
+    match source_root {
+        Some(root) => root.open(path).map(cap_std::fs::File::into_std),
+        None => open_regular_file_nofollow(path),
+    }
+    .map_err(|error| source_io_error(path, error))
+}
+
+fn source_io_error(_path: &Path, error: io::Error) -> Error {
+    // nofollowによる拒否は、結果通知版でも読取失敗としてスキップしない。
+    #[cfg(target_os = "macos")]
+    if error.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error()) {
+        return Error::Unsupported(format!(
+            "source symbolic link resolution was rejected: {}",
+            _path.display()
+        ));
+    }
+    Error::Io(error)
+}
+
+#[cfg(target_os = "macos")]
+fn open_regular_file_nofollow(path: &Path) -> io::Result<File> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    let descriptor = open(
+        path,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(io::Error::from)?;
+    Ok(File::from(descriptor))
+}
+
+#[cfg(windows)]
+fn file_identity(file: &File, _metadata: &Metadata) -> io::Result<FileIdentity> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+
+    let mut information = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: `file` keeps the valid handle alive for the duration of the call,
+    // and `information` is a writable structure of the required type.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut information) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(FileIdentity {
+        volume: u64::from(information.dwVolumeSerialNumber),
+        file: (u64::from(information.nFileIndexHigh) << 32) | u64::from(information.nFileIndexLow),
+    })
+}
+
+fn open_matching_regular_file(
+    source_root: Option<&Dir>,
+    path: &Path,
+    expected: FileIdentity,
+) -> Result<OpenedRegularFile> {
+    let file = open_regular_file(source_root, path)?;
+    let metadata = file.metadata()?;
+    reject_unsupported_source(path, &metadata)?;
+    if file_identity(&file, &metadata)? != expected {
+        return Err(Error::Unsupported(format!(
+            "source was replaced while being archived: {}",
+            path.display()
+        )));
+    }
+    Ok(OpenedRegularFile { file, metadata })
+}
+
+#[cfg(target_os = "macos")]
+fn file_identity(_file: &File, metadata: &Metadata) -> io::Result<FileIdentity> {
+    use std::os::unix::fs::MetadataExt;
+
+    Ok(FileIdentity {
+        volume: metadata.dev(),
+        file: metadata.ino(),
+    })
 }
 
 fn enforce_file_limits(
@@ -267,29 +570,29 @@ fn enforce_file_limits(
 }
 
 fn read_regular_file(
+    source_root: Option<&Dir>,
     path: &Path,
-    initial: &Metadata,
+    scanned: &ScannedSource,
     options: &CreateOptions,
     completed_before: u64,
     total: u64,
     callback: &mut dyn FnMut(Progress) -> bool,
-) -> Result<Vec<u8>> {
-    let file = File::open(path)?;
-    let opened = file.metadata()?;
-    if !opened.is_file() {
-        return Err(Error::Unsupported(format!(
-            "source changed type while being archived: {}",
-            path.display()
-        )));
-    }
-    if opened.len() != initial.len() {
+) -> Result<ReadSource> {
+    let opened = open_matching_regular_file(
+        source_root,
+        path,
+        scanned
+            .identity
+            .expect("regular files always have an identity"),
+    )?;
+    if opened.metadata.len() != scanned.metadata.len() {
         return Err(Error::InvalidArgument(format!(
             "source size changed while being archived: {}",
             path.display()
         )));
     }
 
-    let expected = usize::try_from(opened.len()).map_err(|_| {
+    let expected = usize::try_from(opened.metadata.len()).map_err(|_| {
         Error::Limit(format!(
             "source is too large for this process address space: {}",
             path.display()
@@ -303,14 +606,16 @@ fn read_regular_file(
         ))
     })?;
     let read_limit = options.limits.max_entry_bytes.saturating_add(1);
-    let mut input = file.take(read_limit);
+    let mut input = opened.file.take(read_limit);
     let mut buffer = [0_u8; 64 * 1024];
+    let mut crc16 = Digest::new(CrcAlgorithm::Crc16Arc);
     loop {
         let amount = input.read(&mut buffer)?;
         if amount == 0 {
             break;
         }
         data.extend_from_slice(&buffer[..amount]);
+        crc16.update(&buffer[..amount]);
         // completed counts bytes whose compression has finished. Repeating
         // the value during input reads still supplies cancellation points and
         // avoids claiming 100% while compression is running.
@@ -325,37 +630,42 @@ fn read_regular_file(
             options.limits.max_entry_bytes
         )));
     }
-    if actual != opened.len() {
+    if actual != opened.metadata.len() {
         return Err(Error::InvalidArgument(format!(
             "source size changed while being archived: {}",
             path.display()
         )));
     }
-    Ok(data)
+    let crc16 =
+        u16::try_from(crc16.finalize()).expect("CRC-16/ARC always produces a 16-bit checksum");
+    Ok(ReadSource { data, crc16 })
 }
 
-fn compress_entry(data: &[u8], requested: Method) -> Result<(&'static [u8; 5], Vec<u8>)> {
+fn compress_entry(
+    data: &[u8],
+    requested: Method,
+    encoder: &mut Option<LzhEncoder>,
+    compressed: &mut Vec<u8>,
+) -> Result<([u8; 5], PackedData)> {
     let method = match requested {
-        Method::Stored => return Ok((b"-lh0-", data.to_vec())),
+        Method::Stored => return Ok((LzhMethod::Lh0.id(), PackedData::Source)),
         Method::Lh5 => LzhMethod::Lh5,
         Method::Lh6 => LzhMethod::Lh6,
         Method::Lh7 => LzhMethod::Lh7,
     };
     if data.is_empty() {
-        return Ok((b"-lh0-", Vec::new()));
+        return Ok((LzhMethod::Lh0.id(), PackedData::Source));
     }
-    let compressed = encode_lzh(data, method)
+    compressed.clear();
+    let encoder = encoder.get_or_insert_with(|| LzhEncoder::new(method));
+    encoder.reset();
+    encoder
+        .encode(data, compressed, true)
         .map_err(|error| Error::Format(format!("LZH compression failed: {error}")))?;
     if compressed.len() > data.len() {
-        Ok((b"-lh0-", data.to_vec()))
+        Ok((LzhMethod::Lh0.id(), PackedData::Source))
     } else {
-        let method_id = match requested {
-            Method::Lh5 => b"-lh5-",
-            Method::Lh6 => b"-lh6-",
-            Method::Lh7 => b"-lh7-",
-            Method::Stored => unreachable!(),
-        };
-        Ok((method_id, compressed))
+        Ok((method.id(), PackedData::Compressed))
     }
 }
 
@@ -450,7 +760,7 @@ fn build_level2_header(
 
     let crc_offset = header_crc_offset
         .ok_or_else(|| Error::Format("common header CRC field was not generated".to_owned()))?;
-    let header_crc = crc16(&header);
+    let header_crc = lha_crc16(&header);
     header[crc_offset..crc_offset + 2].copy_from_slice(&header_crc.to_le_bytes());
     Ok(header)
 }
@@ -464,27 +774,110 @@ fn unix_timestamp(metadata: &Metadata) -> u32 {
         .unwrap_or(0)
 }
 
-fn crc16(data: &[u8]) -> u16 {
-    let mut crc = 0_u16;
-    for byte in data {
-        crc ^= u16::from(*byte);
-        for _ in 0..8 {
-            crc = if crc & 1 != 0 {
-                (crc >> 1) ^ 0xa001
-            } else {
-                crc >> 1
-            };
-        }
-    }
-    crc
+fn lha_crc16(data: &[u8]) -> u16 {
+    u16::try_from(checksum(CrcAlgorithm::Crc16Arc, data))
+        .expect("CRC-16/ARC always produces a 16-bit checksum")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::crc16;
+    use super::{create_archive_beneath, lha_crc16, open_matching_regular_file, scan_source};
+    use crate::{CreateOptions, SourceEntry};
+    use cap_std::{ambient_authority, fs::Dir};
+    use crc_fast::{CrcAlgorithm, Digest};
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn crc16_matches_lha_known_value() {
-        assert_eq!(crc16(b"123456789"), 0xbb3d);
+        assert_eq!(lha_crc16(b"123456789"), 0xbb3d);
+
+        let mut digest = Digest::new(CrcAlgorithm::Crc16Arc);
+        digest.update(b"1234");
+        digest.update(b"56789");
+        assert_eq!(digest.finalize(), 0xbb3d);
+    }
+
+    #[test]
+    fn replaced_source_is_rejected_even_when_its_size_matches() {
+        let temporary = tempdir().expect("temporary directory");
+        let source = temporary.path().join("source.bin");
+        let replacement = temporary.path().join("replacement.bin");
+        let original = temporary.path().join("original.bin");
+        fs::write(&source, b"original").expect("original source");
+        fs::write(&replacement, b"replaced").expect("same-size replacement");
+
+        let scanned = scan_source(None, &source).expect("scan original source");
+        fs::rename(&source, &original).expect("move original source");
+        fs::rename(&replacement, &source).expect("replace source path");
+
+        let error =
+            open_matching_regular_file(None, &source, scanned.identity.expect("file identity"))
+                .expect_err("replacement must not be archived");
+        assert!(
+            matches!(error, crate::Error::Unsupported(message) if message.contains("replaced"))
+        );
+    }
+
+    #[test]
+    fn source_symlink_is_not_followed_after_scan() {
+        let temporary = tempdir().expect("temporary directory");
+        let source = temporary.path().join("source.bin");
+        let link = temporary.path().join("link.bin");
+        fs::write(&source, b"private payload").expect("source file");
+        let scanned = scan_source(None, &source).expect("scan original source");
+
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_file(&source, &link);
+        #[cfg(target_os = "macos")]
+        let linked = std::os::unix::fs::symlink(&source, &link);
+        if let Err(error) = linked {
+            if error.kind() == std::io::ErrorKind::PermissionDenied
+                || error.raw_os_error() == Some(1314)
+            {
+                return;
+            }
+            panic!("create source symlink: {error}");
+        }
+
+        let error =
+            open_matching_regular_file(None, &link, scanned.identity.expect("file identity"))
+                .expect_err("source symlink must not be followed");
+        assert!(matches!(error, crate::Error::Unsupported(_)));
+    }
+
+    #[test]
+    fn capability_source_root_does_not_follow_an_intermediate_symlink() {
+        let temporary = tempdir().expect("temporary directory");
+        let source = temporary.path().join("source");
+        let outside = temporary.path().join("outside");
+        let link = source.join("link");
+        let archive = temporary.path().join("archive.lzh");
+        fs::create_dir(&source).expect("source directory");
+        fs::create_dir(&outside).expect("outside directory");
+        fs::write(outside.join("secret.txt"), b"secret").expect("outside file");
+
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&outside, &link);
+        #[cfg(target_os = "macos")]
+        let linked = std::os::unix::fs::symlink(&outside, &link);
+        if let Err(error) = linked {
+            if error.kind() == std::io::ErrorKind::PermissionDenied
+                || error.raw_os_error() == Some(1314)
+            {
+                return;
+            }
+            panic!("create intermediate source symlink: {error}");
+        }
+
+        let root = Dir::open_ambient_dir(&source, ambient_authority()).expect("source capability");
+        let entries = [SourceEntry {
+            path: PathBuf::from("link/secret.txt"),
+            name: "secret.txt".into(),
+        }];
+        create_archive_beneath(&archive, &root, &entries, &CreateOptions::default())
+            .expect_err("intermediate source symlink must not escape the capability root");
+        assert!(!archive.exists());
     }
 }

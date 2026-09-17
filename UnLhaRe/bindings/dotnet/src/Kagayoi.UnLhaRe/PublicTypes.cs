@@ -11,6 +11,9 @@ public sealed record ArchiveLimits(
 /// <summary>A source file and the portable name stored in an archive.</summary>
 public sealed record ArchiveSourceEntry(string Path, string Name);
 
+/// <summary>Optional extraction behavior.</summary>
+public sealed record ArchiveExtractOptions(bool PreserveTimestamps = false);
+
 /// <summary>An entry reported by an LHA archive.</summary>
 public sealed record ArchiveEntry(
     [property: JsonPropertyName("name")] string Name,
@@ -19,7 +22,44 @@ public sealed record ArchiveEntry(
     [property: JsonPropertyName("compressed_size")] ulong CompressedSize,
     [property: JsonPropertyName("is_directory")] bool IsDirectory,
     [property: JsonPropertyName("crc16")] ushort Crc16,
-    [property: JsonPropertyName("header_level")] byte HeaderLevel);
+    [property: JsonPropertyName("header_level")] byte HeaderLevel)
+{
+    /// <summary>The entry modification time as Unix seconds, when the archive timestamp is valid.</summary>
+    [JsonPropertyName("modified_unix_seconds")]
+    public long? ModifiedUnixSeconds { get; init; }
+
+    /// <summary>The entry modification time, or null when it is absent or outside the .NET range.</summary>
+    [JsonIgnore]
+    public DateTimeOffset? ModifiedAt
+    {
+        get
+        {
+            if (ModifiedUnixSeconds is not long seconds)
+            {
+                return null;
+            }
+
+            try
+            {
+                return DateTimeOffset.FromUnixTimeSeconds(seconds);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+    }
+}
+
+/// <summary>The result of an archive creation request that may skip unreadable sources.</summary>
+public sealed record ArchiveCreateReport(
+    [property: JsonPropertyName("entries")] IReadOnlyList<ArchiveCreateEntryResult> Entries);
+
+/// <summary>The result of processing one source entry during archive creation.</summary>
+public sealed record ArchiveCreateEntryResult(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("error")] string? Error);
 
 /// <summary>Compression methods supported when creating an archive.</summary>
 public enum CompressionMethod

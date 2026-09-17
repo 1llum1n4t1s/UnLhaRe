@@ -15,6 +15,7 @@
     <PackageTags>lha;lzh;archive;nativeaot</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 
@@ -22,6 +23,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\..\icon\app_icon.png"
+          Pack="true"
+          PackagePath="icon.png"
+          Visible="false" />
     <None Include="$(NativeArtifactsRoot)\x86_64-pc-windows-msvc\unlhare.dll"
           Pack="true"
           PackagePath="runtimes/win-x64/native/unlhare.dll"

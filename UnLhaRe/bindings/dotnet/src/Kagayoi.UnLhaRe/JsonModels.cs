@@ -28,6 +28,14 @@ internal sealed record ExtractRequest(
     string[]? Entries,
     LimitsRequest? Limits);
 
+internal sealed record ExtractWithOptionsRequest(
+    string Operation,
+    string Archive,
+    string Destination,
+    string[]? Entries,
+    LimitsRequest? Limits,
+    bool PreserveTimestamps);
+
 internal sealed record VerifyRequest(
     string Operation,
     string Archive,
@@ -43,7 +51,9 @@ internal sealed record ListRequest(
     GenerationMode = JsonSourceGenerationMode.Default)]
 [JsonSerializable(typeof(CreateRequest))]
 [JsonSerializable(typeof(ExtractRequest))]
+[JsonSerializable(typeof(ExtractWithOptionsRequest))]
 [JsonSerializable(typeof(VerifyRequest))]
 [JsonSerializable(typeof(ListRequest))]
 [JsonSerializable(typeof(ArchiveEntry[]))]
+[JsonSerializable(typeof(ArchiveCreateReport))]
 internal sealed partial class ArchiveJsonContext : JsonSerializerContext;

@@ -11,6 +11,7 @@ public static unsafe class ArchiveClient
 {
     private const uint RequiredAbiVersion = 1;
     private const uint RequiredApiLevel = 2;
+    private const uint RequiredResultCallbackApiLevel = 3;
     private const int StatusOk = 0;
     private const int StatusBufferTooSmall = 2;
     private const int StatusCancelled = 5;
@@ -30,6 +31,24 @@ public static unsafe class ArchiveClient
         var json = ReadListJson(jsonRequest);
         return JsonSerializer.Deserialize(json, ArchiveJsonContext.Default.ArchiveEntryArray)
             ?? throw new InvalidDataException("The native entry list was JSON null.");
+    }
+
+    /// <summary>Lists all entries in one scan with synchronous progress and cancellation.</summary>
+    public static IReadOnlyList<ArchiveEntry> List(
+        string archive,
+        CancellationToken cancellationToken,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null)
+    {
+        ValidateText(archive, nameof(archive));
+        var request = new ListRequest(archive, LimitsRequest.From(limits));
+        return RunWithResult(
+            request,
+            ArchiveJsonContext.Default.ListRequest,
+            ArchiveJsonContext.Default.ArchiveEntryArray,
+            NativeResultOperation.List,
+            progress,
+            cancellationToken);
     }
 
     /// <summary>Verifies every selected archive payload and reports progress synchronously.</summary>
@@ -65,6 +84,35 @@ public static unsafe class ArchiveClient
         Run(request, ArchiveJsonContext.Default.ExtractRequest, progress, cancellationToken);
     }
 
+    /// <summary>Extracts entries using explicitly selected extraction behavior.</summary>
+    public static void ExtractWithOptions(
+        string archive,
+        string destination,
+        ArchiveExtractOptions options,
+        IReadOnlyList<string>? selectedNames = null,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateText(archive, nameof(archive));
+        ValidateText(destination, nameof(destination));
+        ArgumentNullException.ThrowIfNull(options);
+        var entries = CopyStrings(selectedNames, nameof(selectedNames));
+        var request = new ExtractWithOptionsRequest(
+            "extract",
+            archive,
+            destination,
+            entries,
+            LimitsRequest.From(limits),
+            options.PreserveTimestamps);
+        Run(
+            request,
+            ArchiveJsonContext.Default.ExtractWithOptionsRequest,
+            progress,
+            cancellationToken,
+            RequiredResultCallbackApiLevel);
+    }
+
     /// <summary>Creates a new archive from explicitly named source entries.</summary>
     public static void Create(
         string output,
@@ -73,6 +121,204 @@ public static unsafe class ArchiveClient
         ArchiveLimits? limits = null,
         IProgress<ArchiveProgress>? progress = null,
         CancellationToken cancellationToken = default)
+    {
+        var request = BuildCreateRequest(output, entries, method, limits);
+        Run(request, ArchiveJsonContext.Default.CreateRequest, progress, cancellationToken);
+    }
+
+    /// <summary>Creates an archive while reporting unreadable source entries that were skipped.</summary>
+    public static ArchiveCreateReport CreateWithResults(
+        string output,
+        IReadOnlyList<ArchiveSourceEntry> entries,
+        CompressionMethod method,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = BuildCreateRequest(output, entries, method, limits);
+        return RunWithResult(
+            request,
+            ArchiveJsonContext.Default.CreateRequest,
+            ArchiveJsonContext.Default.ArchiveCreateReport,
+            NativeResultOperation.Create,
+            progress,
+            cancellationToken);
+    }
+
+    private static void Run<TRequest>(
+        TRequest request,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<TRequest> jsonType,
+        IProgress<ArchiveProgress>? progress,
+        CancellationToken cancellationToken,
+        uint requiredApiLevel = RequiredApiLevel)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureNativeCompatibility(requiredApiLevel);
+
+        var json = JsonSerializer.Serialize(request, jsonType);
+        CallbackState? state = null;
+        GCHandle stateHandle = default;
+        nint callback = 0;
+        nint user = 0;
+        if (progress is not null || cancellationToken.CanBeCanceled)
+        {
+            state = new CallbackState(progress, cancellationToken);
+            stateHandle = GCHandle.Alloc(state);
+            user = GCHandle.ToIntPtr(stateHandle);
+            callback = (nint)(delegate* unmanaged[Cdecl]<nint, uint, ulong, ulong, int>)&ReportProgress;
+        }
+
+        int status;
+        try
+        {
+            status = NativeMethods.RunJson(json, callback, user);
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw ApiLevelException(requiredApiLevel, exception);
+        }
+        finally
+        {
+            if (stateHandle.IsAllocated)
+            {
+                stateHandle.Free();
+            }
+        }
+
+        state?.CallbackException?.Throw();
+        if (status == StatusCancelled)
+        {
+            throw new OperationCanceledException(ReadLastError(), cancellationToken);
+        }
+        ThrowForStatus(status);
+    }
+
+    private static TResult RunWithResult<TRequest, TResult>(
+        TRequest request,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<TRequest> requestJsonType,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<TResult> resultJsonType,
+        NativeResultOperation operation,
+        IProgress<ArchiveProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureNativeCompatibility(RequiredResultCallbackApiLevel);
+
+        var json = JsonSerializer.Serialize(request, requestJsonType);
+        var state = new CallbackState(progress, cancellationToken);
+        var stateHandle = GCHandle.Alloc(state);
+        var user = GCHandle.ToIntPtr(stateHandle);
+        var progressCallback = progress is not null || cancellationToken.CanBeCanceled
+            ? (nint)(delegate* unmanaged[Cdecl]<nint, uint, ulong, ulong, int>)&ReportProgress
+            : 0;
+        var resultCallback = (nint)(delegate* unmanaged[Cdecl]<nint, byte*, ulong, void>)&CaptureJson;
+
+        int status;
+        try
+        {
+            status = operation switch
+            {
+                NativeResultOperation.List =>
+                    NativeMethods.ListJsonWithProgress(json, progressCallback, resultCallback, user),
+                NativeResultOperation.Create =>
+                    NativeMethods.CreateJsonReport(json, progressCallback, resultCallback, user),
+                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+            };
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw ApiLevelException(RequiredResultCallbackApiLevel, exception);
+        }
+        finally
+        {
+            stateHandle.Free();
+        }
+
+        state.CallbackException?.Throw();
+        if (status == StatusCancelled)
+        {
+            throw new OperationCanceledException(ReadLastError(), cancellationToken);
+        }
+        ThrowForStatus(status);
+
+        var resultJson = state.ResultJson
+            ?? throw new InvalidDataException("The native operation succeeded without returning JSON.");
+        return JsonSerializer.Deserialize(resultJson, resultJsonType)
+            ?? throw new InvalidDataException("The native operation returned JSON null.");
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int ReportProgress(nint user, uint phase, ulong completed, ulong total)
+    {
+        try
+        {
+            var state = (CallbackState?)GCHandle.FromIntPtr(user).Target;
+            if (state is null)
+            {
+                return 1;
+            }
+            if (state.CancellationToken.IsCancellationRequested)
+            {
+                return 1;
+            }
+
+            state.Progress?.Report(new ArchiveProgress((ArchiveProgressPhase)phase, completed, total));
+            return state.CancellationToken.IsCancellationRequested ? 1 : 0;
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                var state = (CallbackState?)GCHandle.FromIntPtr(user).Target;
+                state?.SaveException(exception);
+            }
+            catch
+            {
+                // No managed exception may escape through the native callback boundary.
+            }
+            return 1;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void CaptureJson(nint user, byte* json, ulong length)
+    {
+        CallbackState? state = null;
+        try
+        {
+            state = (CallbackState?)GCHandle.FromIntPtr(user).Target
+                ?? throw new InvalidDataException("The native JSON callback received no managed state.");
+            if (json is null && length != 0)
+            {
+                throw new InvalidDataException("The native JSON callback returned a null buffer.");
+            }
+            if (length > (ulong)Array.MaxLength)
+            {
+                throw new InvalidDataException(
+                    $"The native JSON callback length {length} is outside the supported managed buffer range.");
+            }
+
+            state.SaveResultJson(new ReadOnlySpan<byte>(json, checked((int)length)).ToArray());
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                state ??= (CallbackState?)GCHandle.FromIntPtr(user).Target;
+                state?.SaveException(exception);
+            }
+            catch
+            {
+                // No managed exception may escape through the native callback boundary.
+            }
+        }
+    }
+
+    private static CreateRequest BuildCreateRequest(
+        string output,
+        IReadOnlyList<ArchiveSourceEntry> entries,
+        CompressionMethod method,
+        ArchiveLimits? limits)
     {
         ValidateText(output, nameof(output));
         ArgumentNullException.ThrowIfNull(entries);
@@ -91,93 +337,12 @@ public static unsafe class ArchiveClient
             requestEntries[index] = new SourceRequest(entry.Path, entry.Name);
         }
 
-        var request = new CreateRequest(
+        return new CreateRequest(
             "create",
             output,
             requestEntries,
             (int)method,
             LimitsRequest.From(limits));
-        Run(request, ArchiveJsonContext.Default.CreateRequest, progress, cancellationToken);
-    }
-
-    private static void Run<TRequest>(
-        TRequest request,
-        System.Text.Json.Serialization.Metadata.JsonTypeInfo<TRequest> jsonType,
-        IProgress<ArchiveProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureNativeCompatibility();
-
-        var json = JsonSerializer.Serialize(request, jsonType);
-        ProgressState? state = null;
-        GCHandle stateHandle = default;
-        nint callback = 0;
-        nint user = 0;
-        if (progress is not null || cancellationToken.CanBeCanceled)
-        {
-            state = new ProgressState(progress, cancellationToken);
-            stateHandle = GCHandle.Alloc(state);
-            user = GCHandle.ToIntPtr(stateHandle);
-            callback = (nint)(delegate* unmanaged[Cdecl]<nint, uint, ulong, ulong, int>)&ReportProgress;
-        }
-
-        int status;
-        try
-        {
-            status = NativeMethods.RunJson(json, callback, user);
-        }
-        catch (EntryPointNotFoundException exception)
-        {
-            throw ApiLevelException(exception);
-        }
-        finally
-        {
-            if (stateHandle.IsAllocated)
-            {
-                stateHandle.Free();
-            }
-        }
-
-        state?.CallbackException?.Throw();
-        if (status == StatusCancelled)
-        {
-            throw new OperationCanceledException(ReadLastError(), cancellationToken);
-        }
-        ThrowForStatus(status);
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static int ReportProgress(nint user, uint phase, ulong completed, ulong total)
-    {
-        try
-        {
-            var state = (ProgressState?)GCHandle.FromIntPtr(user).Target;
-            if (state is null)
-            {
-                return 1;
-            }
-            if (state.CancellationToken.IsCancellationRequested)
-            {
-                return 1;
-            }
-
-            state.Progress?.Report(new ArchiveProgress((ArchiveProgressPhase)phase, completed, total));
-            return state.CancellationToken.IsCancellationRequested ? 1 : 0;
-        }
-        catch (Exception exception)
-        {
-            try
-            {
-                var state = (ProgressState?)GCHandle.FromIntPtr(user).Target;
-                state?.SaveException(exception);
-            }
-            catch
-            {
-                // No managed exception may escape through the native callback boundary.
-            }
-            return 1;
-        }
     }
 
     private static byte[] ReadListJson(string request)
@@ -190,7 +355,7 @@ public static unsafe class ArchiveClient
         }
         catch (EntryPointNotFoundException exception)
         {
-            throw ApiLevelException(exception);
+            throw ApiLevelException(RequiredApiLevel, exception);
         }
         if (status != StatusBufferTooSmall && status != StatusOk)
         {
@@ -271,7 +436,15 @@ public static unsafe class ArchiveClient
         return checked((int)required);
     }
 
-    private static void EnsureNativeCompatibility() => _ = NativeApiLevel.Value;
+    private static void EnsureNativeCompatibility(uint requiredApiLevel = RequiredApiLevel)
+    {
+        var apiLevel = NativeApiLevel.Value;
+        if (apiLevel < requiredApiLevel)
+        {
+            throw new NotSupportedException(
+                $"The loaded UnLhaRe native library reports API level {apiLevel}; this operation requires API level {requiredApiLevel} or newer.");
+        }
+    }
 
     private static uint LoadNativeApiLevel()
     {
@@ -300,7 +473,7 @@ public static unsafe class ArchiveClient
         }
         catch (EntryPointNotFoundException exception)
         {
-            throw ApiLevelException(exception);
+            throw ApiLevelException(RequiredApiLevel, exception);
         }
         catch (DllNotFoundException exception)
         {
@@ -323,8 +496,8 @@ public static unsafe class ArchiveClient
         return apiLevel;
     }
 
-    private static NotSupportedException ApiLevelException(Exception innerException) => new(
-        "The loaded UnLhaRe native library does not export API level 2 functions. An older 1.0.0 native DLL may have been loaded; deploy the DLL from this NuGet package.",
+    private static NotSupportedException ApiLevelException(uint requiredApiLevel, Exception innerException) => new(
+        $"The loaded UnLhaRe native library does not export API level {requiredApiLevel} functions. Deploy the native DLL from this NuGet package.",
         innerException);
 
     private static string[]? CopyStrings(IReadOnlyList<string>? values, string parameterName)
@@ -353,7 +526,7 @@ public static unsafe class ArchiveClient
         }
     }
 
-    private sealed class ProgressState(
+    private sealed class CallbackState(
         IProgress<ArchiveProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -363,7 +536,24 @@ public static unsafe class ArchiveClient
 
         internal ExceptionDispatchInfo? CallbackException { get; private set; }
 
+        internal byte[]? ResultJson { get; private set; }
+
         internal void SaveException(Exception exception) =>
             CallbackException ??= ExceptionDispatchInfo.Capture(exception);
+
+        internal void SaveResultJson(byte[] json)
+        {
+            if (ResultJson is not null)
+            {
+                throw new InvalidDataException("The native operation returned JSON more than once.");
+            }
+            ResultJson = json;
+        }
+    }
+
+    private enum NativeResultOperation
+    {
+        List,
+        Create,
     }
 }

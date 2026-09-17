@@ -45,7 +45,7 @@ _Static_assert(sizeof(void *) == 8, "UnLhaRe requires 64-bit pointers");
 #define UNLHARE_STATUS_INVALID_ARGUMENT INT32_C(3)
 #define UNLHARE_STATUS_PANIC INT32_C(4)
 #define UNLHARE_STATUS_CANCELLED INT32_C(5)
-#define UNLHARE_API_LEVEL UINT32_C(2)
+#define UNLHARE_API_LEVEL UINT32_C(3)
 
 #define UNLHARE_METHOD_STORED INT32_C(0)
 #define UNLHARE_METHOD_LH5 INT32_C(5)
@@ -84,6 +84,31 @@ UNLHARE_API int32_t unlhare_run_json(const char *request_utf8,
 UNLHARE_API int32_t unlhare_list_json_ex(const char *request_utf8,
                                         char *output, uint64_t capacity,
                                         uint64_t *required);
+
+/* API level 3 additions. Existing ABI 1 functions retain their signatures.
+ * JSON result callback is required and runs once on success, never on failure.
+ * JSON is UTF-8, is not NUL-terminated, and is valid only during the callback.
+ * The receiver must copy the bytes before returning and must not throw.
+ * List uses the same request as list_json_ex but scans the archive once.
+ * create_json_report uses the "create" request and skips source I/O failures;
+ * output errors, invalid paths, limits and cancellation still abort the archive.
+ * Its result is {"entries":[{"name":"...","status":"written"|"skipped",
+ *                            "error":null|"..."}]} in input order.
+ * The create result is delivered AFTER publication and cannot cancel it.
+ * run_json extract additionally accepts "preserve_timestamps":true to restore
+ * regular-file modification times. Directory times are unchanged.
+ * List entries include optional modified_unix_seconds. DOS times are interpreted
+ * in the host local time zone; invalid/ambiguous timestamps are null.
+ */
+typedef void (*unlhare_json_callback)(void *user, const char *json, uint64_t length);
+UNLHARE_API int32_t unlhare_list_json_with_progress(const char *request_utf8,
+                                                   unlhare_progress_callback callback,
+                                                   unlhare_json_callback result,
+                                                   void *user);
+UNLHARE_API int32_t unlhare_create_json_report(const char *request_utf8,
+                                              unlhare_progress_callback callback,
+                                              unlhare_json_callback result,
+                                              void *user);
 
 UNLHARE_API int32_t unlhare_list_json(const char *archive_utf8,
                                       char *output,

@@ -12,7 +12,10 @@ use std::slice;
 use crate::{CreateOptions, Limits, Method};
 
 mod app;
-pub use app::{unlhare_api_level, unlhare_list_json_ex, unlhare_run_json};
+pub use app::{
+    JsonCallback, ProgressCallback, unlhare_api_level, unlhare_create_json_report,
+    unlhare_list_json_ex, unlhare_list_json_with_progress, unlhare_run_json,
+};
 
 /// 操作がコールバックから中断された。
 pub const STATUS_CANCELLED: i32 = 5;

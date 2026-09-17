@@ -93,6 +93,26 @@ fn creation_cancellation_leaves_no_archive() {
 }
 
 #[test]
+fn compressed_creation_can_cancel_after_encoding_without_publishing() {
+    let temporary = tempdir().expect("temporary directory");
+    let input = temporary.path().join("large.bin");
+    let archive = temporary.path().join("cancelled-compressed.lzh");
+    fs::write(&input, vec![0x5a; 128 * 1024]).expect("source file");
+
+    let error = create_archive_with_progress(
+        &archive,
+        &[source(&input, "large.bin")],
+        &CreateOptions::default(),
+        &mut |progress| {
+            !(progress.phase == 2 && progress.total > 0 && progress.completed == progress.total)
+        },
+    )
+    .expect_err("creation should be cancelled after compression");
+    assert!(matches!(error, Error::Cancelled));
+    assert!(!archive.exists());
+}
+
+#[test]
 fn extraction_cancellation_removes_incomplete_file_and_preserves_existing_files() {
     let temporary = tempdir().expect("temporary directory");
     let input = temporary.path().join("large.bin");

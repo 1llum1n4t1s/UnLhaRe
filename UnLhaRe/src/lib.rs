@@ -20,14 +20,16 @@ mod writer;
 pub use error::{Error, Result};
 pub use operation::{Progress, ProgressCallback};
 pub use reader::{
-    extract_archive, extract_archive_with_progress, list_archive, verify_archive,
-    verify_archive_with_progress,
+    extract_archive, extract_archive_with_options, extract_archive_with_progress, list_archive,
+    list_archive_with_progress, verify_archive, verify_archive_with_progress,
 };
-pub use writer::{create_archive, create_archive_with_progress};
+pub use writer::{create_archive, create_archive_with_progress, create_archive_with_report};
 
+use cap_std::fs::Dir;
 use serde::Serialize;
 use std::{
-    fs,
+    fs::File,
+    io,
     path::{Path, PathBuf},
 };
 
@@ -65,6 +67,34 @@ pub struct CreateOptions {
     pub limits: Limits,
 }
 
+/// Optional extraction behavior. Existing APIs keep their original defaults.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractOptions {
+    /// Restore regular-file modification times before publishing each file.
+    /// Directory timestamps are not changed.
+    pub preserve_timestamps: bool,
+}
+
+/// Result of explicitly requesting creation that skips unreadable source files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CreateReport {
+    pub entries: Vec<CreateEntryResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CreateEntryResult {
+    pub name: String,
+    pub status: CreateEntryStatus,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CreateEntryStatus {
+    Written,
+    Skipped,
+}
+
 /// A regular file or an explicit directory and its portable archive name.
 #[derive(Debug, Clone)]
 pub struct SourceEntry {
@@ -81,6 +111,9 @@ pub struct Entry {
     pub is_directory: bool,
     pub crc16: u16,
     pub header_level: u8,
+    /// Unix seconds; DOS timestamps use the host local time zone.
+    /// Invalid or ambiguous local timestamps have no value.
+    pub modified_unix_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -96,15 +129,17 @@ pub fn create_from_directory(
     destination: &Path,
     options: &CreateOptions,
 ) -> Result<()> {
-    let metadata = fs::symlink_metadata(source)?;
+    let directory = open_source_directory_nofollow(source)?;
+    let metadata = directory.metadata()?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(Error::InvalidArgument(
             "source must be a regular directory".into(),
         ));
     }
+    let root = Dir::from_std_file(directory);
     fn visit(
-        root: &Path,
-        directory: &Path,
+        directory: &Dir,
+        relative_directory: &Path,
         entries: &mut Vec<SourceEntry>,
         limits: &Limits,
         depth: usize,
@@ -113,7 +148,7 @@ pub fn create_from_directory(
             return Err(Error::Limit("directory depth exceeds 128".into()));
         }
         let mut children = Vec::new();
-        for child in fs::read_dir(directory)? {
+        for child in directory.entries()? {
             if children.len() as u64 >= limits.max_entries.saturating_sub(entries.len() as u64) {
                 return Err(Error::Limit("entry count".into()));
             }
@@ -124,17 +159,15 @@ pub fn create_from_directory(
             if entries.len() as u64 >= limits.max_entries {
                 return Err(Error::Limit("entry count".into()));
             }
-            let path = child.path();
             let kind = child.file_type()?;
             if kind.is_symlink() || (!kind.is_file() && !kind.is_dir()) {
                 return Err(Error::Unsupported(format!(
                     "non-regular input: {}",
-                    path.display()
+                    relative_directory.join(child.file_name()).display()
                 )));
             }
-            let relative = path
-                .strip_prefix(root)
-                .map_err(|e| Error::InvalidArgument(e.to_string()))?;
+            let child_name = child.file_name();
+            let relative = relative_directory.join(&child_name);
             let name = relative
                 .components()
                 .map(|component| {
@@ -147,16 +180,77 @@ pub fn create_from_directory(
                 .join("/");
             pathname::validate_entry_name(&name)?;
             entries.push(SourceEntry {
-                path: path.clone(),
+                path: relative.clone(),
                 name,
             });
             if kind.is_dir() {
-                visit(root, &path, entries, limits, depth + 1)?;
+                // Opening from the current directory handle keeps resolution
+                // beneath that directory even if the name is raced to a link.
+                let child_directory = directory.open_dir(&child_name)?;
+                visit(&child_directory, &relative, entries, limits, depth + 1)?;
             }
         }
         Ok(())
     }
     let mut entries = Vec::new();
-    visit(source, source, &mut entries, &options.limits, 0)?;
-    create_archive(destination, &entries, options)
+    visit(&root, Path::new(""), &mut entries, &options.limits, 0)?;
+    writer::create_archive_beneath(destination, &root, &entries, options)
+}
+
+#[cfg(windows)]
+fn open_source_directory_nofollow(source: &Path) -> io::Result<File> {
+    use std::fs::OpenOptions;
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(source)
+}
+
+#[cfg(target_os = "macos")]
+fn open_source_directory_nofollow(source: &Path) -> io::Result<File> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    let descriptor = open(
+        source,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(io::Error::from)?;
+    Ok(File::from(descriptor))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_source_directory_nofollow;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn source_directory_symlink_is_not_followed() {
+        let temporary = tempdir().expect("temporary directory");
+        let target = temporary.path().join("target");
+        let link = temporary.path().join("link");
+        fs::create_dir(&target).expect("source target");
+
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&target, &link);
+        #[cfg(target_os = "macos")]
+        let linked = std::os::unix::fs::symlink(&target, &link);
+        if let Err(error) = linked {
+            if error.kind() == std::io::ErrorKind::PermissionDenied
+                || error.raw_os_error() == Some(1314)
+            {
+                return;
+            }
+            panic!("create source directory symlink: {error}");
+        }
+
+        open_source_directory_nofollow(&link)
+            .expect_err("source directory symlink must not be followed");
+    }
 }

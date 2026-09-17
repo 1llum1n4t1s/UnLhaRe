@@ -6,6 +6,7 @@ use serde::Serialize;
 /// `total == 0` denotes an indeterminate amount of work. Phase values are
 /// stable for application integrations: 1 prepares/scans, 2 reads/compresses,
 /// 3 extracts/verifies, and 4 finalizes output.
+/// In creation reports, phase 2 also counts bytes of entries skipped after scanning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Progress {
     pub phase: u32,

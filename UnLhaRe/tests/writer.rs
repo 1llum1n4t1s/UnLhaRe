@@ -55,6 +55,42 @@ fn all_public_methods_round_trip_with_independent_reader() {
 }
 
 #[test]
+fn incompressible_input_falls_back_to_stored_without_changing_the_payload() {
+    let temporary = tempdir().expect("temporary directory");
+    let input = temporary.path().join("incompressible.bin");
+    let mut state = 0x1234_5678_u32;
+    let payload: Vec<u8> = (0..4096)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            state as u8
+        })
+        .collect();
+    fs::write(&input, &payload).expect("source file");
+
+    for (method, label) in [
+        (Method::Lh5, "lh5"),
+        (Method::Lh6, "lh6"),
+        (Method::Lh7, "lh7"),
+    ] {
+        let archive = temporary.path().join(format!("fallback-{label}.lzh"));
+        create_archive(
+            &archive,
+            &[source(&input, "payload.bin")],
+            &CreateOptions {
+                method,
+                ..CreateOptions::default()
+            },
+        )
+        .expect("archive creation should succeed");
+
+        let (_, decoded) = decode_one(&archive, b"-lh0-");
+        assert_eq!(decoded, payload);
+    }
+}
+
+#[test]
 fn empty_archive_and_empty_file_are_valid() {
     let temporary = tempdir().expect("temporary directory");
     let empty_archive = temporary.path().join("empty-archive.lzh");

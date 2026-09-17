@@ -1,26 +1,78 @@
 use crate::operation::checkpoint;
-use crate::{Entry, Error, Limits, Progress, Result, Summary, pathname};
-use cap_std::{
-    ambient_authority,
-    fs::{Dir, OpenOptions},
-};
+use crate::{Entry, Error, ExtractOptions, Limits, Progress, Result, Summary, pathname};
+use cap_std::fs::{Dir, OpenOptions};
 use delharc::LhaDecodeReader;
 use std::{
     collections::HashSet,
-    fs::File,
-    io::{self, BufRead, BufReader, Read, Write},
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::Path,
+    time::{Duration, UNIX_EPOCH},
 };
 
 type Decoder = LhaDecodeReader<BufReader<File>>;
+const MAX_METADATA_BYTES: u64 = 64 * 1024 * 1024;
+const ENTRY_METADATA_OVERHEAD: u64 = 128;
 
 struct ScannedArchive {
     summary: Summary,
     entries: Vec<Entry>,
+    decoder: Option<Decoder>,
 }
 
-fn open(path: &Path) -> Result<Decoder> {
-    let mut input = BufReader::new(File::open(path)?);
+#[cfg(windows)]
+fn open_destination_directory_nofollow(destination: &Path) -> io::Result<File> {
+    use std::fs::OpenOptions;
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(destination)
+}
+
+#[cfg(target_os = "macos")]
+fn open_destination_directory_nofollow(destination: &Path) -> io::Result<File> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    let descriptor = open(
+        destination,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(io::Error::from)?;
+    Ok(File::from(descriptor))
+}
+
+fn open_destination_root(destination: &Path) -> Result<Dir> {
+    fs::create_dir_all(destination)?;
+    let directory = open_destination_directory_nofollow(destination)?;
+    let metadata = directory.metadata()?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(Error::Unsupported(format!(
+            "destination is not a regular directory: {}",
+            destination.display()
+        )));
+    }
+    Ok(Dir::from_std_file(directory))
+}
+
+fn open(path: &Path, limits: &Limits) -> Result<Decoder> {
+    let file = File::open(path)?;
+    let archive_bytes = file.metadata()?.len();
+    let max_archive_bytes = limits
+        .max_total_bytes
+        .checked_add(MAX_METADATA_BYTES)
+        .ok_or_else(|| Error::Limit("archive size limit overflow".into()))?;
+    if archive_bytes > max_archive_bytes {
+        return Err(Error::Limit(format!(
+            "archive is {archive_bytes} bytes; limit is {max_archive_bytes}"
+        )));
+    }
+    let mut input = BufReader::new(file);
     if input.fill_buf()?.is_empty() {
         return Err(Error::Format("empty file is not an LHA archive".into()));
     }
@@ -33,9 +85,10 @@ fn open(path: &Path) -> Result<Decoder> {
 
 fn metadata(decoder: &Decoder) -> Result<Entry> {
     let h = decoder.header();
-    if let Some(mode) = h.parse_unix_permissions()
-        && (mode.is_link() || (!(mode.is_file() || mode.is_dir()) && mode.bits() & 0xf000 != 0))
-    {
+    let unsupported_unix_type = h.parse_unix_permissions().is_some_and(|mode| {
+        mode.is_link() || (!(mode.is_file() || mode.is_dir()) && mode.bits() & 0xf000 != 0)
+    });
+    if h.msdos_attrs.is_symlink() || unsupported_unix_type {
         return Err(Error::Unsupported(
             "symbolic links and special archive entries".into(),
         ));
@@ -51,6 +104,10 @@ fn metadata(decoder: &Decoder) -> Result<Entry> {
         is_directory: h.is_directory(),
         crc16: h.file_crc,
         header_level: h.level,
+        modified_unix_seconds: h
+            .parse_last_modified()
+            .to_local()
+            .map(|time| time.timestamp()),
     })
 }
 
@@ -59,6 +116,7 @@ fn account(
     limits: &Limits,
     summary: &mut Summary,
     names: &mut HashSet<String>,
+    metadata_bytes: &mut u64,
 ) -> Result<()> {
     if !names.insert(entry.name.to_lowercase()) {
         return Err(Error::Format(format!(
@@ -74,9 +132,22 @@ fn account(
         .bytes
         .checked_add(entry.original_size)
         .ok_or_else(|| Error::Limit("size overflow".into()))?;
+    let entry_metadata = u64::try_from(entry.name.len())
+        .ok()
+        .and_then(|name| {
+            u64::try_from(entry.method.len())
+                .ok()
+                .and_then(|method| name.checked_add(method))
+        })
+        .and_then(|size| size.checked_add(ENTRY_METADATA_OVERHEAD))
+        .ok_or_else(|| Error::Limit("metadata size overflow".into()))?;
+    *metadata_bytes = metadata_bytes
+        .checked_add(entry_metadata)
+        .ok_or_else(|| Error::Limit("metadata size overflow".into()))?;
     if summary.entries > limits.max_entries
         || entry.original_size > limits.max_entry_bytes
         || summary.bytes > limits.max_total_bytes
+        || *metadata_bytes > MAX_METADATA_BYTES
     {
         return Err(Error::Limit(entry.name.clone()));
     }
@@ -130,14 +201,21 @@ fn scan_archive(
     limits: &Limits,
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<ScannedArchive> {
-    let mut decoder = open(path)?;
+    let mut decoder = open(path, limits)?;
     let mut summary = Summary::default();
     let mut names = HashSet::new();
     let mut entries = Vec::new();
+    let mut metadata_bytes = 0;
     checkpoint(callback, 1, 0, 0)?;
     while decoder.is_present() {
         let entry = metadata(&decoder)?;
-        account(&entry, limits, &mut summary, &mut names)?;
+        account(
+            &entry,
+            limits,
+            &mut summary,
+            &mut names,
+            &mut metadata_bytes,
+        )?;
         entries.push(entry);
         checkpoint(callback, 1, summary.entries, 0)?;
         if !next(&mut decoder)? {
@@ -145,7 +223,16 @@ fn scan_archive(
         }
     }
     checkpoint(callback, 1, summary.entries, summary.entries)?;
-    Ok(ScannedArchive { summary, entries })
+    let decoder = if entries.is_empty() {
+        None
+    } else {
+        Some(rewind(decoder)?)
+    };
+    Ok(ScannedArchive {
+        summary,
+        entries,
+        decoder,
+    })
 }
 
 fn ensure_unchanged(current: &Entry, expected: Option<&Entry>) -> Result<()> {
@@ -164,20 +251,54 @@ fn next(decoder: &mut Decoder) -> Result<bool> {
         .map_err(|error| Error::Format(error.to_string()))
 }
 
+fn rewind(decoder: Decoder) -> Result<Decoder> {
+    let mut input = decoder.into_inner();
+    input.seek(SeekFrom::Start(0))?;
+    let mut reset = Decoder::default();
+    let present = reset
+        .begin_new(input)
+        .map_err(|error| Error::Format(error.to_string()))?;
+    if !present {
+        return Err(Error::Format(
+            "archive disappeared while being processed".into(),
+        ));
+    }
+    Ok(reset)
+}
+
 /// List metadata without treating this as a payload/CRC verification.
 pub fn list_archive(path: &Path, limits: &Limits) -> Result<Vec<Entry>> {
-    let mut decoder = open(path)?;
+    list_archive_with_progress(path, limits, &mut |_| true)
+}
+
+/// List metadata with cancellable progress between archive headers.
+pub fn list_archive_with_progress(
+    path: &Path,
+    limits: &Limits,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<Vec<Entry>> {
+    checkpoint(callback, 1, 0, 0)?;
+    let mut decoder = open(path, limits)?;
     let mut result = Vec::new();
     let mut summary = Summary::default();
     let mut names = HashSet::new();
+    let mut metadata_bytes = 0;
     while decoder.is_present() {
         let entry = metadata(&decoder)?;
-        account(&entry, limits, &mut summary, &mut names)?;
+        account(
+            &entry,
+            limits,
+            &mut summary,
+            &mut names,
+            &mut metadata_bytes,
+        )?;
         result.push(entry);
+        checkpoint(callback, 1, summary.entries, 0)?;
         if !next(&mut decoder)? {
             break;
         }
     }
+    checkpoint(callback, 4, summary.entries, summary.entries)?;
     Ok(result)
 }
 
@@ -193,16 +314,16 @@ pub fn verify_archive_with_progress(
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<Summary> {
     let scanned = scan_archive(path, limits, callback)?;
-    let mut decoder = open(path)?;
+    let mut decoder = scanned.decoder;
     let mut completed = 0_u64;
     let mut index = 0_usize;
     checkpoint(callback, 3, 0, scanned.summary.bytes)?;
-    while decoder.is_present() {
-        let entry = metadata(&decoder)?;
+    while let Some(active) = decoder.as_mut().filter(|active| active.is_present()) {
+        let entry = metadata(active)?;
         ensure_unchanged(&entry, scanned.entries.get(index))?;
         if !entry.is_directory {
             decode(
-                &mut decoder,
+                active,
                 &entry,
                 &mut io::sink(),
                 &mut completed,
@@ -211,7 +332,7 @@ pub fn verify_archive_with_progress(
             )?;
         }
         index += 1;
-        if !next(&mut decoder)? {
+        if !next(active)? {
             break;
         }
     }
@@ -247,6 +368,29 @@ pub fn extract_archive_with_progress(
     selected_names: Option<&[String]>,
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<Summary> {
+    extract_archive_with_options(
+        path,
+        destination,
+        limits,
+        selected_names,
+        &ExtractOptions::default(),
+        callback,
+    )
+}
+
+/// Extract with caller-selected behavior and cancellable progress.
+///
+/// Timestamp restoration applies only to newly created regular files. Existing
+/// targets are left untouched, directory timestamps are not restored, and a
+/// missing archive timestamp leaves the new file's timestamp unchanged.
+pub fn extract_archive_with_options(
+    path: &Path,
+    destination: &Path,
+    limits: &Limits,
+    selected_names: Option<&[String]>,
+    options: &ExtractOptions,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<Summary> {
     let scanned = scan_archive(path, limits, callback)?;
     let selected: Option<HashSet<&str>> =
         selected_names.map(|names| names.iter().map(String::as_str).collect());
@@ -264,21 +408,20 @@ pub fn extract_archive_with_progress(
         scanned.summary.bytes
     };
 
-    let mut decoder = open(path)?;
-    std::fs::create_dir_all(destination)?;
-    let root = Dir::open_ambient_dir(destination, ambient_authority())?;
+    let mut decoder = scanned.decoder;
+    let root = open_destination_root(destination)?;
     let mut completed = 0_u64;
     let mut index = 0_usize;
     checkpoint(callback, 3, 0, progress_total)?;
-    while decoder.is_present() {
-        let entry = metadata(&decoder)?;
+    while let Some(active) = decoder.as_mut().filter(|active| active.is_present()) {
+        let entry = metadata(active)?;
         ensure_unchanged(&entry, scanned.entries.get(index))?;
         index += 1;
         let chosen = selected
             .as_ref()
             .is_none_or(|names| names.contains(entry.name.as_str()));
         if !chosen {
-            if !next(&mut decoder)? {
+            if !next(active)? {
                 break;
             }
             continue;
@@ -307,13 +450,18 @@ pub fn extract_archive_with_progress(
             let staging = cap_tempfile::TempDir::new_in(&parent)?;
             let mut file = create_staging_file(&staging)?;
             decode(
-                &mut decoder,
+                active,
                 &entry,
                 &mut file,
                 &mut completed,
                 progress_total,
                 callback,
             )?;
+            if options.preserve_timestamps
+                && let Some(seconds) = entry.modified_unix_seconds
+            {
+                set_modified_time(&file, seconds)?;
+            }
             file.sync_all()?;
             publish_staged_no_replace(
                 &staging,
@@ -326,7 +474,7 @@ pub fn extract_archive_with_progress(
             drop(file);
             staging.close()?;
         }
-        if !next(&mut decoder)? {
+        if !next(active)? {
             break;
         }
     }
@@ -337,6 +485,20 @@ pub fn extract_archive_with_progress(
     }
     checkpoint(callback, 4, 0, 0)?;
     Ok(scanned.summary)
+}
+
+fn set_modified_time(file: &cap_std::fs::File, unix_seconds: i64) -> Result<()> {
+    let duration = Duration::from_secs(unix_seconds.unsigned_abs());
+    let modified = if unix_seconds >= 0 {
+        UNIX_EPOCH.checked_add(duration)
+    } else {
+        UNIX_EPOCH.checked_sub(duration)
+    }
+    .ok_or_else(|| Error::Format("modification time is outside the system time range".into()))?;
+    file.try_clone()?
+        .into_std()
+        .set_times(std::fs::FileTimes::new().set_modified(modified))?;
+    Ok(())
 }
 
 fn create_staging_file(staging: &Dir) -> io::Result<cap_std::fs::File> {
@@ -482,8 +644,8 @@ fn rename_staged_no_replace(
 
 #[cfg(test)]
 mod tests {
-    use super::{create_staging_file, publish_staged_no_replace_impl};
-    use crate::Error;
+    use super::{create_staging_file, open_destination_root, publish_staged_no_replace_impl};
+    use crate::{Error, Limits, list_archive};
     use cap_std::{ambient_authority, fs::Dir};
     use std::{fs, io::Write};
     use tempfile::tempdir;
@@ -571,5 +733,46 @@ mod tests {
         );
         drop(staged_file);
         staging.close().expect("remove cancelled staging directory");
+    }
+
+    #[test]
+    fn oversized_archive_is_rejected_before_header_parsing() {
+        let temporary = tempdir().expect("temporary directory");
+        let archive = temporary.path().join("oversized.lzh");
+        let file = fs::File::create(&archive).expect("create sparse archive");
+        file.set_len(super::MAX_METADATA_BYTES + 1)
+            .expect("set sparse archive length");
+        let limits = Limits {
+            max_total_bytes: 0,
+            ..Limits::default()
+        };
+
+        assert!(matches!(
+            list_archive(&archive, &limits),
+            Err(Error::Limit(_))
+        ));
+    }
+
+    #[test]
+    fn destination_directory_symlink_is_not_followed() {
+        let temporary = tempdir().expect("temporary directory");
+        let target = temporary.path().join("target");
+        let link = temporary.path().join("link");
+        fs::create_dir(&target).expect("destination target");
+
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&target, &link);
+        #[cfg(target_os = "macos")]
+        let linked = std::os::unix::fs::symlink(&target, &link);
+        if let Err(error) = linked {
+            if error.kind() == std::io::ErrorKind::PermissionDenied
+                || error.raw_os_error() == Some(1314)
+            {
+                return;
+            }
+            panic!("create destination symlink: {error}");
+        }
+
+        open_destination_root(&link).expect_err("destination symlink must not be followed");
     }
 }

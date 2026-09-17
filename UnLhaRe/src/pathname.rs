@@ -23,11 +23,21 @@ pub(crate) fn validate_entry_name(name: &str) -> Result<PathBuf> {
             .split('.')
             .next()
             .unwrap_or_default()
+            .trim_end()
             .to_ascii_uppercase();
-        if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$")
-            || (stem.len() == 4
-                && (stem.starts_with("COM") || stem.starts_with("LPT"))
-                && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+        let numbered_device = stem
+            .strip_prefix("COM")
+            .or_else(|| stem.strip_prefix("LPT"))
+            .is_some_and(|number| {
+                matches!(
+                    number,
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            });
+        if matches!(
+            stem.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$" | "CONIN$" | "CONOUT$"
+        ) || numbered_device
         {
             return Err(Error::InvalidPath(name.into()));
         }
@@ -121,4 +131,51 @@ pub(crate) fn archive_name(header: &LhaHeader) -> Result<String> {
     let portable = portable.trim_end_matches('/').to_string();
     validate_entry_name(&portable)?;
     Ok(portable)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_entry_name;
+    use crate::Error;
+
+    #[test]
+    fn windows_device_names_are_rejected_in_every_component() {
+        for name in [
+            "CON",
+            "con.txt",
+            "PRN.log",
+            "AUX",
+            "NUL.tar.gz",
+            "CLOCK$",
+            "CONIN$",
+            "conout$.txt",
+            "COM0",
+            "COM1.txt",
+            "COM1 .txt",
+            "COM9",
+            "COM¹.txt",
+            "com²",
+            "COM³",
+            "LPT0",
+            "LPT1.txt",
+            "LPT9",
+            "LPT¹.txt",
+            "lpt²",
+            "LPT³",
+            "folder/COM1.txt",
+            "folder/CON .txt",
+        ] {
+            assert!(
+                matches!(validate_entry_name(name), Err(Error::InvalidPath(_))),
+                "{name} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn names_that_only_resemble_devices_remain_portable() {
+        for name in ["CONIN", "CONOUT", "COM10", "LPT10", "XCOM1", "LPT1X"] {
+            assert!(validate_entry_name(name).is_ok(), "{name} must be accepted");
+        }
+    }
 }
