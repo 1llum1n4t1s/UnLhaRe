@@ -36,7 +36,12 @@ pub(crate) fn is_nofollow_rejection(error: &io::Error) -> bool {
 
     #[cfg(target_os = "macos")]
     {
-        error.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error())
+        matches!(
+            error.raw_os_error(),
+            Some(code)
+                if code == rustix::io::Errno::LOOP.raw_os_error()
+                    || code == rustix::io::Errno::NOTDIR.raw_os_error()
+        )
     }
 }
 
@@ -161,7 +166,7 @@ fn walk_file(mut current: File, path: &Path, create_missing: bool) -> io::Result
             ));
         };
 
-        let child = match cap_primitives::fs::open_dir_nofollow(&current, Path::new(name)) {
+        let child = match open_child_directory_nofollow(&current, name) {
             Ok(child) => child,
             Err(error) if create_missing && error.kind() == io::ErrorKind::NotFound => {
                 let parent = Dir::from_std_file(current.try_clone()?);
@@ -170,7 +175,7 @@ fn walk_file(mut current: File, path: &Path, create_missing: bool) -> io::Result
                     Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                     Err(error) => return Err(error),
                 }
-                cap_primitives::fs::open_dir_nofollow(&current, Path::new(name))?
+                open_child_directory_nofollow(&current, name)?
             }
             Err(error) => return Err(error),
         };
@@ -178,6 +183,25 @@ fn walk_file(mut current: File, path: &Path, create_missing: bool) -> io::Result
         current = child;
     }
     Ok(Dir::from_std_file(current))
+}
+
+#[cfg(windows)]
+fn open_child_directory_nofollow(parent: &File, name: &OsStr) -> io::Result<File> {
+    cap_primitives::fs::open_dir_nofollow(parent, Path::new(name))
+}
+
+#[cfg(target_os = "macos")]
+fn open_child_directory_nofollow(parent: &File, name: &OsStr) -> io::Result<File> {
+    use rustix::fs::{Mode, OFlags, openat};
+
+    let descriptor = openat(
+        parent,
+        Path::new(name),
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(io::Error::from)?;
+    Ok(File::from(descriptor))
 }
 
 #[cfg(windows)]
