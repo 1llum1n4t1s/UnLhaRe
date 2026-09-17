@@ -137,6 +137,7 @@ fn open_macos_root(absolute: &Path) -> io::Result<(File, PathBuf)> {
         .strip_prefix(Path::new("/"))
         .map_err(|_| invalid_path("path is not an absolute macOS path"))?
         .to_path_buf();
+    let relative = normalize_macos_standard_root_alias(relative)?;
     let descriptor = open(
         "/",
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
@@ -146,6 +147,41 @@ fn open_macos_root(absolute: &Path) -> io::Result<(File, PathBuf)> {
     let root = File::from(descriptor);
     validate_directory(&root, Path::new("/"))?;
     Ok((root, relative))
+}
+
+#[cfg(target_os = "macos")]
+fn normalize_macos_standard_root_alias(relative: PathBuf) -> io::Result<PathBuf> {
+    let Some(Component::Normal(first)) = relative.components().next() else {
+        return Ok(relative);
+    };
+    let first = first.to_os_string();
+    if !matches!(first.to_str(), Some("var" | "tmp" | "etc")) {
+        return Ok(relative);
+    }
+
+    let expected_relative = PathBuf::from("private").join(&first);
+    let expected_absolute = Path::new("/").join(&expected_relative);
+    let observed = match std::fs::read_link(Path::new("/").join(&first)) {
+        Ok(target) => target,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::InvalidInput
+            ) =>
+        {
+            return Ok(relative);
+        }
+        Err(error) => return Err(error),
+    };
+    if observed != expected_relative && observed != expected_absolute {
+        return Ok(relative);
+    }
+
+    let mut normalized = expected_relative;
+    for component in relative.components().skip(1) {
+        normalized.push(component.as_os_str());
+    }
+    Ok(normalized)
 }
 
 fn walk_beneath(root: &Dir, path: &Path, create_missing: bool) -> io::Result<Dir> {
@@ -275,4 +311,25 @@ fn validate_directory(file: &File, path: &Path) -> io::Result<()> {
 
 fn invalid_path(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::normalize_macos_standard_root_alias;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn normalizes_only_standard_macos_root_alias_targets() {
+        for name in ["var", "tmp", "etc"] {
+            let expected = PathBuf::from("private").join(name);
+            let target = std::fs::read_link(Path::new("/").join(name))
+                .expect("standard macOS root alias should exist");
+            assert!(target == expected || target == Path::new("/").join(&expected));
+            assert_eq!(
+                normalize_macos_standard_root_alias(PathBuf::from(name).join("child"))
+                    .expect("standard alias normalization should succeed"),
+                expected.join("child")
+            );
+        }
+    }
 }
