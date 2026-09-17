@@ -200,15 +200,22 @@ pub fn create_from_directory(
 #[cfg(windows)]
 fn open_source_directory_nofollow(source: &Path) -> io::Result<File> {
     use std::fs::OpenOptions;
-    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
     };
 
-    OpenOptions::new()
+    let directory = OpenOptions::new()
         .read(true)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(source)
+        .open(source)?;
+    if directory.metadata()?.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "source directory is a reparse point",
+        ));
+    }
+    Ok(directory)
 }
 
 #[cfg(target_os = "macos")]
