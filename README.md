@@ -15,5 +15,6 @@ GitHub Releases の `UnLha32Re-win-x86.zip` を展開し、`bin/UNLHA32RE.DLL` �
 配布 ZIP には、再配布条件を満たすため、対応するソース、ライセンス、第三者告知を収録しています。ZIP 内の `README.txt` と `THIRD_PARTY_NOTICES.md` も確認してください。
 
 ソースからのビルドと検証は [開発作業規約](AGENTS.md)、実装構造は [設計文書](DESIGN.md) を参照してください。
+署名済み ZIP を準備する短時間チェックと公開の手順は [リリース手順](UnLha32Re/docs/releasing.md) に記載しています。
 
 共通ライセンスは [LICENSE](LICENSE)、完全互換版の第三者ライセンスは [THIRD_PARTY_NOTICES.md](UnLha32Re/THIRD_PARTY_NOTICES.md) を参照してください。

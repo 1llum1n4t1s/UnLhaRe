@@ -103,6 +103,8 @@ Wide の事前探索は本処理と同じスイッチ・応答ファイル解析
 
 `scripts/test.ps1` はビルド、PE・エクスポート・バージョン検査、書庫 fixture に対する API 比較と機能別試験を組み合わせる。比較元 DLL と一部 fixture は追跡対象外の `sample/` に依存する。固定された期待値を使う試験とライブ比較は別に扱われる。実行コマンドと作業時の検証規約は [AGENTS.md](AGENTS.md)、隔離実行は [検証用デスクトップ](UnLha32Re/docs/testing-desktop.md) を参照する。
 
+`test.ps1 -Profile Release` は `release.ps1 -CheckOnly` へ接続し、ビルドと `test-release.ps1` の候補単独スモークを実行する。既定の `Full` は従来の比較行列を維持する。リリースではビルド・署名・スモーク・ZIPを直列に実行し、スモーク全体の時間上限を `DesktopRunner` に渡す。表示先とHKCUの分離、DWM監視、本文照合・CRC・元データ保持の判定は短時間経路でも有効である。合格したDLLのSHA256とGit HEADを記録し、ZIP作成時に同じ署名済みDLL・コミットか検査する。毎回新しい検証を行い、過去の成功を自動で流用しない。公開手順と省略する検証範囲は [リリース手順](UnLha32Re/docs/releasing.md) を参照する。
+
 標準入口の `invoke-dwm-monitored-test.ps1` は、隔離試験とは別プロセスで `dwm-monitor.ps1` を動かす。
 監視は同じセッションの DWM の CPU 差分を記録し、試験終了後も計測して持続負荷を検出する。
 高負荷時は実行固有の WPR セッションで CPU スタックを採取し、計測不能・採取不能を区別する。

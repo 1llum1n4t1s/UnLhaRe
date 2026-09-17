@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [ValidateSet('Full','Release')][string]$Profile = 'Full',
     [switch]$CompareUpdatePolicyOracle,
     [ValidateSet('Full','Focused')][string]$CrcDialogCoverage = 'Full',
     [ValidateSet('Normal','Focused')][string]$CodecPayloadDisplay = 'Focused',
@@ -11,6 +12,14 @@ $ErrorActionPreference = 'Stop'
 # 非表示デスクトップの子 PowerShell でも、日本語の診断ログを UTF-8 に統一する。
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if ($Profile -eq 'Release') {
+    if ($IsolatedChild -or $CompareUpdatePolicyOracle -or
+        $PSBoundParameters.ContainsKey('CrcDialogCoverage') -or $PSBoundParameters.ContainsKey('CodecPayloadDisplay')) {
+        throw 'Release プロファイルでは Full 専用の試験引数を指定できません。'
+    }
+    & (Join-Path $PSScriptRoot 'release.ps1') -CheckOnly -WorkspaceRoot $WorkspaceRoot
+    return
+}
 $desktopRunner = Join-Path $repositoryRoot 'artifacts\Release\DesktopRunner.exe'
 if (-not $IsolatedChild) {
     & (Join-Path $PSScriptRoot 'test-dwm-monitor.ps1')

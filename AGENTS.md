@@ -15,8 +15,9 @@ pwsh -NoProfile -File .\scripts\build.ps1
 pwsh -NoProfile -File .\scripts\test.ps1
 ```
 
+- **リリースの検証は `scripts/test.ps1 -Profile Release`（ビルドと短時間チェック）、署名済みZIPの準備は `scripts/release.ps1` を使う。** リリース処理のローカル予算は300秒。配布のたびに引数なしの `test.ps1` を実行しない。全比較は機能修正をまとめた時点や互換性調査で明示的に `-Profile Full` を選ぶ。手順と確認範囲は [リリース手順](UnLha32Re/docs/releasing.md) を参照する。
 - 実装変更時は Release ビルドと関連する互換試験を実行し、統合確認には `test.ps1` を使用する。Debug は `build.ps1 -Configuration Debug` で指定する。ソリューションの `x86` は各プロジェクトの `Win32` に対応する。
-- `test.ps1` は Release ビルドを実行してから統合試験へ進む。個別試験では先に `build.ps1` を実行する。fixture は `sample/lha-master/tests/`、比較元 DLL は `sample/ulh3300_extracted/UNLHA32.DLL` に配置する。`sample/` は追跡対象外なので、試験前に必要なローカル資料の存在を確認し、不足時は未実行範囲を明示する。
+- `test.ps1` の既定 `Full` は Release ビルドを実行してから統合試験へ進む。個別試験では先に `build.ps1` を実行する。Full の fixture は `sample/lha-master/tests/`、比較元 DLL は `sample/ulh3300_extracted/UNLHA32.DLL` に配置する。`sample/` は追跡対象外なので、試験前に必要なローカル資料の存在を確認し、不足時は未実行範囲を明示する。Release は正常な入力を自己生成する候補単独チェックで、原版や `sample/` を必要としない。
 - 比較元がない場合の候補単独試験と、原版との一致確認を区別する。更新・移動ポリシーの追加ライブ比較には `test.ps1 -CompareUpdatePolicyOracle` を使用する。
 - DLL を実行する診断は [検証用デスクトップ](UnLha32Re/docs/testing-desktop.md) に従い分離する。`-IsolatedChild` は内部呼び出し用とし、通常は標準の試験入口を使う。原版が停止し得るプローブは `DesktopRunner.exe --timeout-seconds` で時間を制限する。
 - 標準入口は DWM 監視も実行する。互換試験が成功しても監視異常があれば統合成功とせず、`build/dwm-monitor/run-*/summary.json` を確認する。個別診断に監視を付ける手順と採取権限の扱いは、上記の検証用デスクトップ文書を参照する。
