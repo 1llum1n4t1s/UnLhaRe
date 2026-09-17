@@ -44,6 +44,8 @@ _Static_assert(sizeof(void *) == 8, "UnLhaRe requires 64-bit pointers");
 #define UNLHARE_STATUS_BUFFER_TOO_SMALL INT32_C(2)
 #define UNLHARE_STATUS_INVALID_ARGUMENT INT32_C(3)
 #define UNLHARE_STATUS_PANIC INT32_C(4)
+#define UNLHARE_STATUS_CANCELLED INT32_C(5)
+#define UNLHARE_API_LEVEL UINT32_C(2)
 
 #define UNLHARE_METHOD_STORED INT32_C(0)
 #define UNLHARE_METHOD_LH5 INT32_C(5)
@@ -66,6 +68,22 @@ extern "C" {
  */
 
 UNLHARE_API uint32_t unlhare_abi_version(void);
+
+/* API level 2: JSON requests, configurable limits, selection and cancellation.
+ * Progress callback runs synchronously on the caller thread; 0 continues,
+ * nonzero cancels. Neither callback nor user is retained after return.
+ * phase: 1 prepare, 2 compression, 3 extraction/verification, 4 finalize.
+ * total=0 means indeterminate. Callbacks must not throw across the C boundary.
+ */
+typedef int32_t (*unlhare_progress_callback)(void *user, uint32_t phase,
+                                           uint64_t completed, uint64_t total);
+UNLHARE_API uint32_t unlhare_api_level(void);
+UNLHARE_API int32_t unlhare_run_json(const char *request_utf8,
+                                    unlhare_progress_callback callback,
+                                    void *user);
+UNLHARE_API int32_t unlhare_list_json_ex(const char *request_utf8,
+                                        char *output, uint64_t capacity,
+                                        uint64_t *required);
 
 UNLHARE_API int32_t unlhare_list_json(const char *archive_utf8,
                                       char *output,

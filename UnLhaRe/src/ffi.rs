@@ -11,6 +11,12 @@ use std::slice;
 
 use crate::{CreateOptions, Limits, Method};
 
+mod app;
+pub use app::{unlhare_api_level, unlhare_list_json_ex, unlhare_run_json};
+
+/// 操作がコールバックから中断された。
+pub const STATUS_CANCELLED: i32 = 5;
+
 /// ABI version implemented by this library.
 pub const ABI_VERSION: u32 = 1;
 

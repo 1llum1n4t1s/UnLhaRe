@@ -95,6 +95,8 @@ mkdir -p "$temporary_bundle/include"
 required_files=(
     "$repository_root/include/unlhare.h"
     "$repository_root/README.md"
+    "$repository_root/CHANGELOG.md"
+    "$repository_root/RELEASING.md"
     "$repository_root/VALIDATION.md"
     "$repository_root/../LICENSE"
     "$repository_root/THIRD_PARTY_NOTICES.md"
@@ -123,6 +125,8 @@ cp "$repository_root/include/unlhare.h" "$temporary_bundle/include/unlhare.h"
 cp -R "$repository_root/licensing" "$temporary_bundle/licensing"
 cp \
     "$repository_root/README.md" \
+    "$repository_root/CHANGELOG.md" \
+    "$repository_root/RELEASING.md" \
     "$repository_root/VALIDATION.md" \
     "$repository_root/../LICENSE" \
     "$repository_root/THIRD_PARTY_NOTICES.md" \

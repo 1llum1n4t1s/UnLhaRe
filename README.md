@@ -4,7 +4,7 @@ UnLhaRe はLHA書庫を扱うライブラリです。Windows/macOSのx64/ARM64�
 
 ## 提供する2つの版
 
-- **[近代化版 UnLhaRe 1.0.0](UnLhaRe/README.md)**: Rust 1.98.1 / edition 2024、新しいUTF-8 C APIとRust API、CLI。32bitを対象外とし、一覧・検査・展開・新規作成を提供します。[専用リリースページ](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.0)から対象OS・CPUのパッケージを選択してください。
+- **[近代化版 UnLhaRe 1.0.1](UnLhaRe/README.md)**: Rust 1.98.1 / edition 2024、新しいUTF-8 C APIとRust API、CLI。32bitを対象外とし、一覧・検査・展開・新規作成を提供します。[専用リリースページ](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.1)から対象OS・CPUのパッケージを選択してください。
 - **[互換版 UnLha32Re](UnLha32Re/README.md)**: UNLHA32.DLL 3.00.0.5の32bit ABI互換を目指すWindows DLL。
 
 ## 互換版 UnLha32Re 1.0.0

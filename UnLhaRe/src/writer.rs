@@ -7,8 +7,9 @@ use std::time::UNIX_EPOCH;
 use oxiarc_lzhuf::{LzhMethod, encode_lzh};
 use tempfile::NamedTempFile;
 
+use crate::operation::checkpoint;
 use crate::pathname::validate_entry_name;
-use crate::{CreateOptions, Error, Method, Result, SourceEntry};
+use crate::{CreateOptions, Error, Method, Progress, Result, SourceEntry};
 
 const CODE_PAGE_UTF8: u32 = 65_001;
 const LEVEL2_FIXED_HEADER_SIZE: usize = 26;
@@ -83,6 +84,20 @@ pub fn create_archive(
     entries: &[SourceEntry],
     options: &CreateOptions,
 ) -> Result<()> {
+    create_archive_with_progress(destination, entries, options, &mut |_| true)
+}
+
+/// Creates a new LHA level-2 archive and reports cancellable progress.
+///
+/// The compression library encodes each LZH entry in one synchronous call.
+/// Cancellation is therefore observed while reading and between entries, but
+/// cannot interrupt an individual Lh5/Lh6/Lh7 encode already in progress.
+pub fn create_archive_with_progress(
+    destination: &Path,
+    entries: &[SourceEntry],
+    options: &CreateOptions,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<()> {
     reject_existing_destination(destination)?;
 
     let entry_count = u64::try_from(entries.len())
@@ -94,18 +109,34 @@ pub fn create_archive(
         )));
     }
 
+    checkpoint(callback, 1, 0, entry_count)?;
     let prepared = prepare_entries(entries)?;
+    let mut scanned = Vec::with_capacity(prepared.len());
+    let mut total_bytes = 0_u64;
+    for (index, entry) in prepared.into_iter().enumerate() {
+        let metadata = fs::symlink_metadata(&entry.source.path)?;
+        reject_unsupported_source(&entry.source.path, &metadata)?;
+        if metadata.is_file() {
+            enforce_file_limits(
+                &entry.source.path,
+                metadata.len(),
+                &mut total_bytes,
+                options,
+            )?;
+        }
+        scanned.push((entry, metadata));
+        checkpoint(callback, 1, index as u64 + 1, entry_count)?;
+    }
+
     let parent = destination
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let mut temporary = NamedTempFile::new_in(parent)?;
-    let mut total_bytes = 0_u64;
+    let mut completed_bytes = 0_u64;
+    checkpoint(callback, 2, 0, total_bytes)?;
 
-    for entry in prepared {
-        let metadata = fs::symlink_metadata(&entry.source.path)?;
-        reject_unsupported_source(&entry.source.path, &metadata)?;
-
+    for (entry, metadata) in scanned {
         if metadata.is_dir() {
             let header = build_level2_header(
                 b"-lhd-",
@@ -119,15 +150,24 @@ pub fn create_archive(
             continue;
         }
 
-        enforce_file_limits(
+        let data = read_regular_file(
             &entry.source.path,
-            metadata.len(),
-            &mut total_bytes,
+            &metadata,
             options,
+            completed_bytes,
+            total_bytes,
+            callback,
         )?;
-        let data = read_regular_file(&entry.source.path, &metadata, options)?;
         let file_crc = crc16(&data);
+        // OxiArc's encoder progress sink cannot abort an encode. This
+        // checkpoint keeps cancellation responsive between entries without
+        // presenting the current entry as complete before compression.
+        checkpoint(callback, 2, completed_bytes, total_bytes)?;
         let (method_id, packed) = compress_entry(&data, options.method)?;
+        completed_bytes = completed_bytes
+            .checked_add(metadata.len())
+            .ok_or_else(|| Error::Limit("source progress overflowed u64".to_owned()))?;
+        checkpoint(callback, 2, completed_bytes, total_bytes)?;
         let header = build_level2_header(
             method_id,
             u64::try_from(packed.len())
@@ -145,6 +185,7 @@ pub fn create_archive(
     // A zero byte terminates both non-empty archives and a valid empty archive.
     temporary.write_all(&[0])?;
     temporary.as_file_mut().sync_all()?;
+    checkpoint(callback, 4, 0, 0)?;
     temporary.persist_noclobber(destination).map_err(|error| {
         if error.error.kind() == std::io::ErrorKind::AlreadyExists {
             Error::Exists(destination.to_path_buf())
@@ -225,7 +266,14 @@ fn enforce_file_limits(
     Ok(())
 }
 
-fn read_regular_file(path: &Path, initial: &Metadata, options: &CreateOptions) -> Result<Vec<u8>> {
+fn read_regular_file(
+    path: &Path,
+    initial: &Metadata,
+    options: &CreateOptions,
+    completed_before: u64,
+    total: u64,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<Vec<u8>> {
     let file = File::open(path)?;
     let opened = file.metadata()?;
     if !opened.is_file() {
@@ -255,7 +303,19 @@ fn read_regular_file(path: &Path, initial: &Metadata, options: &CreateOptions) -
         ))
     })?;
     let read_limit = options.limits.max_entry_bytes.saturating_add(1);
-    file.take(read_limit).read_to_end(&mut data)?;
+    let mut input = file.take(read_limit);
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let amount = input.read(&mut buffer)?;
+        if amount == 0 {
+            break;
+        }
+        data.extend_from_slice(&buffer[..amount]);
+        // completed counts bytes whose compression has finished. Repeating
+        // the value during input reads still supplies cancellation points and
+        // avoids claiming 100% while compression is running.
+        checkpoint(callback, 2, completed_before, total)?;
+    }
     let actual = u64::try_from(data.len())
         .map_err(|_| Error::Limit("source size does not fit in u64".to_owned()))?;
     if actual > options.limits.max_entry_bytes {

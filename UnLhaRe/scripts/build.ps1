@@ -114,6 +114,8 @@ function New-LocalBundle {
     $bundleFiles = @(
         @{ Source = (Join-Path $repositoryRoot 'include\unlhare.h'); Destination = 'include\unlhare.h' },
         @{ Source = (Join-Path $repositoryRoot 'README.md'); Destination = 'README.md' },
+        @{ Source = (Join-Path $repositoryRoot 'CHANGELOG.md'); Destination = 'CHANGELOG.md' },
+        @{ Source = (Join-Path $repositoryRoot 'RELEASING.md'); Destination = 'RELEASING.md' },
         @{ Source = (Join-Path $repositoryRoot 'VALIDATION.md'); Destination = 'VALIDATION.md' },
         @{ Source = ([System.IO.Path]::GetFullPath((Join-Path $repositoryRoot '..\LICENSE'))); Destination = 'LICENSE' },
         @{ Source = (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md'); Destination = 'THIRD_PARTY_NOTICES.md' },

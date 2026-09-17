@@ -12,6 +12,7 @@
 | serde / serde_json | JSON出力 | MIT OR Apache-2.0 |
 | tempfile | 作成書庫の一時ファイル | MIT OR Apache-2.0 |
 | thiserror | Rustエラー型 | MIT OR Apache-2.0 |
+| rustix 1.1.5 / windows-sys 0.61.2 | OSの既存ファイルを置換しない確定操作 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT / MIT OR Apache-2.0 |
 
 正確なバージョン・全依存一覧はCargo.lock、各パッケージの識別とライセンス・著作権表示の原文は同梱の `THIRD_PARTY_LICENSES.txt` を参照してください。依存のライセンス原文に複数の選択肢がある場合、その条件に従って利用します。Rust 1.98.1標準ライブラリの告知原文は同梱の `licensing/COPYRIGHT-library.html` と `licensing/licenses/` にあります。
 

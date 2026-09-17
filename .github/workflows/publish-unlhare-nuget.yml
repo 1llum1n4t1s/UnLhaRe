@@ -1,0 +1,224 @@
+name: Publish UnLhaRe NuGet package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable UnLhaRe 1.0.x version already published as a GitHub Release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-unlhare-nuget-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate requested version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:REQUESTED_VERSION -notmatch '^1\.0\.\d+$') {
+            throw "Version must be a stable 1.0.x version: $env:REQUESTED_VERSION"
+          }
+          "PACKAGE_VERSION=$env:REQUESTED_VERSION" >> $env:GITHUB_ENV
+          "RELEASE_TAG=unlhare-v$env:REQUESTED_VERSION" >> $env:GITHUB_ENV
+
+      - name: Check out the released source tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: unlhare-v${{ inputs.version }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify source version
+        shell: pwsh
+        working-directory: UnLhaRe
+        run: |
+          $manifest = Get-Content -LiteralPath Cargo.toml -Raw
+          $packageSection = [regex]::Match($manifest, '(?ms)^\[package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
+          $versions = [regex]::Matches($packageSection.Groups['body'].Value, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+          if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -ne $env:PACKAGE_VERSION) {
+            throw 'Cargo package version does not match the requested release.'
+          }
+
+      - name: Download signed Windows release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          gh release download $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --dir release-assets `
+            --pattern "UnLhaRe-$env:PACKAGE_VERSION-win-x64.zip" `
+            --pattern "UnLhaRe-$env:PACKAGE_VERSION-win-arm64.zip" `
+            --pattern 'SHA256SUMS.txt' `
+            --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify release assets and Authenticode signatures
+        shell: pwsh
+        run: |
+          $checksumsPath = Join-Path $PWD 'release-assets/SHA256SUMS.txt'
+          $checksumLines = @(Get-Content -LiteralPath $checksumsPath)
+          $targets = @(
+            @{ Rid = 'win-x64'; CargoTarget = 'x86_64-pc-windows-msvc' },
+            @{ Rid = 'win-arm64'; CargoTarget = 'aarch64-pc-windows-msvc' }
+          )
+          $nativeRoot = Join-Path $PWD 'native-artifacts'
+
+          foreach ($target in $targets) {
+            $assetName = "UnLhaRe-$env:PACKAGE_VERSION-$($target.Rid).zip"
+            $assetPath = Join-Path $PWD "release-assets/$assetName"
+            $matchingChecksum = @($checksumLines | Where-Object { $_ -match "^[0-9a-fA-F]{64}\s+$([regex]::Escape($assetName))$" })
+            if ($matchingChecksum.Count -ne 1) {
+              throw "Expected exactly one checksum for $assetName."
+            }
+            $expectedHash = ($matchingChecksum[0] -split '\s+', 2)[0]
+            $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash
+            if ($actualHash -ne $expectedHash) {
+              throw "SHA256 mismatch for $assetName."
+            }
+
+            $destination = Join-Path $nativeRoot $target.CargoTarget
+            Expand-Archive -LiteralPath $assetPath -DestinationPath $destination
+            $dllPath = Join-Path $destination 'unlhare.dll'
+            if (-not (Test-Path -LiteralPath $dllPath -PathType Leaf)) {
+              throw "unlhare.dll was not found in $assetName."
+            }
+            $signature = Get-AuthenticodeSignature -LiteralPath $dllPath
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+              throw "Authenticode verification failed for ${assetName}: $($signature.Status)"
+            }
+            if ($signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=Open Source Developer(?:,|$)') {
+              throw "Unexpected Authenticode signer for ${assetName}: $($signature.SignerCertificate.Subject)"
+            }
+          }
+
+          "NATIVE_ARTIFACTS_ROOT=$nativeRoot" >> $env:GITHUB_ENV
+
+      - name: Restore and run managed/native contract tests
+        shell: pwsh
+        run: |
+          $testProject = 'UnLhaRe/bindings/dotnet/tests/Kagayoi.UnLhaRe.ContractTests/Kagayoi.UnLhaRe.ContractTests.csproj'
+          dotnet restore $testProject -p:NativeArtifactsRoot="$env:NATIVE_ARTIFACTS_ROOT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project $testProject --configuration Release --no-restore `
+            -p:NativeArtifactsRoot="$env:NATIVE_ARTIFACTS_ROOT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Pack from released native binaries
+        shell: pwsh
+        run: |
+          $project = 'UnLhaRe/bindings/dotnet/src/Kagayoi.UnLhaRe/Kagayoi.UnLhaRe.csproj'
+          $output = Join-Path $PWD 'artifacts/packages'
+          dotnet pack $project --configuration Release --output $output `
+            -p:PackageVersion="$env:PACKAGE_VERSION" `
+            -p:NativeArtifactsRoot="$env:NATIVE_ARTIFACTS_ROOT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify NuGet package contents
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $packages = @(Get-ChildItem -LiteralPath 'artifacts/packages' -Filter 'Kagayoi.UnLhaRe.*.nupkg' -File)
+          if ($packages.Count -ne 1) {
+            throw "Expected exactly one Kagayoi.UnLhaRe package, found $($packages.Count)."
+          }
+          $expectedName = "Kagayoi.UnLhaRe.$env:PACKAGE_VERSION.nupkg"
+          if ($packages[0].Name -ne $expectedName) {
+            throw "Unexpected package name: $($packages[0].Name)"
+          }
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($packages[0].FullName)
+          try {
+            $entryNames = @($archive.Entries | ForEach-Object FullName)
+            $requiredEntries = @(
+              'runtimes/win-x64/native/unlhare.dll',
+              'runtimes/win-arm64/native/unlhare.dll',
+              'buildTransitive/Kagayoi.UnLhaRe.targets',
+              'LICENSE',
+              'THIRD_PARTY_NOTICES.md',
+              'THIRD_PARTY_LICENSES.txt'
+            )
+            foreach ($requiredEntry in $requiredEntries) {
+              if ($entryNames -cnotcontains $requiredEntry) {
+                throw "Required package entry is missing: $requiredEntry"
+              }
+            }
+            if (-not ($entryNames | Where-Object { $_ -like 'licensing/*' })) {
+              throw 'The package contains no licensing/ entries.'
+            }
+
+            $nativeEntries = @{
+              'runtimes/win-x64/native/unlhare.dll' = Join-Path $env:NATIVE_ARTIFACTS_ROOT 'x86_64-pc-windows-msvc/unlhare.dll'
+              'runtimes/win-arm64/native/unlhare.dll' = Join-Path $env:NATIVE_ARTIFACTS_ROOT 'aarch64-pc-windows-msvc/unlhare.dll'
+            }
+            foreach ($nativeEntry in $nativeEntries.GetEnumerator()) {
+              $matchingEntries = @($archive.Entries | Where-Object FullName -eq $nativeEntry.Key)
+              if ($matchingEntries.Count -ne 1) {
+                throw "Expected one packaged native DLL at $($nativeEntry.Key), found $($matchingEntries.Count)."
+              }
+              $stream = $matchingEntries[0].Open()
+              $sha256 = [System.Security.Cryptography.SHA256]::Create()
+              try {
+                $packagedHash = [Convert]::ToHexString($sha256.ComputeHash($stream))
+              }
+              finally {
+                $sha256.Dispose()
+                $stream.Dispose()
+              }
+              $releasedHash = (Get-FileHash -LiteralPath $nativeEntry.Value -Algorithm SHA256).Hash
+              if ($packagedHash -ne $releasedHash) {
+                throw "Packaged native DLL differs from the signed release asset: $($nativeEntry.Key)"
+              }
+            }
+
+            $nuspecEntries = @($archive.Entries | Where-Object FullName -eq 'Kagayoi.UnLhaRe.nuspec')
+            if ($nuspecEntries.Count -ne 1) {
+              throw "Expected one Kagayoi.UnLhaRe.nuspec, found $($nuspecEntries.Count)."
+            }
+            $nuspecReader = [System.IO.StreamReader]::new($nuspecEntries[0].Open())
+            try {
+              [xml]$nuspec = $nuspecReader.ReadToEnd()
+            }
+            finally {
+              $nuspecReader.Dispose()
+            }
+            if ($nuspec.package.metadata.id -ne 'Kagayoi.UnLhaRe' -or
+                $nuspec.package.metadata.version -ne $env:PACKAGE_VERSION) {
+              throw 'The package nuspec ID or version does not match the requested release.'
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+          "NUGET_PACKAGE=$($packages[0].FullName)" >> $env:GITHUB_ENV
+
+      - name: Authenticate to NuGet.org
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish package
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push $env:NUGET_PACKAGE `
+            --api-key $env:NUGET_API_KEY `
+            --source https://api.nuget.org/v3/index.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

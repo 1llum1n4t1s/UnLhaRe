@@ -1,0 +1,24 @@
+<Project>
+  <ItemGroup>
+    <_KagayoiUnLhaReNotice Include="$(MSBuildThisFileDirectory)..\LICENSE">
+      <Destination>licenses\Kagayoi.UnLhaRe\LICENSE</Destination>
+    </_KagayoiUnLhaReNotice>
+    <_KagayoiUnLhaReNotice Include="$(MSBuildThisFileDirectory)..\THIRD_PARTY_NOTICES.md">
+      <Destination>licenses\Kagayoi.UnLhaRe\THIRD_PARTY_NOTICES.md</Destination>
+    </_KagayoiUnLhaReNotice>
+    <_KagayoiUnLhaReNotice Include="$(MSBuildThisFileDirectory)..\THIRD_PARTY_LICENSES.txt">
+      <Destination>licenses\Kagayoi.UnLhaRe\THIRD_PARTY_LICENSES.txt</Destination>
+    </_KagayoiUnLhaReNotice>
+    <_KagayoiUnLhaReNotice Include="$(MSBuildThisFileDirectory)..\licensing\**\*">
+      <Destination>licenses\Kagayoi.UnLhaRe\licensing\%(RecursiveDir)%(Filename)%(Extension)</Destination>
+    </_KagayoiUnLhaReNotice>
+  </ItemGroup>
+
+  <Target Name="CopyKagayoiUnLhaReNoticesToPublishDirectory"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != ''">
+    <Copy SourceFiles="@(_KagayoiUnLhaReNotice)"
+          DestinationFiles="@(_KagayoiUnLhaReNotice->'$(PublishDir)%(Destination)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

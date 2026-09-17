@@ -12,13 +12,18 @@ compile_error!("UnLhaRe supports only Windows/macOS on x86_64 or aarch64 (64-bit
 
 mod error;
 pub mod ffi;
+mod operation;
 mod pathname;
 mod reader;
 mod writer;
 
 pub use error::{Error, Result};
-pub use reader::{extract_archive, list_archive, verify_archive};
-pub use writer::create_archive;
+pub use operation::{Progress, ProgressCallback};
+pub use reader::{
+    extract_archive, extract_archive_with_progress, list_archive, verify_archive,
+    verify_archive_with_progress,
+};
+pub use writer::{create_archive, create_archive_with_progress};
 
 use serde::Serialize;
 use std::{
@@ -67,7 +72,7 @@ pub struct SourceEntry {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Entry {
     pub name: String,
     pub method: String,
@@ -78,7 +83,7 @@ pub struct Entry {
     pub header_level: u8,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Summary {
     pub entries: u64,
     pub files: u64,

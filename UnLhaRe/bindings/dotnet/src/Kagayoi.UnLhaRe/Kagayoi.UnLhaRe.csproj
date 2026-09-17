@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageId>Kagayoi.UnLhaRe</PackageId>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.1</PackageVersion>
+    <Authors>Kagayoi</Authors>
+    <Description>NativeAOT-compatible .NET bindings for the 64-bit UnLhaRe library.</Description>
+    <PackageTags>lha;lzh;archive;nativeaot</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+    <NativeArtifactsRoot Condition="'$(NativeArtifactsRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\artifacts'))</NativeArtifactsRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(NativeArtifactsRoot)\x86_64-pc-windows-msvc\unlhare.dll"
+          Pack="true"
+          PackagePath="runtimes/win-x64/native/unlhare.dll"
+          Visible="false" />
+    <None Include="$(NativeArtifactsRoot)\aarch64-pc-windows-msvc\unlhare.dll"
+          Pack="true"
+          PackagePath="runtimes/win-arm64/native/unlhare.dll"
+          Visible="false" />
+
+    <None Update="buildTransitive\Kagayoi.UnLhaRe.targets"
+          Pack="true"
+          PackagePath="buildTransitive/Kagayoi.UnLhaRe.targets" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\..\..\LICENSE"
+          Pack="true"
+          PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\README.md"
+          Pack="true"
+          PackagePath="README.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\..\THIRD_PARTY_NOTICES.md"
+          Pack="true"
+          PackagePath="THIRD_PARTY_NOTICES.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\..\THIRD_PARTY_LICENSES.txt"
+          Pack="true"
+          PackagePath="THIRD_PARTY_LICENSES.txt" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\..\licensing\**\*"
+          Pack="true"
+          PackagePath="licensing/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="ValidateNativeArtifacts" BeforeTargets="Pack">
+    <Error Condition="!Exists('$(NativeArtifactsRoot)\x86_64-pc-windows-msvc\unlhare.dll')"
+           Text="The win-x64 native artifact was not found below NativeArtifactsRoot: $(NativeArtifactsRoot)" />
+    <Error Condition="!Exists('$(NativeArtifactsRoot)\aarch64-pc-windows-msvc\unlhare.dll')"
+           Text="The win-arm64 native artifact was not found below NativeArtifactsRoot: $(NativeArtifactsRoot)" />
+  </Target>
+</Project>

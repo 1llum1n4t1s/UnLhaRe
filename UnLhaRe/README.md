@@ -2,11 +2,11 @@
 
 Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
 
-## バージョン1.0.0の配布
+## バージョン1.0.1の配布
 
-[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.0)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
+[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.1)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
 
-旧互換版の `v1.0.0` とは別の `unlhare-v1.0.0` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
+旧互換版の `v1.0.0` とは別の `unlhare-v1.0.1` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
 
 ## 機能と制限
 
@@ -33,9 +33,9 @@ unlhare-cli extract output.lzh --output extracted
 
 作成先の親ディレクトリはあらかじめ作成してください。作成先書庫や展開先ファイルが既に存在する場合はエラーになり、既存内容を保持します。一覧取得だけでは本文の完全性は検査しません。
 
-既定の上限は100,000項目、1ファイル256MiB、合計2GiBです。CLIの `--max-entries` / `--max-entry-bytes` / `--max-total-bytes`、Rustの `Limits` で変更できます。サイズは64bitですが、圧縮は1ファイル分をメモリに保持するため、上限を上げる際は利用可能メモリに合わせてください。C ABIは既定上限を使用します。
+既定の上限は100,000項目、1ファイル256MiB、合計2GiBです。CLIの `--max-entries` / `--max-entry-bytes` / `--max-total-bytes`、Rustの `Limits`、C API level 2のJSON指定で変更できます。サイズは64bitですが、圧縮は1ファイル分をメモリに保持するため、上限を上げる際は利用可能メモリに合わせてください。従来のC関数は既定上限を使用します。
 
-展開は出力ディレクトリを基点とするファイル操作を使用し、一時ファイルへの展開とCRC検査後にhard linkでファイルを確定します。同一ファイルシステムのhard linkに対応するNTFS/APFS等が必要です。書庫全体のトランザクションではなく、途中で失敗した場合も先に完了したファイルとディレクトリは残ります。
+展開は出力ディレクトリを基点とするファイル操作を使用し、一時ファイルへの展開とCRC検査後にhard linkでファイルを確定します。hard linkが利用できなければOSの既存ファイルを置換しない原子的なrenameを使用します。確定前の失敗・キャンセルでは一時ファイルだけを削除します。書庫全体のトランザクションではなく、途中で失敗した場合も先に完了したファイルとディレクトリは残ります。
 
 ## ビルド
 
@@ -60,6 +60,28 @@ WindowsからmacOSターゲットを指定した場合は `cargo check` のみ�
 ## ライブラリ
 
 Rustでは `create_from_directory` / `create_archive` / `list_archive` / `verify_archive` / `extract_archive` を使用します。`cargo doc --no-deps` でAPIリファレンスを生成できます。
+
+作成・検査・展開の `*_with_progress` APIは同期コールバックを受け付け、`false`でキャンセルします。LH5/LH6/LH7の単一ファイルの圧縮計算中はキャンセルを受け付けず、計算の前後に確認します。選択展開の名前は完全一致で、未選択項目もヘッダーと上限の検査対象です。
+
+Windowsの.NET 10アプリではNuGet `Kagayoi.UnLhaRe` を使用できます。x64/ARM64のDLL、Native AOT対応の `ArchiveClient`、依存ライセンスを同梱します。版を固定してlockfileを保存してください。詳細は [C#バインディング](bindings/dotnet/README.md) を参照してください。
+
+C ABI 1を維持したAPI level 2では `unlhare_run_json` と `unlhare_list_json_ex` を追加しています。`unlhare_api_level()`で対応を確認し、同期コールバックは0で続行、非0で中断します。キャンセル時の戻り値は5です。
+
+`unlhare_run_json`の入力例:
+
+```json
+{"operation":"create","output":"out.lzh","entries":[{"path":"input.txt","name":"docs/input.txt"}],"method":5}
+```
+
+```json
+{"operation":"extract","archive":"out.lzh","destination":"out","entries":["docs/input.txt"]}
+```
+
+```json
+{"operation":"verify","archive":"out.lzh"}
+```
+
+一覧用の `unlhare_list_json_ex` は `{"archive":"out.lzh"}` を受け付けます。各リクエストへ `"limits":{"max_entries":100000,"max_entry_bytes":268435456,"max_total_bytes":2147483648}` を追加できます。limitsの省略は既定値、指定時は3値すべてが必要です。展開のentries省略またはnullは全項目、空配列は本文を展開しない指定です。ディレクトリ名だけを指定しても子孫は含みません。
 
 C/C++では `include/unlhare.h` と同じアーキテクチャのライブラリを使用してください。ABIバージョンは1です。全パスはNUL終端UTF-8、サイズはuint64_t、出力バッファは呼び出し元で確保・解放します。NULLと容量0で必要バイト数（終端NULを含む）を照会し、確保して再呼び出しします。入力・出力・サイズポインターは有効かつ重ならない領域にしてください。最終エラーはスレッド別に保持し、成功では消去しません。
 

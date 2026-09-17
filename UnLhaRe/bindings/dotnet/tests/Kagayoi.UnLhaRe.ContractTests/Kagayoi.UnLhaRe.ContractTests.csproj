@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <UsePackage Condition="'$(UsePackage)' == ''">false</UsePackage>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.1</PackageVersion>
+    <NativeArtifactsRoot Condition="'$(NativeArtifactsRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\artifacts'))</NativeArtifactsRoot>
+    <NativeArtifactTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64'">aarch64-pc-windows-msvc</NativeArtifactTarget>
+    <NativeArtifactTarget Condition="'$(NativeArtifactTarget)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">aarch64-pc-windows-msvc</NativeArtifactTarget>
+    <NativeArtifactTarget Condition="'$(NativeArtifactTarget)' == ''">x86_64-pc-windows-msvc</NativeArtifactTarget>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UsePackage)' != 'true'">
+    <ProjectReference Include="..\..\src\Kagayoi.UnLhaRe\Kagayoi.UnLhaRe.csproj" />
+    <None Include="$(NativeArtifactsRoot)\$(NativeArtifactTarget)\unlhare.dll"
+          Link="unlhare.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UsePackage)' == 'true'">
+    <PackageReference Include="Kagayoi.UnLhaRe" Version="$(PackageVersion)" />
+  </ItemGroup>
+</Project>

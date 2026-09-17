@@ -1,5 +1,15 @@
 # 検証記録 — 2026-09-17
 
+## 1.0.1 アプリ連携API
+
+- Windows x64: fmt、clippy `-D warnings`、Rust 26試験、Releaseビルド成功。選択展開、キャンセル、既存出力保持、JSON ABI、新しいno-replace rename経路の強制実行を含む。
+- Windows ARM64: Releaseクロスビルド成功。macOS x64/ARM64: 全ターゲットのcargo check成功。ネイティブ実行はModern Rust CIで確認する。
+- .NET 10: C#経由のUnicode往復、選択、上限、取消、コールバック例外、最終通知内取消を確認。x64 Native AOT実行成功、ARM64 Native AOTクロスビルド成功。
+- NuGet実物: PackageReference経由のx64 Native AOT実行、CPU別DLLとライセンスのpublish同梱を確認。
+- 4環境のネイティブCI、署名・公開物のハッシュとNuGet公開確認はリリースごとの `artifacts/release-<version>/release-state.json` に記録する。
+
+以下は1.0.0実装時のローカル検証記録。1.0.0の4環境ネイティブCIは [run 35207328000](https://github.com/1llum1n4t1s/UnLhaRe/actions/runs/35207328000) で成功済み。
+
 ## ローカル確認
 
 環境: Windows x64、Visual Studio 2026 / MSVC v145、Rust 1.98.1。
@@ -19,6 +29,6 @@ fixtureは `../UnLha32Re/sample/lha-master/tests/` のローカル比較資料�
 
 - Windows: `pwsh -NoProfile -File scripts/build.ps1 -Test`
 - macOS: `bash scripts/build.sh --test`
-- CI: `../.github/workflows/modern.yml` で4環境のnativeテストとC consumerを実行。今回CIは未実行。
+- CI: `../.github/workflows/modern.yml` で4環境のnativeテストとC consumerを実行。Windowsでは.NET Native AOT consumerも実行。
 
-Windows ARM64とmacOSの実機検証、macOSの署名・公証、公開配布は残っています。ローカルbundleは未署名の開発成果物です。
+ローカルbundleは署名前の開発成果物です。配布は4環境のnative CIとWindows署名確認を経た別工程です。macOSはad-hoc署名であり、Developer ID署名・公証には対応していません。

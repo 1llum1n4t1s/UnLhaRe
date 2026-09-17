@@ -27,10 +27,12 @@ jobs:
             runner: windows-2025-vs2026
             os: windows
             msvc_arch: amd64
+            native_rid: win-x64
           - target: aarch64-pc-windows-msvc
             runner: windows-11-vs2026-arm
             os: windows
             msvc_arch: arm64
+            native_rid: win-arm64
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             os: macos
@@ -74,6 +76,35 @@ jobs:
         if: matrix.os == 'macos'
         shell: bash
         run: bash scripts/build.sh --target '${{ matrix.target }}' --test
+
+      - name: Set up .NET
+        if: matrix.os == 'windows'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish and run Native AOT .NET contract tests
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $project = 'bindings/dotnet/tests/Kagayoi.UnLhaRe.ContractTests/Kagayoi.UnLhaRe.ContractTests.csproj'
+          $nativeRoot = Join-Path $PWD 'artifacts'
+          $output = Join-Path $PWD 'build/dotnet-contract/${{ matrix.native_rid }}'
+          dotnet publish $project `
+            --configuration Release `
+            --runtime '${{ matrix.native_rid }}' `
+            --self-contained true `
+            --output $output `
+            -p:PublishAot=true `
+            -p:NativeArtifactsRoot="$nativeRoot"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $executable = Join-Path $output 'Kagayoi.UnLhaRe.ContractTests.exe'
+          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw "Native AOT contract test executable was not produced: $executable"
+          }
+          & $executable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Link and run C API consumer on Windows
         if: matrix.os == 'windows'

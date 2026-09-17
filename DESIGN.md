@@ -16,9 +16,13 @@
 | `UnLhaRe/src/pathname.rs` | UTF-8/UTF-16/旧コードページの解釈と共通のファイル名制約 |
 | `UnLhaRe/src/ffi.rs`、`include/unlhare.h` | C ABI 1、UTF-8文字列、固定幅整数、呼び出し元所有のバッファ、スレッド別エラー |
 | `UnLhaRe/src/main.rs` | create/list/test/extract CLI |
+| `UnLhaRe/src/operation.rs`、`src/ffi/app.rs` | API level 2の進捗・キャンセル、選択操作と上限指定JSON |
+| `UnLhaRe/bindings/dotnet/` | Native AOT対応C# API、CPU別DLLとライセンスのNuGet同梱 |
 | `UnLhaRe/tests/`、`scripts/`、`.github/workflows/modern.yml` | 正常往復・既存出力保持・上限・並列・C ABI試験、4環境のビルド |
 
-新版は操作ごとにデコーダーと状態を所有し、レジストリやホストのシグナル設定を変更しない。作成先と展開先の既存ファイルを置換しない。作成は一時書庫の完成後に確定、展開は各ファイルのサイズ・CRC一致後に同一ファイルシステム内のhard linkで確定する。後続項目で失敗した場合、先に確定したファイルは残る。hard link非対応のファイルシステムはエラーとする。サイズ表現はu64だが圧縮は1項目をメモリに保持するため、既定の容量上限を設ける。
+新版は操作ごとにデコーダーと状態を所有し、レジストリやホストのシグナル設定を変更しない。作成先と展開先の既存ファイルを置換しない。作成は一時書庫の完成後に確定、展開は各ファイルのサイズ・CRC一致後に同一ファイルシステム内のhard linkで確定する。hard linkが使えなければ親ディレクトリのハンドルを基点とするno-replace renameで確定し、確定前の失敗時は一時ファイルだけを削除する。後続項目で失敗した場合、先に確定したファイルは残る。サイズ表現はu64だが圧縮は1項目をメモリに保持するため、既定の容量上限を設ける。
+
+ABI 1の従来関数は維持する。アプリ連携はAPI level 2で指定したソース一覧、完全一致の選択展開、上限指定と同期コールバックを扱う。C#ラッパーはGCHandleを同期呼び出し中だけ保持し、コールバック例外をnativeへ越境させず呼び出し終了後に再送出する。NuGetは署名済みWindowsリリースDLLを収録し、Lhamielは版とlockfileを固定する。公開後の参照同期はvava.config.json、製品本体の配信はLhamielの既存リリース工程で行う。
 
 元のx86ソースやDLLを新ライブラリへリンクしない。Rust依存はCargo.lockで固定し、新版の第三者告知とライセンス原文をbundleに収録する。
 
