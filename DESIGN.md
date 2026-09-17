@@ -16,13 +16,20 @@
 | `UnLhaRe/src/pathname.rs` | UTF-8/UTF-16/旧コードページの解釈と共通のファイル名制約 |
 | `UnLhaRe/src/ffi.rs`、`include/unlhare.h` | C ABI 1、UTF-8文字列、固定幅整数、呼び出し元所有のバッファ、スレッド別エラー |
 | `UnLhaRe/src/main.rs` | create/list/test/extract CLI |
-| `UnLhaRe/src/operation.rs`、`src/ffi/app.rs` | API level 2の進捗・キャンセル、選択操作と上限指定JSON |
+| `UnLhaRe/src/operation.rs`、`UnLhaRe/src/ffi/app.rs` | API level 2の進捗・キャンセル、選択操作と上限指定JSON |
 | `UnLhaRe/bindings/dotnet/` | Native AOT対応C# API、CPU別DLLとライセンスのNuGet同梱 |
-| `UnLhaRe/tests/`、`scripts/`、`.github/workflows/modern.yml` | 正常往復・既存出力保持・上限・並列・C ABI試験、4環境のビルド |
+| `UnLhaRe/tests/`、`UnLhaRe/bindings/dotnet/tests/`、`UnLhaRe/scripts/` | Rust・C・.NETの契約試験、ローカルbundle作成 |
+| `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 4環境のネイティブ検証、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
+
+### 近代化版のデータフローと契約
+
+Rust APIは呼び出し単位の入力・上限・進捗コールバックをreaderまたはwriterへ渡す。API level 2のC入口は未知フィールドを拒否するJSONを同じ操作へ変換し、従来のABI 1関数は既定上限を使う経路として維持する。書庫の選択展開は名前の完全一致で本文を選ぶ一方、ヘッダー走査と上限判定は未選択項目を含む書庫全体へ適用する。
+
+進捗コールバックは操作を実行したスレッドで同期呼び出しし、Rustの`false`またはCの非0をキャンセルとして扱う。圧縮器が単一項目を処理している間は中断できないため、その前後をキャンセル点とする。.NETラッパーはABI 1とAPI level 2を検査してJSONを受け渡し、GCHandleをnative呼び出し中だけ保持する。managed例外をC境界の外へ出さず、nativeから戻った後に再送出する。
 
 新版は操作ごとにデコーダーと状態を所有し、レジストリやホストのシグナル設定を変更しない。作成先と展開先の既存ファイルを置換しない。作成は一時書庫の完成後に確定、展開は各ファイルのサイズ・CRC一致後に同一ファイルシステム内のhard linkで確定する。hard linkが使えなければ親ディレクトリのハンドルを基点とするno-replace renameで確定し、確定前の失敗時は一時ファイルだけを削除する。後続項目で失敗した場合、先に確定したファイルは残る。サイズ表現はu64だが圧縮は1項目をメモリに保持するため、既定の容量上限を設ける。
 
-ABI 1の従来関数は維持する。アプリ連携はAPI level 2で指定したソース一覧、完全一致の選択展開、上限指定と同期コールバックを扱う。C#ラッパーはGCHandleを同期呼び出し中だけ保持し、コールバック例外をnativeへ越境させず呼び出し終了後に再送出する。NuGetは署名済みWindowsリリースDLLを収録し、Lhamielは版とlockfileを固定する。公開後の参照同期はvava.config.json、製品本体の配信はLhamielの既存リリース工程で行う。
+NuGetはGitHub Releaseの署名済みWindows DLLを収録し、Lhamielは版とlockfileを固定する。公開後の参照同期はvava.config.json、製品本体の配信はLhamielの既存リリース工程で行う。
 
 元のx86ソースやDLLを新ライブラリへリンクしない。Rust依存はCargo.lockで固定し、新版の第三者告知とライセンス原文をbundleに収録する。
 
