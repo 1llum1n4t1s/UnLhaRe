@@ -1,15 +1,15 @@
 # 検証記録 — 2026-09-18
 
-## Unreleased API level 3 利用性改善
+## 1.0.2 API level 3 利用性改善
 
 - Lhamiel側の利用箇所を照合し、一覧の途中キャンセル、更新日時取得・通常ファイルの任意の時刻復元、入力I/O失敗だけをスキップする結果通知版圧縮、Windows相対パス区切りの受理を追加した。従来のC関数・.NETメソッドのシグネチャは維持。
-- Windows x64で `scripts/build.ps1 -Target x86_64-pc-windows-msvc -Test` が成功。fmt、clippy、Rust全48試験、Releaseとローカルbundleを確認。API level 3のC17 consumerを `/W4 /WX` でリンクし、新旧一覧APIを実行した。
-- .NET 10の通常実行とwin-x64 NativeAOT publish・実行が成功。一覧の初期/途中キャンセル、トークンと例外の伝播、日時、読取段階の入力失敗と項目順、既存出力保持を実native DLLとの契約試験で確認した。実行環境はWindows x64 / .NET SDK 10.0.401。実行シェルにOS環境変数がないためNativeAOTの初回判定が失敗し、実OSを確認してMSBuildへ `-p:OS=Windows_NT` を明示した再実行で成功。
+- Windows x64で `scripts/build.ps1 -Target x86_64-pc-windows-msvc -Test` が成功。fmt、clippy、Rust全53試験、Releaseとローカルbundleを確認。API level 3のC17 consumerを `/W4 /WX` でリンクし、新旧一覧APIを実行した。
+- .NET 10の通常実行とwin-x64 NativeAOT publish・実行が成功。一覧の初期/途中キャンセル、トークンと例外の伝播、日時、読取段階の入力失敗と項目順、既存出力保持を実native DLLとの契約試験で確認した。NuGet 1.0.2をローカルpackし、x64/ARM64 DLL、buildTransitive、アイコン、README、第三者告知・ライセンスとnuspecのID・版を検査した。実行環境はWindows x64 / .NET SDK 10.0.401。
 - Windows ARM64・macOS x64/ARM64は全ターゲットのcargo checkに成功。macOSでnofollow拒否が入力I/Oスキップへ分類されないよう追加修正し、関連18試験とmacOS ARM64全ターゲットclippy `-D warnings` も成功。macOS/ARM64ネイティブ実行と、旧DOS日時の夏時間境界は未実測。
-- 一覧の日時は無効・曖昧ならnull。ディレクトリ時刻復元とストリーミング圧縮は未実装。公開NuGet 1.0.1への反映・Lhamielの参照更新はこのローカル検証に含めない。
+- 一覧の日時は無効・曖昧ならnull。ディレクトリ時刻復元とストリーミング圧縮は未実装。NuGet 1.0.2の公開・Lhamielの参照更新はこのローカル検証に含めず、公開工程で別途確認する。
 - C実行確認用の `build/api3-c-consumer/` は自動承認レビューに削除を拒否されたため保持。再現用のC実行ファイル、オブジェクト、通常テキスト入力とLHA書庫のみを含む。確認済みのため削除可能になった時点で清掃する。
 
-## Unreleased 圧縮性能改善
+## 1.0.2 圧縮性能改善
 
 - AMD Ryzen 5 7640HSのWindows x64 ReleaseでCRC-16/ARC単体を計測し、8MiBを9回処理したビット単位実装501.5MiB/sに対し、`crc-fast` 1.10.0は29,217.2MiB/sだった。実行時に `x86_64-avx512-vpclmulqdq` が選択され、既知値 `123456789 = 0xBB3D`、分割更新、8MiB入力の結果が一致した。
 - 同じ8MiBの反復データと疑似乱数データを各方式で書庫化し、変更前3回と変更後15回の中央値を比較。Storedは65.4msから32.2ms（約50.8%短縮）、LH5は187.4msから151.0ms（約19.4%短縮）、LH7は114.2msから80.9ms（約29.2%短縮）となった。
@@ -20,7 +20,7 @@
 - CRCの別走査とLH0フォールバック時の本文複製を除去し、LZSS作業領域・圧縮バッファを1項目ごとの生成から1書庫ごとの再利用へ変更した。固定seed入力でLH5/LH6/LH7からLH0へ戻る経路と、圧縮後のキャンセルで書庫を公開しない経路を回帰試験に追加した。
 - 比較案も同じ環境で計測し、CRCテーブルは64MiBを5回処理してビット単位610.6msに対し627.7ms、delharc `fast-tree-build`は100回検査で既定3867.9msに対し3922.1msだったため不採用。64KiB `BufReader`は3848.4msで差が測定揺れの範囲だったため既定値を維持した。
 
-## Unreleased セキュリティ修正
+## 1.0.2 セキュリティ修正
 
 - 圧縮元ファイルを同サイズの別ファイルへ差し替える回帰試験、圧縮元・展開先の基点と中間要素でシンボリックリンクを追跡しない試験、書庫ファイル上限の試験を追加。
 - Windows予約デバイス名の全形式を作成前に拒否し、細工した書庫内名も一覧・検査・展開で拒否する回帰試験を追加。MS-DOSのシンボリックリンク属性を付けた書庫も同じ3経路で拒否することを確認した。

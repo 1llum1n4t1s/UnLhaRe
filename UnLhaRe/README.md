@@ -2,11 +2,11 @@
 
 Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
 
-## バージョン1.0.1の配布
+## バージョン1.0.2の配布
 
-[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.1)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
+[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.2)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
 
-旧互換版の `v1.0.0` とは別の `unlhare-v1.0.1` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
+旧互換版の `v1.0.0` とは別の `unlhare-v1.0.2` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
 
 ## 機能と制限
 
@@ -18,13 +18,13 @@ Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / 
 | 名前 | 新規作成はUTF-8とUnicode拡張。読取はUnicode拡張優先、コードページ65001/932/51932/20932/1252 |
 | プラットフォーム | Windows x64/ARM64、macOS Intel/Apple Silicon。32bitはコンパイル時に拒否 |
 
-コードページ指定のない名前は有効なUTF-8を優先し、それ以外はCP932として読みます。無指定のEUC-JP等を自動判別する機能はありません。LH2/LH3、SFX、書庫の更新・結合・注釈編集、旧DLLコールバック、GUIは現APIの対象外です。従来の展開APIは日時を復元しません。開発中のAPI level 3では通常ファイルの更新日時を任意で復元できます。権限・拡張属性は復元せず、シンボリックリンクと特殊ファイルは受け付けません。
+コードページ指定のない名前は有効なUTF-8を優先し、それ以外はCP932として読みます。無指定のEUC-JP等を自動判別する機能はありません。LH2/LH3、SFX、書庫の更新・結合・注釈編集、旧DLLコールバック、GUIは現APIの対象外です。従来の展開APIは日時を復元しません。API level 3では通常ファイルの更新日時を任意で復元できます。権限・拡張属性は復元せず、シンボリックリンクと特殊ファイルは受け付けません。
 
 各APIは独立した状態で動作します。カレントディレクトリ、レジストリ、プロセスのシグナル設定を変更しません。
 
-## 開発中のAPI level 3（未公開）
+## API level 3
 
-公開済み1.0.1に対する追加APIです。利用するには、この作業ツリーからビルドしたnativeライブラリと.NETバインディングが必要です。ABI 1と既存関数のシグネチャは維持します。
+バージョン1.0.2で追加したAPIです。ABI 1と既存関数のシグネチャは維持します。
 
 - `list_archive_with_progress` / `unlhare_list_json_with_progress` は一覧走査中の進捗・キャンセルに対応し、C版は1回の走査結果を同期JSONコールバックで返します。
 - 一覧の `modified_unix_seconds` は更新日時のUnix秒です。日時不正・変換不能ならnull。タイムゾーンのない旧DOS日時は実行環境のローカル時間として解釈し、夏時間の切替などで一意に決まらない場合もnullとします。

@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
     <UsePackage Condition="'$(UsePackage)' == ''">false</UsePackage>
-    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.1</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.2</PackageVersion>
     <NativeArtifactsRoot Condition="'$(NativeArtifactsRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\artifacts'))</NativeArtifactsRoot>
     <NativeArtifactTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64'">aarch64-pc-windows-msvc</NativeArtifactTarget>
     <NativeArtifactTarget Condition="'$(NativeArtifactTarget)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">aarch64-pc-windows-msvc</NativeArtifactTarget>

@@ -1,6 +1,6 @@
 # Kagayoi.UnLhaRe for .NET
 
-`Kagayoi.UnLhaRe` 1.0.1 is the .NET 10 binding for the 64-bit UnLhaRe native
+`Kagayoi.UnLhaRe` 1.0.2 is the .NET 10 binding for the 64-bit UnLhaRe native
 library. The package contains native assets for Windows x64 and Windows ARM64,
 uses UTF-8 throughout the native boundary, and is compatible with trimming and
 NativeAOT publishing.
@@ -13,7 +13,7 @@ NuGet package currently bundles Windows native libraries only.
 Add the package to your own project and select the architecture you publish for:
 
 ```powershell
-dotnet add package Kagayoi.UnLhaRe --version 1.0.1
+dotnet add package Kagayoi.UnLhaRe --version 1.0.2
 dotnet restore --use-lock-file
 dotnet publish -c Release -r win-x64
 # Use win-arm64 instead for Windows ARM64.
@@ -62,10 +62,10 @@ Native and third-party notices are included in the package. The package's
 `buildTransitive` target also copies them to `licenses/Kagayoi.UnLhaRe` under a
 consumer's publish directory.
 
-## Unreleased API level 3
+## API level 3
 
-These additions are in the working tree, not in the published 1.0.1 package.
-Build and deploy both the managed binding and the matching native library.
+These additions are available in package 1.0.2. Build and deploy both the
+managed binding and the matching native library when building from source.
 Existing methods keep their signatures and require API level 2; the new methods
 require API level 3. All APIs remain independent of any consuming application.
 
