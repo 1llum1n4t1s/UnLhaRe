@@ -1,6 +1,6 @@
 # Kagayoi.UnLhaRe for .NET
 
-`Kagayoi.UnLhaRe` 1.0.3 is the .NET 10 binding for the 64-bit UnLhaRe native
+`Kagayoi.UnLhaRe` 1.0.4 is the .NET 10 binding for the 64-bit UnLhaRe native
 library. The package contains native assets for Windows x64 and Windows ARM64,
 uses UTF-8 throughout the native boundary, and is compatible with trimming and
 NativeAOT publishing.
@@ -13,7 +13,7 @@ NuGet package currently bundles Windows native libraries only.
 Add the package to your own project and select the architecture you publish for:
 
 ```powershell
-dotnet add package Kagayoi.UnLhaRe --version 1.0.3
+dotnet add package Kagayoi.UnLhaRe --version 1.0.4
 dotnet restore --use-lock-file
 dotnet publish -c Release -r win-x64
 # Use win-arm64 instead for Windows ARM64.
@@ -135,7 +135,7 @@ failures without parsing localized message text.
 
 ## API level 5
 
-This addition is available in the current source for the next package release.
+This addition is available in package 1.0.4.
 It requires a matching API level 5 native library.
 
 ```csharp

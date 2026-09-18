@@ -1,11 +1,11 @@
 # 検証記録 — 2026-09-18
 
-## Unreleased API level 5 ストリーミング一覧
+## 1.0.4 API level 5 ストリーミング一覧
 
 - Windows x64で `scripts/build.ps1 -Target x86_64-pc-windows-msvc -Test` が成功。fmt、clippy `-D warnings`、Rust全62試験、doc test、Release bundleを確認した。Rust visitorとCの項目JSON通知について、書庫順、項目単位JSON、進捗、途中キャンセル、NULL callbackの事前拒否を含む。
 - .NET 10のwin-x64 NativeAOT publish・実行が成功。`ArchiveClient.VisitEntries`の順序、呼出し元スレッド、進捗、項目通知内のキャンセル、managed例外の再送出と、従来の`List`がAPI level 5経路でも同じ結果を返すことを実native DLLで確認した。publishには `-p:OS=Windows_NT` を指定した。
 - C17 exampleはMSVCの `/std:c17 /utf-8 /W4 /WX /Zs` で警告なし。Windows x64 Release DLLに `unlhare_list_entries_json` がexportされることも確認した。
-- Windows ARM64はRelease bundleを生成し、macOS x64/ARM64は `cargo check --locked --workspace --all-targets` に成功。Windows ARM64とmacOSのネイティブ実行はCIで確認する。版変更・署名・公開はこの未リリース変更の検証対象外。
+- Windows ARM64はRelease bundleを生成し、macOS x64/ARM64は `cargo check --locked --workspace --all-targets` に成功。Windows ARM64とmacOSのネイティブ実行はCIで確認する。署名と公開物の照合は後続のリリース工程で確認する。
 
 ## 1.0.3 API level 4とパス安全性
 

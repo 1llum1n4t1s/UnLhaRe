@@ -2,11 +2,11 @@
 
 Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
 
-## バージョン1.0.3の配布
+## バージョン1.0.4の配布
 
-[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.3)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
+[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.4)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
 
-旧互換版の `v1.0.0` とは別の `unlhare-v1.0.3` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
+旧互換版の `v1.0.0` とは別の `unlhare-v1.0.4` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
 
 ## 機能と制限
 
@@ -46,7 +46,7 @@ Cの結果JSONは通知中だけ有効で、長さはNULを含まないバイト
 
 ## API level 5
 
-次回配布向けの現在のソースで追加したAPIです。ABI 1と既存関数のシグネチャを維持します。
+バージョン1.0.4で追加したAPIです。ABI 1と既存関数のシグネチャを維持します。
 
 - Rustの `visit_archive_entries` / `visit_archive_entries_with_progress` は、所有権を渡した `Entry` を書庫順に同期通知します。visitorが `false` を返すとキャンセルします。
 - Cの `unlhare_list_entries_json` は1項目を1個のJSON objectとして同期通知し、項目コールバックの非0戻り値でキャンセルします。全件配列は作りません。
