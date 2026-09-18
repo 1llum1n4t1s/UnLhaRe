@@ -14,6 +14,12 @@ static void print_json(void *user, const char *json, uint64_t length)
     }
 }
 
+static int32_t print_entry_json(void *user, const char *json, uint64_t length)
+{
+    print_json(user, json, length);
+    return *(int *)user != 0;
+}
+
 static void print_last_error(void)
 {
     uint64_t required = 0;
@@ -40,8 +46,12 @@ static void print_last_error(void)
 
 int main(int argc, char **argv)
 {
-    if (argc != 2 && !(argc == 3 && strcmp(argv[1], "--list-json") == 0)) {
-        fprintf(stderr, "Usage: %s <archive.lzh> | --list-json <request-json>\n", argv[0]);
+    int list_json = argc == 3 && strcmp(argv[1], "--list-json") == 0;
+    int list_entries = argc == 3 && strcmp(argv[1], "--list-entries") == 0;
+    if (argc != 2 && !list_json && !list_entries) {
+        fprintf(stderr,
+                "Usage: %s <archive.lzh> | --list-json <request-json> | --list-entries <request-json>\n",
+                argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -56,12 +66,15 @@ int main(int argc, char **argv)
     printf("unlhare ABI version: %" PRIu32 "\n", abi_version);
 
     if (argc == 3) {
-        if (unlhare_api_level() < 3) {
-            fputs("--list-json requires API level 3\n", stderr);
+        uint32_t required_level = list_entries ? 5 : 3;
+        if (unlhare_api_level() < required_level) {
+            fprintf(stderr, "%s requires API level %" PRIu32 "\n", argv[1], required_level);
             return EXIT_FAILURE;
         }
         int write_failed = 0;
-        int32_t status = unlhare_list_json_with_progress(argv[2], NULL, print_json, &write_failed);
+        int32_t status = list_entries
+            ? unlhare_list_entries_json(argv[2], NULL, print_entry_json, &write_failed)
+            : unlhare_list_json_with_progress(argv[2], NULL, print_json, &write_failed);
         if (status != UNLHARE_STATUS_OK) {
             print_last_error();
         }

@@ -55,6 +55,7 @@ internal sealed record ListRequest(
 [JsonSerializable(typeof(ExtractWithOptionsRequest))]
 [JsonSerializable(typeof(VerifyRequest))]
 [JsonSerializable(typeof(ListRequest))]
+[JsonSerializable(typeof(ArchiveEntry))]
 [JsonSerializable(typeof(ArchiveEntry[]))]
 [JsonSerializable(typeof(ArchiveCreateReport))]
 internal sealed partial class ArchiveJsonContext : JsonSerializerContext;

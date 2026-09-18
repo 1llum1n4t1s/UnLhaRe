@@ -132,3 +132,28 @@ the option preserves the API level 3 behavior. `ArchiveNativeException.Kind`
 distinguishes I/O, format, unsupported-feature, limit, invalid-path,
 already-existing destination, invalid-argument, cancellation, and internal
 failures without parsing localized message text.
+
+## API level 5
+
+This addition is available in the current source for the next package release.
+It requires a matching API level 5 native library.
+
+```csharp
+ArchiveClient.VisitEntries(
+    "large.lzh",
+    entry => Console.WriteLine($"{entry.Name}: {entry.OriginalSize}"),
+    cancellationToken: token);
+```
+
+`VisitEntries` invokes the visitor synchronously in archive order without
+building a native array or one aggregate JSON result. It accepts the same
+limits, progress, and cancellation controls as `List`. The visitor runs on the
+calling thread and should finish promptly. If a later header fails or the scan
+is cancelled, entries already delivered are not rolled back; only a successful
+method return confirms that the complete archive was visited.
+
+The API reduces peak memory and first-result latency. A complete visit still
+has to scan every header, and native duplicate-name and limit-validation
+bookkeeping remains live until the scan finishes. With an API level 5 native
+library, the existing `List` method also uses this entry callback internally,
+but still retains the managed collection required by its return type.

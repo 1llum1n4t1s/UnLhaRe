@@ -45,7 +45,7 @@ _Static_assert(sizeof(void *) == 8, "UnLhaRe requires 64-bit pointers");
 #define UNLHARE_STATUS_INVALID_ARGUMENT INT32_C(3)
 #define UNLHARE_STATUS_PANIC INT32_C(4)
 #define UNLHARE_STATUS_CANCELLED INT32_C(5)
-#define UNLHARE_API_LEVEL UINT32_C(4)
+#define UNLHARE_API_LEVEL UINT32_C(5)
 
 #define UNLHARE_ERROR_KIND_UNKNOWN INT32_C(0)
 #define UNLHARE_ERROR_KIND_IO INT32_C(1)
@@ -130,6 +130,23 @@ UNLHARE_API int32_t unlhare_create_json_report(const char *request_utf8,
  * The value is sticky like unlhare_last_error and is not cleared by success.
  */
 UNLHARE_API int32_t unlhare_last_error_kind(void);
+
+/* API level 5 addition. The required entry callback runs once per archive
+ * entry, in archive order, on the calling thread. Each notification contains
+ * one JSON object rather than an aggregate array. JSON is UTF-8, is not
+ * NUL-terminated, and remains valid only during the callback. Returning zero
+ * continues; nonzero cancels with UNLHARE_STATUS_CANCELLED. The progress
+ * callback has its existing cancellation contract. Neither callback nor user
+ * is retained. If a later header fails, earlier notifications are not undone.
+ * The request is the same object accepted by unlhare_list_json_ex.
+ */
+typedef int32_t (*unlhare_entry_json_callback)(void *user,
+                                               const char *json,
+                                               uint64_t length);
+UNLHARE_API int32_t unlhare_list_entries_json(const char *request_utf8,
+                                              unlhare_progress_callback progress,
+                                              unlhare_entry_json_callback entry,
+                                              void *user);
 
 UNLHARE_API int32_t unlhare_list_json(const char *archive_utf8,
                                       char *output,

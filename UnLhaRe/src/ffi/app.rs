@@ -93,7 +93,7 @@ unsafe fn parse_request<T: serde::de::DeserializeOwned>(
 /// ABI 1に追加されたアプリ連携APIの世代。
 #[unsafe(no_mangle)]
 pub extern "C" fn unlhare_api_level() -> u32 {
-    4
+    5
 }
 
 /// 0で続行、それ以外で中断する。同じ呼び出しスレッドで同期実行する。
@@ -101,6 +101,9 @@ pub type ProgressCallback = unsafe extern "C" fn(*mut c_void, u32, u64, u64) -> 
 
 /// 成功結果のUTF-8 JSONを同期受信する。領域はこの通知中だけ有効で、NULを含まない。
 pub type JsonCallback = unsafe extern "C" fn(*mut c_void, *const c_char, u64);
+
+/// 1項目のUTF-8 JSONを同期受信する。0で続行、それ以外で中断する。
+pub type EntryJsonCallback = unsafe extern "C" fn(*mut c_void, *const c_char, u64) -> i32;
 
 fn report_progress(
     callback: Option<ProgressCallback>,
@@ -125,6 +128,19 @@ fn send_json(
     // SAFETY: callbackとuserは公開契約に従う。JSON領域は通知終了まで保持する。
     unsafe { callback(user, json.as_ptr().cast(), json.len() as u64) };
     Ok(())
+}
+
+fn send_entry_json(
+    value: &impl serde::Serialize,
+    callback: EntryJsonCallback,
+    user: *mut c_void,
+    json: &mut Vec<u8>,
+) -> Result<bool, FfiError> {
+    json.clear();
+    serde_json::to_writer(&mut *json, value)
+        .map_err(|error| FfiError::operation(error.to_string()))?;
+    // SAFETY: callbackとuserは公開契約に従う。JSON領域は通知終了まで保持する。
+    Ok(unsafe { callback(user, json.as_ptr().cast(), json.len() as u64) == 0 })
 }
 
 /// JSON指定による選択圧縮・展開・検査。コールバックとuserは呼び出し終了後に保持しない。
@@ -225,6 +241,47 @@ pub unsafe extern "C" fn unlhare_list_json_with_progress(
         )
         .map_err(operation_error)?;
         send_json(&entries, result, user)
+    })
+}
+
+/// API level 5: 一覧項目を1件ずつJSON通知し、全件の保持と配列JSON化を避ける。
+///
+/// 通知は書庫順に同じ呼出しスレッドで同期実行する。entryの非0戻り値、または
+/// progressの非0戻り値で中断する。後続ヘッダーの失敗前に通知済みの項目は取り消さない。
+///
+/// # Safety
+/// requestは呼出し中有効なNUL終端UTF-8。progress、entry、userは同期呼出し中
+/// 有効で、通知から例外を境界外へ伝播させない。entryは必須、JSONは通知中だけ有効。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn unlhare_list_entries_json(
+    request: *const c_char,
+    progress: Option<ProgressCallback>,
+    entry: Option<EntryJsonCallback>,
+    user: *mut c_void,
+) -> i32 {
+    run_ffi(|| {
+        let entry = entry.ok_or_else(|| FfiError::invalid("entry callback must not be null"))?;
+        // SAFETY: requestは公開契約で保証される。
+        let request: ListRequest = unsafe { parse_request(request)? };
+        let mut callback_error = None;
+        let mut json = Vec::new();
+        let result = crate::visit_archive_entries_with_progress(
+            &request.archive,
+            &request.limits.into(),
+            &mut |value| match send_entry_json(&value, entry, user, &mut json) {
+                Ok(should_continue) => should_continue,
+                Err(error) => {
+                    callback_error = Some(error);
+                    false
+                }
+            },
+            &mut |value| report_progress(progress, user, value),
+        );
+        if let Some(error) = callback_error {
+            return Err(error);
+        }
+        result.map_err(operation_error)?;
+        Ok(())
     })
 }
 

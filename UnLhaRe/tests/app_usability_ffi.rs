@@ -6,7 +6,7 @@ use std::{
 use tempfile::tempdir;
 use unlhare::ffi::{
     STATUS_CANCELLED, STATUS_ERROR, STATUS_INVALID_ARGUMENT, STATUS_OK, unlhare_create_json_report,
-    unlhare_list_json_with_progress,
+    unlhare_list_entries_json, unlhare_list_json_with_progress,
 };
 
 #[derive(Default)]
@@ -14,6 +14,7 @@ struct State {
     results: Vec<Vec<u8>>,
     scanned: Vec<u64>,
     cancel_after: Option<u64>,
+    cancel_entries_after: Option<usize>,
 }
 
 unsafe extern "C" fn receive(user: *mut c_void, bytes: *const c_char, length: u64) {
@@ -23,6 +24,21 @@ unsafe extern "C" fn receive(user: *mut c_void, bytes: *const c_char, length: u6
         state
             .results
             .push(slice::from_raw_parts(bytes.cast(), length as usize).to_vec());
+    }
+}
+
+unsafe extern "C" fn receive_entry(user: *mut c_void, bytes: *const c_char, length: u64) -> i32 {
+    // SAFETY: 通知中有効なJSON領域とStateをテストが提供する。
+    unsafe {
+        let state = &mut *user.cast::<State>();
+        state
+            .results
+            .push(slice::from_raw_parts(bytes.cast(), length as usize).to_vec());
+        i32::from(
+            state
+                .cancel_entries_after
+                .is_some_and(|limit| state.results.len() >= limit),
+        )
     }
 }
 
@@ -88,6 +104,43 @@ fn result_api_creates_once_and_lists_once_with_cancellation() {
     assert_eq!(entries.as_array().unwrap().len(), 1);
     assert!(entries[0]["modified_unix_seconds"].is_i64());
 
+    state = State::default();
+    // SAFETY: すべてのポインターと通知はこの同期呼出し中有効。
+    assert_eq!(
+        unsafe {
+            unlhare_list_entries_json(
+                list.as_ptr(),
+                Some(progress),
+                Some(receive_entry),
+                (&mut state as *mut State).cast(),
+            )
+        },
+        STATUS_OK
+    );
+    assert_eq!(state.results.len(), 1);
+    let streamed: Value = serde_json::from_slice(&state.results[0]).unwrap();
+    assert!(streamed.is_object());
+    assert_eq!(streamed["name"], "folder/input.txt");
+    assert_eq!(state.scanned.iter().filter(|&&n| n == 1).count(), 1);
+
+    state = State {
+        cancel_entries_after: Some(1),
+        ..State::default()
+    };
+    // SAFETY: 項目通知が1件目で同期中断する。
+    assert_eq!(
+        unsafe {
+            unlhare_list_entries_json(
+                list.as_ptr(),
+                None,
+                Some(receive_entry),
+                (&mut state as *mut State).cast(),
+            )
+        },
+        STATUS_CANCELLED
+    );
+    assert_eq!(state.results.len(), 1);
+
     state = State {
         cancel_after: Some(1),
         ..State::default()
@@ -146,6 +199,16 @@ fn result_callback_is_required_before_side_effects_and_cancel_has_no_result() {
     );
     assert!(!archive.exists());
     assert!(state.results.is_empty());
+
+    let list =
+        CString::new(json!({"archive":root.path().join("missing.lzh")}).to_string()).unwrap();
+    // SAFETY: NULL entry callbackは書庫を開く前の引数検証対象。
+    assert_eq!(
+        unsafe {
+            unlhare_list_entries_json(list.as_ptr(), None, None, (&mut state as *mut State).cast())
+        },
+        STATUS_INVALID_ARGUMENT
+    );
 }
 
 #[test]

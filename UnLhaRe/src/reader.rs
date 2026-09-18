@@ -258,9 +258,44 @@ pub fn list_archive_with_progress(
     limits: &Limits,
     callback: &mut dyn FnMut(Progress) -> bool,
 ) -> Result<Vec<Entry>> {
+    let mut entries = Vec::new();
+    visit_archive_entries_with_progress(
+        path,
+        limits,
+        &mut |entry| {
+            entries.push(entry);
+            true
+        },
+        callback,
+    )?;
+    Ok(entries)
+}
+
+/// Visit metadata without retaining every entry in a result collection.
+///
+/// The visitor runs synchronously in archive order and receives ownership of
+/// each entry. Returning `false` cancels the operation. Entries already
+/// delivered remain observable if a later header is invalid.
+pub fn visit_archive_entries(
+    path: &Path,
+    limits: &Limits,
+    visitor: &mut dyn FnMut(Entry) -> bool,
+) -> Result<Summary> {
+    visit_archive_entries_with_progress(path, limits, visitor, &mut |_| true)
+}
+
+/// Visit metadata with cancellable progress between archive headers.
+///
+/// This avoids retaining the complete entry list, but duplicate-name and
+/// resource-limit validation bookkeeping is still held until the scan ends.
+pub fn visit_archive_entries_with_progress(
+    path: &Path,
+    limits: &Limits,
+    visitor: &mut dyn FnMut(Entry) -> bool,
+    callback: &mut dyn FnMut(Progress) -> bool,
+) -> Result<Summary> {
     checkpoint(callback, 1, 0, 0)?;
     let mut decoder = open(path, limits)?;
-    let mut result = Vec::new();
     let mut summary = Summary::default();
     let mut names = HashSet::new();
     let mut metadata_bytes = 0;
@@ -273,14 +308,16 @@ pub fn list_archive_with_progress(
             &mut names,
             &mut metadata_bytes,
         )?;
-        result.push(entry);
+        if !visitor(entry) {
+            return Err(Error::Cancelled);
+        }
         checkpoint(callback, 1, summary.entries, 0)?;
         if !next(&mut decoder)? {
             break;
         }
     }
     checkpoint(callback, 4, summary.entries, summary.entries)?;
-    Ok(result)
+    Ok(summary)
 }
 
 /// Decode each regular entry and require its complete length and CRC to match.

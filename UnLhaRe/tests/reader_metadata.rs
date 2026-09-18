@@ -9,7 +9,7 @@ use tempfile::tempdir;
 use unlhare::{
     CreateOptions, Error, ExtractOptions, Limits, Method, SourceEntry,
     create_archive_with_progress, extract_archive, extract_archive_with_options, list_archive,
-    list_archive_with_progress, verify_archive,
+    list_archive_with_progress, verify_archive, visit_archive_entries_with_progress,
 };
 
 const ARCHIVE_MTIME: i64 = 1_234_567_890;
@@ -161,6 +161,53 @@ fn list_can_cancel_between_headers() {
     .expect_err("list must cancel after its first header");
 
     assert!(matches!(error, Error::Cancelled));
+}
+
+#[test]
+fn entry_visitor_streams_in_order_and_can_stop_without_collecting() {
+    let temporary = tempdir().expect("temporary directory");
+    let first = temporary.path().join("first.txt");
+    let second = temporary.path().join("second.txt");
+    let archive = temporary.path().join("streamed.lzh");
+    fs::write(&first, b"first").expect("first source file");
+    fs::write(&second, b"second").expect("second source file");
+    create_archive_with_progress(
+        &archive,
+        &[source(&first, "first.txt"), source(&second, "second.txt")],
+        &stored_options(),
+        &mut |_| true,
+    )
+    .expect("create streamed archive");
+
+    let mut names = Vec::new();
+    let summary = visit_archive_entries_with_progress(
+        &archive,
+        &Limits::default(),
+        &mut |entry| {
+            names.push(entry.name.clone());
+            true
+        },
+        &mut |_| true,
+    )
+    .expect("visit every entry");
+    assert_eq!(names, ["first.txt", "second.txt"]);
+    assert_eq!(summary.entries, 2);
+    assert_eq!(summary.files, 2);
+    assert_eq!(summary.bytes, 11);
+
+    names.clear();
+    let error = visit_archive_entries_with_progress(
+        &archive,
+        &Limits::default(),
+        &mut |entry| {
+            names.push(entry.name.clone());
+            false
+        },
+        &mut |_| true,
+    )
+    .expect_err("visitor must be able to stop after one entry");
+    assert!(matches!(error, Error::Cancelled));
+    assert_eq!(names, ["first.txt"]);
 }
 
 #[test]

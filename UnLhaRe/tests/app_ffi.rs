@@ -22,7 +22,7 @@ fn json_api_selection_and_validation() {
     let archive = temp.path().join("test.lzh");
     let output = temp.path().join("out");
     fs::write(&input, "内容").unwrap();
-    assert_eq!(unlhare_api_level(), 4);
+    assert_eq!(unlhare_api_level(), 5);
     assert_eq!(
         run(
             json!({"operation":"create", "output":archive, "entries":[{"path":input,"name":"日本語.txt"}],"method":0})

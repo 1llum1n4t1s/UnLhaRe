@@ -23,6 +23,7 @@ pub use operation::{Progress, ProgressCallback};
 pub use reader::{
     extract_archive, extract_archive_with_options, extract_archive_with_progress, list_archive,
     list_archive_with_progress, verify_archive, verify_archive_with_progress,
+    visit_archive_entries, visit_archive_entries_with_progress,
 };
 pub use writer::{
     create_archive, create_archive_with_progress, create_archive_with_report,

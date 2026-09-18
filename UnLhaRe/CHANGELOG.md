@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- ABI 1を維持したAPI level 5として、Rustの`visit_archive_entries*`、Cの`unlhare_list_entries_json`、.NETの`ArchiveClient.VisitEntries`を追加。一覧項目を書庫順に同期通知し、全件の`Entry`配列と集約JSONをnative側へ保持せず処理できるようにした。API level 5のnativeでは従来の.NET `List`も項目通知経路でmanaged側の結果だけを収集する。
+
 ## 1.0.3 - 2026-09-18
 
 - ABI 1を維持したAPI level 4を追加し、直前のnativeエラーをI/O、書庫形式、非対応機能、上限、無効パス、既存出力、無効引数、キャンセルなどへ分類できるようにした。.NETでは`ArchiveNativeException.Kind`で公開する。

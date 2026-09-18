@@ -14,6 +14,7 @@ public static unsafe class ArchiveClient
     private const uint RequiredResultCallbackApiLevel = 3;
     private const uint RequiredErrorKindApiLevel = 4;
     private const uint RequiredCreatePolicyApiLevel = 4;
+    private const uint RequiredStreamingListApiLevel = 5;
     private const int StatusOk = 0;
     private const int StatusBufferTooSmall = 2;
     private const int StatusCancelled = 5;
@@ -29,6 +30,12 @@ public static unsafe class ArchiveClient
         EnsureNativeCompatibility();
 
         var request = new ListRequest(archive, LimitsRequest.From(limits));
+        if (NativeApiLevel.Value >= RequiredStreamingListApiLevel)
+        {
+            var entries = new List<ArchiveEntry>();
+            VisitEntriesCore(request, entries.Add, progress: null, CancellationToken.None);
+            return entries;
+        }
         if (NativeApiLevel.Value >= RequiredResultCallbackApiLevel)
         {
             return RunWithResult(
@@ -55,6 +62,12 @@ public static unsafe class ArchiveClient
     {
         ValidateText(archive, nameof(archive));
         var request = new ListRequest(archive, LimitsRequest.From(limits));
+        if (NativeApiLevel.Value >= RequiredStreamingListApiLevel)
+        {
+            var entries = new List<ArchiveEntry>();
+            VisitEntriesCore(request, entries.Add, progress, cancellationToken);
+            return entries;
+        }
         return RunWithResult(
             request,
             ArchiveJsonContext.Default.ListRequest,
@@ -62,6 +75,24 @@ public static unsafe class ArchiveClient
             NativeResultOperation.List,
             progress,
             cancellationToken);
+    }
+
+    /// <summary>Visits entries synchronously without retaining the complete list or aggregate JSON.</summary>
+    /// <remarks>
+    /// Entries are delivered in archive order on the calling thread. A later archive error or
+    /// cancellation does not undo entries already delivered to <paramref name="visitor"/>.
+    /// </remarks>
+    public static void VisitEntries(
+        string archive,
+        Action<ArchiveEntry> visitor,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateText(archive, nameof(archive));
+        ArgumentNullException.ThrowIfNull(visitor);
+        var request = new ListRequest(archive, LimitsRequest.From(limits));
+        VisitEntriesCore(request, visitor, progress, cancellationToken);
     }
 
     /// <summary>Verifies every selected archive payload and reports progress synchronously.</summary>
@@ -199,6 +230,47 @@ public static unsafe class ArchiveClient
             failIfAllSkipped == true ? RequiredCreatePolicyApiLevel : RequiredResultCallbackApiLevel);
     }
 
+    private static void VisitEntriesCore(
+        ListRequest request,
+        Action<ArchiveEntry> visitor,
+        IProgress<ArchiveProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureNativeCompatibility(RequiredStreamingListApiLevel);
+
+        var json = JsonSerializer.Serialize(request, ArchiveJsonContext.Default.ListRequest);
+        var state = new CallbackState(progress, cancellationToken, visitor);
+        var stateHandle = GCHandle.Alloc(state);
+        var user = GCHandle.ToIntPtr(stateHandle);
+        var progressCallback = progress is not null || cancellationToken.CanBeCanceled
+            ? (nint)(delegate* unmanaged[Cdecl]<nint, uint, ulong, ulong, int>)&ReportProgress
+            : 0;
+        var entryCallback =
+            (nint)(delegate* unmanaged[Cdecl]<nint, byte*, ulong, int>)&VisitEntryJson;
+
+        int status;
+        try
+        {
+            status = NativeMethods.ListEntriesJson(json, progressCallback, entryCallback, user);
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw ApiLevelException(RequiredStreamingListApiLevel, exception);
+        }
+        finally
+        {
+            stateHandle.Free();
+        }
+
+        state.CallbackException?.Throw();
+        if (status == StatusCancelled)
+        {
+            throw new OperationCanceledException(ReadLastError(), cancellationToken);
+        }
+        ThrowForStatus(status);
+    }
+
     private static void Run<TRequest>(
         TRequest request,
         System.Text.Json.Serialization.Metadata.JsonTypeInfo<TRequest> jsonType,
@@ -325,6 +397,52 @@ public static unsafe class ArchiveClient
             try
             {
                 var state = (CallbackState?)GCHandle.FromIntPtr(user).Target;
+                state?.SaveException(exception);
+            }
+            catch
+            {
+                // No managed exception may escape through the native callback boundary.
+            }
+            return 1;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int VisitEntryJson(nint user, byte* json, ulong length)
+    {
+        CallbackState? state = null;
+        try
+        {
+            state = (CallbackState?)GCHandle.FromIntPtr(user).Target
+                ?? throw new InvalidDataException("The native entry callback received no managed state.");
+            if (state.CancellationToken.IsCancellationRequested)
+            {
+                return 1;
+            }
+            if (json is null)
+            {
+                throw new InvalidDataException("The native entry callback returned a null buffer.");
+            }
+            if (length > int.MaxValue)
+            {
+                throw new InvalidDataException(
+                    $"The native entry JSON length {length} is outside the supported managed range.");
+            }
+
+            var entry = JsonSerializer.Deserialize(
+                new ReadOnlySpan<byte>(json, checked((int)length)),
+                ArchiveJsonContext.Default.ArchiveEntry)
+                ?? throw new InvalidDataException("The native entry callback returned JSON null.");
+            var visitor = state.EntryVisitor
+                ?? throw new InvalidDataException("The native entry callback received no visitor.");
+            visitor(entry);
+            return state.CancellationToken.IsCancellationRequested ? 1 : 0;
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                state ??= (CallbackState?)GCHandle.FromIntPtr(user).Target;
                 state?.SaveException(exception);
             }
             catch
@@ -605,11 +723,14 @@ public static unsafe class ArchiveClient
 
     private sealed class CallbackState(
         IProgress<ArchiveProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<ArchiveEntry>? entryVisitor = null)
     {
         internal IProgress<ArchiveProgress>? Progress { get; } = progress;
 
         internal CancellationToken CancellationToken { get; } = cancellationToken;
+
+        internal Action<ArchiveEntry>? EntryVisitor { get; } = entryVisitor;
 
         internal ExceptionDispatchInfo? CallbackException { get; private set; }
 

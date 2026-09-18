@@ -125,6 +125,47 @@ internal static class ContractTests
         Assert(ReferenceEquals(listCallbackError, listRethrown),
             "The original List callback exception was not preserved.");
 
+        var visitCallerThread = Environment.CurrentManagedThreadId;
+        var visitedEntries = new List<ArchiveEntry>();
+        var visitReports = 0;
+        ArchiveClient.VisitEntries(
+            archive,
+            entry =>
+            {
+                Assert(Environment.CurrentManagedThreadId == visitCallerThread,
+                    "VisitEntries moved the entry callback to another thread.");
+                visitedEntries.Add(entry);
+            },
+            progress: new InlineProgress(_ => visitReports++));
+        Assert(visitedEntries.Select(entry => entry.Name).SequenceEqual(entries.Select(entry => entry.Name)),
+            "VisitEntries returned a different entry order.");
+        Assert(visitReports > 0, "VisitEntries did not report progress.");
+
+        using (var cancellation = new CancellationTokenSource())
+        {
+            var visited = 0;
+            var cancelled = AssertThrows<OperationCanceledException>(
+                () => ArchiveClient.VisitEntries(
+                    archive,
+                    _ =>
+                    {
+                        visited++;
+                        cancellation.Cancel();
+                    },
+                    cancellationToken: cancellation.Token),
+                "VisitEntries must stop after cancellation from an entry callback.");
+            Assert(visited == 1, "VisitEntries delivered another entry after cancellation.");
+            Assert(cancelled.CancellationToken == cancellation.Token,
+                "The VisitEntries cancellation token was not preserved.");
+        }
+
+        var visitCallbackError = new CallbackFailureException("managed VisitEntries callback failure");
+        var visitRethrown = AssertThrows<CallbackFailureException>(
+            () => ArchiveClient.VisitEntries(archive, _ => throw visitCallbackError),
+            "A managed VisitEntries callback exception must be rethrown after native return.");
+        Assert(ReferenceEquals(visitCallbackError, visitRethrown),
+            "The original VisitEntries callback exception was not preserved.");
+
         var callerThread = Environment.CurrentManagedThreadId;
         var observedProgress = new List<ArchiveProgress>();
         ArchiveClient.Verify(
@@ -172,6 +213,17 @@ internal static class ContractTests
             () => ArchiveClient.List(archive, new ArchiveLimits(MaxEntries: 1)),
             "List must enforce MaxEntries.");
         Assert(limitError.Kind == ArchiveErrorKind.Limit, "List did not classify a resource-limit error.");
+        var entriesBeforeVisitLimit = 0;
+        var visitLimitError = AssertThrows<ArchiveNativeException>(
+            () => ArchiveClient.VisitEntries(
+                archive,
+                _ => entriesBeforeVisitLimit++,
+                new ArchiveLimits(MaxEntries: 1)),
+            "VisitEntries must enforce MaxEntries.");
+        Assert(entriesBeforeVisitLimit == 1,
+            "VisitEntries did not preserve its documented partial-delivery behavior.");
+        Assert(visitLimitError.Kind == ArchiveErrorKind.Limit,
+            "VisitEntries did not classify a resource-limit error.");
         AssertThrows<ArchiveNativeException>(
             () => ArchiveClient.Verify(archive, new ArchiveLimits(MaxEntryBytes: 1)),
             "Verify must enforce MaxEntryBytes.");

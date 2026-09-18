@@ -13,8 +13,9 @@ use crate::{CreateOptions, Limits, Method};
 
 mod app;
 pub use app::{
-    JsonCallback, ProgressCallback, unlhare_api_level, unlhare_create_json_report,
-    unlhare_list_json_ex, unlhare_list_json_with_progress, unlhare_run_json,
+    EntryJsonCallback, JsonCallback, ProgressCallback, unlhare_api_level,
+    unlhare_create_json_report, unlhare_list_entries_json, unlhare_list_json_ex,
+    unlhare_list_json_with_progress, unlhare_run_json,
 };
 
 /// 操作がコールバックから中断された。

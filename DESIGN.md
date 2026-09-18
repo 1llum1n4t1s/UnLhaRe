@@ -17,7 +17,7 @@
 | `UnLhaRe/src/pathname.rs` | UTF-8/UTF-16/旧コードページの解釈と共通のファイル名制約 |
 | `UnLhaRe/src/ffi.rs`、`include/unlhare.h` | C ABI 1、UTF-8文字列、固定幅整数、呼び出し元所有のバッファ、スレッド別エラー |
 | `UnLhaRe/src/main.rs` | create/list/test/extract CLI |
-| `UnLhaRe/src/operation.rs`、`UnLhaRe/src/ffi/app.rs` | API level 2〜4の進捗・キャンセル、選択操作・上限指定・結果通知JSON・エラー分類 |
+| `UnLhaRe/src/operation.rs`、`UnLhaRe/src/ffi/app.rs` | API level 2〜5の進捗・キャンセル、選択操作・上限指定・結果通知JSON・エラー分類・項目単位一覧通知 |
 | `UnLhaRe/bindings/dotnet/` | Native AOT対応C# API、CPU別DLLとライセンスのNuGet同梱 |
 | `UnLhaRe/tests/`、`UnLhaRe/bindings/dotnet/tests/`、`UnLhaRe/scripts/` | Rust・C・.NETの契約試験、ローカルbundle作成 |
 | `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 4環境のネイティブ検証、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
@@ -35,6 +35,8 @@ Rust APIは呼び出し単位の入力・上限・進捗コールバックをrea
 API level 3はABI 1の追加exportとして提供する。一覧は走査中にキャンセル可能で、同期JSON結果通知によりサイズ照会のための二重走査を避ける。圧縮の結果通知版は入力I/Oエラーだけをスキップして入力順の成否を返し、従来の圧縮APIは全件成功を要求する。結果通知は書庫確定後でありキャンセルできない。書庫内名は圧縮入力の境界で区切りを正規化し、その後に安全性と重複を検証する。エントリの更新日時はUnix秒として公開し、タイムゾーンのないDOS日時は実行環境のローカル時間として解釈する。任意の日時復元はCRC検査済みの通常ファイルにのみ、ステージングハンドル経由・公開前に行う。ディレクトリ日時と既存出力のメタデータは変更しない。.NETの従来メソッドはAPI level 2、新機能を使う追加メソッドはAPI level 3を要求する。
 
 API level 4もABI 1の追加exportとJSONフィールドで提供する。スレッド別の最終エラーに固定値の分類を併記し、既存statusとメッセージを維持する。結果通知版圧縮の`fail_if_all_skipped`は、書込み件数が0なら同一親上の一時書庫を破棄して確定前に失敗する。省略時はlevel 3の空書庫動作を維持する。.NETの通常一覧はlevel 3以上なら自動的に1回走査を選び、level 2だけ旧経路へ戻る。作成結果の状態は文字列JSONを保ったままmanaged enumへ変換する。
+
+API level 5はABI 1の追加exportとして、一覧ヘッダーを1項目ずつ同期通知する。Rust visitorは所有権付き`Entry`、Cは1個のJSON object、.NETは`ArchiveEntry`を呼出し元スレッドで渡し、全件のEntry配列と集約JSONをnative側へ保持しない。従来の.NET `List`もlevel 5ではこの経路からmanaged結果だけを収集する。名前重複と上限検査の管理情報は全走査中保持し、後続ヘッダーの失敗やキャンセル以前に通知済みの項目は取り消さない。
 
 NuGetはGitHub Releaseの署名済みWindows DLLを収録し、任意のWindows .NET 10アプリから参照できる。利用アプリは版とlockfileを固定する。Lhamiel向けの公開後の参照同期はvava.config.jsonで設定するが、この設定や同期スクリプトはライブラリの実行時依存ではない。各製品本体の配信はそれぞれのリリース工程で行う。
 

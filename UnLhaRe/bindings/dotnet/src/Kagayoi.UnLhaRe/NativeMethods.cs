@@ -46,6 +46,17 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(
         LibraryName,
+        EntryPoint = "unlhare_list_entries_json",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int ListEntriesJson(
+        string request,
+        nint progressCallback,
+        nint entryCallback,
+        nint user);
+
+    [LibraryImport(
+        LibraryName,
         EntryPoint = "unlhare_create_json_report",
         StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

@@ -12,7 +12,7 @@ Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / 
 
 | 操作 | 対応 |
 | --- | --- |
-| 一覧 | 項目名、方式、元サイズ、圧縮サイズ、CRC、ヘッダーレベルをJSONまたはTSVで取得 |
+| 一覧 | 項目名、方式、元サイズ、圧縮サイズ、CRC、ヘッダーレベルをJSON、TSV、または項目単位コールバックで取得 |
 | 検査・展開 | LH0/LH1/LH4/LH5/LH6/LH7/LHX、LZS/LZ5、PM0/PM1/PM2。本文サイズとCRCを確認 |
 | 作成 | LH0、LH5（既定）、LH6、LH7。圧縮で大きくなる場合はLH0。レベル2ヘッダー |
 | 名前 | 新規作成はUTF-8とUnicode拡張。読取はUnicode拡張優先、コードページ65001/932/51932/20932/1252 |
@@ -43,6 +43,16 @@ Cの結果JSONは通知中だけ有効で、長さはNULを含まないバイト
 - WindowsとmacOSでは圧縮元、展開先、書庫出力先の親をファイルシステムルートのハンドルから1要素ずつ開き、途中のjunction、シンボリックリンク、その他のreparse pointを追跡しません。macOS標準の `/var`、`/tmp`、`/etc` は、ルート直下のリンク先がOS既定の `/private/...` と一致する場合だけ物理パスへ正規化します。展開先の欠けた要素も1件ずつ作成して非追跡で再検査します。
 
 .NETの通常の `ArchiveClient.List(path)` はAPI level 3以上のnativeで自動的に1回走査を使用し、level 2だけ従来のサイズ照会方式へ戻ります。`ArchiveNativeException.Kind` はAPI level 4未満では `Unknown` です。作成結果の状態は `ArchiveCreateEntryStatus` enumで返し、`ArchiveCreateReportOptions(FailIfAllSkipped: true)` で空書庫の公開を拒否できます。
+
+## API level 5
+
+次回配布向けの現在のソースで追加したAPIです。ABI 1と既存関数のシグネチャを維持します。
+
+- Rustの `visit_archive_entries` / `visit_archive_entries_with_progress` は、所有権を渡した `Entry` を書庫順に同期通知します。visitorが `false` を返すとキャンセルします。
+- Cの `unlhare_list_entries_json` は1項目を1個のJSON objectとして同期通知し、項目コールバックの非0戻り値でキャンセルします。全件配列は作りません。
+- .NETの `ArchiveClient.VisitEntries` は `Action<ArchiveEntry>` を呼出し元スレッドで実行します。API level 5のnativeを必要とし、`CancellationToken`、`ArchiveLimits`、進捗通知を受け付けます。通常の `List` もlevel 5では同じnative経路からmanagedの結果だけを収集します。
+
+この経路は全件の `Entry` と集約JSONをnativeメモリへ保持しないため、巨大書庫のピークメモリと最初の項目を受け取るまでの待ち時間を抑えます。全件を処理する場合は全ヘッダーの走査時間そのものは必要です。また、名前重複と上限を検査するための管理情報は走査終了まで保持します。後続ヘッダーの異常やキャンセルより前に通知済みの項目は取り消されないため、呼び出し側は完了戻り値を確認してから一覧全体を確定してください。
 
 ## CLI
 
@@ -83,7 +93,7 @@ WindowsからmacOSターゲットを指定した場合は `cargo check` のみ�
 
 追加したAPI level 2と.NET APIは、Lhamielに限らず他のアプリでも利用できる汎用APIです。利用アプリやUIフレームワークへの依存はなく、入力パス、選択項目、容量上限、進捗通知とキャンセルを呼び出し元が指定します。UIへの通知の転送・間引き、設定保存、上書き確認、ファイル関連付け、アプリの更新処理は呼び出し側で実装してください。
 
-Rustでは `create_from_directory` / `create_archive` / `list_archive` / `verify_archive` / `extract_archive` を使用します。`cargo doc --no-deps` でAPIリファレンスを生成できます。
+Rustでは `create_from_directory` / `create_archive` / `list_archive` / `visit_archive_entries` / `verify_archive` / `extract_archive` を使用します。`cargo doc --no-deps` でAPIリファレンスを生成できます。
 
 作成・検査・展開の `*_with_progress` APIは同期コールバックを受け付け、`false`でキャンセルします。LH5/LH6/LH7の単一ファイルの圧縮計算中はキャンセルを受け付けず、計算の前後に確認します。選択展開の名前は完全一致で、未選択項目もヘッダーと上限の検査対象です。
 
@@ -105,7 +115,7 @@ C ABI 1を維持したAPI level 2では `unlhare_run_json` と `unlhare_list_jso
 {"operation":"verify","archive":"out.lzh"}
 ```
 
-一覧用の `unlhare_list_json_ex` は `{"archive":"out.lzh"}` を受け付けます。各リクエストへ `"limits":{"max_entries":100000,"max_entry_bytes":268435456,"max_total_bytes":2147483648}` を追加できます。limitsの省略は既定値、指定時は3値すべてが必要です。展開のentries省略またはnullは全項目、空配列は本文を展開しない指定です。ディレクトリ名だけを指定しても子孫は含みません。
+一覧用の `unlhare_list_json_ex` と `unlhare_list_entries_json` は `{"archive":"out.lzh"}` を受け付けます。各リクエストへ `"limits":{"max_entries":100000,"max_entry_bytes":268435456,"max_total_bytes":2147483648}` を追加できます。limitsの省略は既定値、指定時は3値すべてが必要です。展開のentries省略またはnullは全項目、空配列は本文を展開しない指定です。ディレクトリ名だけを指定しても子孫は含みません。
 
 C/C++では `include/unlhare.h` と同じアーキテクチャのライブラリを使用してください。ABIバージョンは1です。全パスはNUL終端UTF-8、サイズはuint64_t、出力バッファは呼び出し元で確保・解放します。NULLと容量0で必要バイト数（終端NULを含む）を照会し、確保して再呼び出しします。入力・出力・サイズポインターは有効かつ重ならない領域にしてください。最終エラーのメッセージとAPI level 4の分類はスレッド別に保持し、成功では消去しません。
 
