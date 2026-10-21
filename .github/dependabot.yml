@@ -1,39 +1,76 @@
+# 更新方針: 毎週月曜09:00（日本時間）、minor/patchを集約、majorは個別PR。
+# マージ可否は既定ブランチのDependabot auto-mergeが最新CIで判定します。
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Tokyo"
-    groups:
-      actions:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  - package-ecosystem: "cargo"
-    directory: "/UnLhaRe"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Tokyo"
-    groups:
-      cargo-minor-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  - package-ecosystem: "nuget"
-    directories:
-      - "/UnLhaRe/bindings/dotnet/src/Kagayoi.UnLhaRe"
-      - "/UnLhaRe/bindings/dotnet/tests/Kagayoi.UnLhaRe.ContractTests"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Tokyo"
-    groups:
-      nuget-minor-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: Asia/Tokyo
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+  commit-message:
+    prefix: deps
+- package-ecosystem: cargo
+  directory: /UnLhaRe
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: Asia/Tokyo
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+  commit-message:
+    prefix: deps
+- package-ecosystem: nuget
+  directories:
+  - /UnLhaRe/bindings/dotnet/src/Kagayoi.UnLhaRe
+  - /UnLhaRe/bindings/dotnet/tests/Kagayoi.UnLhaRe.ContractTests
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: Asia/Tokyo
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+  commit-message:
+    prefix: deps
+  allow:
+  - dependency-type: all
+- package-ecosystem: rust-toolchain
+  directory: /UnLhaRe
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: Asia/Tokyo
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+  commit-message:
+    prefix: deps
