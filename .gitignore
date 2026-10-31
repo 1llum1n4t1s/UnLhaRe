@@ -8,3 +8,14 @@ sample/
 *.suo
 *.VC.db
 *.VC.opendb
+
+# ローカルで生成された診断・検証成果物
+/UnLhaRe/$profdata
+/UnLhaRe/$raw/
+/UnLha32Re/a.txt
+/UnLha32Re/_tage.bin
+/UnLha32Re/dir/c.txt
+/UnLha32Re/z.bin
+/UnLha32Re/scripts/run-post-freshen-20260912.ps1
+/1E-06
+/UnLha32Re/c.txt

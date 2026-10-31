@@ -1,0 +1,34 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/light-compact-codec/codec.rs",
+    "changes": []
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/light-compact-codec/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../cts-node-u32/cts_model.rs\"]",
+        "new": "#[path = \"heavy.rs\"]",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "heavy.rs",
+    "original": "experiments/khc/cts-node-u32/cts_model.rs",
+    "changes": []
+  },
+  {
+    "name": "exact_kt.rs",
+    "original": "experiments/khc/cts-node-u32/exact_kt.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../compact-simd-quotient/exact_div.rs\"]",
+        "new": "#[path = \"../reciprocal-batch/exact_div.rs\"]",
+        "count": 1
+      }
+    ]
+  }
+]

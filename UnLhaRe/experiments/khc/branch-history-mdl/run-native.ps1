@@ -1,0 +1,66 @@
+[CmdletBinding()]
+param()
+$ErrorActionPreference='Stop'
+$project=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+$work=Join-Path $project 'build/khc-branch-history-mdl-20261004'
+$exe=Join-Path $work 'branch-history-mdl-o3-thin.exe'
+$header=Join-Path $work 'model-header.bin'
+$fixedInputPath=Join-Path $project 'build/khc-current-source-native-solid-20260923-group/all.group'
+$compiler='C:/Users/IMT/.rustup/toolchains/1.98.1-x86_64-pc-windows-msvc/bin/rustc.exe'
+$guard=Join-Path $PSScriptRoot '../disk-budget.ps1'
+$frozenSourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../float-fresh-transaction'))
+$helper=Join-Path $frozenSourceRoot 'run-native.ps1'
+$created=$false;$locks=[Collections.Generic.List[IO.FileStream]]::new();$sources=[Collections.Generic.List[object]]::new();$graph=[Collections.Generic.List[object]]::new();$pins=[Collections.Generic.List[object]]::new()
+$report=[ordered]@{status='preflight';started_utc=[DateTime]::UtcNow.ToString('o');children=@();compile_calls=0;total_native_calls=0;diagnostic_only=$true;coder_implemented=$false;raw_traces=0;disk_frame_plain_input_copies=0;frozen_entrypoints_executed=$false;CPU_quiet_verified=$false;setting_sweeps=0;trained_in_sample_only=$true}
+if((Get-FileHash -LiteralPath $helper).Hash -cne 'A3DCE4B3A5A48897173E1BB34F0025F0A6BB933F6A59F798AAAF24A9559E0D85'){throw 'Frozen helper SHA'}
+$locks.Add([IO.File]::Open($helper,'Open','Read','Read'));$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile($helper,[ref]$tokens,[ref]$errors);if($errors.Count){throw 'Frozen helper syntax'}
+foreach($name in @('Identity','Safe-Path','Source','Save-Report','Child')){$functions=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$true));if($functions.Count -ne 1){throw 'Helper identity'};$definition=$functions[0].Extent.Text;if($name -ceq 'Source'){$definition=$definition.Replace('$PSScriptRoot','$frozenSourceRoot')};. ([scriptblock]::Create($definition))}
+function Pin-MDL([string]$Path){$p=Safe-Path $Path;if(@($pins|Where-Object path -eq $p).Count){return};$pins.Add((Identity $p));$locks.Add([IO.File]::Open($p,'Open','Read','Read'))}
+function Same-MDL($A,$B){($A|ConvertTo-Json -Compress) -ceq ($B|ConvertTo-Json -Compress)}
+function Need-MDL($Value,$Expected,[string]$Name){if($Value -cne $Expected){throw "$Name expected $Expected got $Value"}}
+function SHA-MDLText([string]$Text){[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Text)))}
+try{
+ $null=Safe-Path $work;if(Test-Path -LiteralPath $work){throw 'Unused output root required'}
+ $tokens=$null;$errors=$null;$null=[Management.Automation.Language.Parser]::ParseFile($PSCommandPath,[ref]$tokens,[ref]$errors);if($errors.Count){throw 'Runner AST'}
+ Source (Join-Path $PSScriptRoot 'probe.rs');$report.imports=@($graph);$report.sources_before=@($sources);$report.source_count=$sources.Count;$report.source_bytes=[long](($sources|Measure-Object bytes -Sum).Sum)
+ if($sources.Count -ne 11 -or $graph.Count -ne 10 -or $report.source_bytes -gt 307200){throw 'Source closure 11/10/300KiB'}
+ foreach($pair in @(@('happy.rs','9C1CD585A9B32DE7DF8AF1D434FCC39DA45D4FF372433A202E4674A81064DE63'),@('adversarial.rs','D4008E1A3DDEF6FD494CE288635F5699C33FDC265D8DB3A9DC4F1583CA708028'))){Need-MDL (Identity (Join-Path $PSScriptRoot $pair[0])).sha256 $pair[1] 'Parent test SHA'}
+ $oldReport=Join-Path $project 'build/khc-direct-exact-context-20261004/report.json';Need-MDL (Identity $oldReport).sha256 '395911C6D71079AF4E739E4C1CF8482F0089BDA02EDD88E51E274199A0C9A305' 'Frozen previous report'
+ $old=Get-Content -LiteralPath $oldReport -Raw|ConvertFrom-Json -Depth 32 -DateKind String;Need-MDL $old.status 'diagnostic-passed' 'Frozen evidence status';foreach($id in $old.sources_before){if(!(Same-MDL $id (Identity $id.path))){throw 'Frozen source identity'};Pin-MDL $id.path}
+ $originalPath=Join-Path $PSScriptRoot '../lookup-float-cts/model.rs';Need-MDL (Identity $originalPath).sha256 'A5C1BD1B5BECBC62628CEE625F66A1259D8942207318BC029D9934895E090732' 'Frozen Tree source'
+ $original=[IO.File]::ReadAllText($originalPath).Replace("`r`n","`n");$start=$original.IndexOf('#[derive(Clone,Debug,PartialEq,Eq)]');$end=$original.IndexOf('#[derive(Clone,Copy,Debug,PartialEq,Eq)]',$start);if($start -lt 0 -or $end -le $start){throw 'Original Tree extraction'};$tree=$original.Substring($start,$end-$start)
+ if([regex]::Matches($tree,[regex]::Escape('    fn new(alphabet:usize)')).Count -ne 1){throw 'Tree visibility allowlist count'}
+ $expected=$tree.Replace('    fn new(alphabet:usize)','    pub fn new(alphabet:usize)');$getter='    pub fn class(&self,node:usize)->Result<usize>{self.nodes.get(node).map(|n|n.class).ok_or("tree class".into())}';$expected=$expected.Insert($expected.LastIndexOf("}`n"),$getter+"`n")
+ $candidate=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'grammar.rs')).Replace("`r`n","`n");$s=$candidate.IndexOf('#[derive(Clone,Debug,PartialEq,Eq)]');$e=$candidate.IndexOf('#[derive(Default,Debug,PartialEq,Eq)]',$s);if($s -lt 0 -or $e -le $s){throw 'Candidate Tree extraction'};$actual=$candidate.Substring($s,$e-$s)
+ if($expected.TrimEnd() -cne $actual.TrimEnd()){throw 'Tree residual beyond visibility/class getter'}
+ $report.Tree_ledger=@{original_path=$originalPath;original_normalized_SHA=(SHA-MDLText $tree);candidate_normalized_SHA=(SHA-MDLText $actual);new_visibility_replacements=1;class_getter_insertions=1;extra_residual=0;line_ending_normalization='CRLF to LF';last10bit_history_only=$true}
+ foreach($path in @($PSCommandPath,$helper,$guard,$compiler,(Get-Process -Id $PID).Path,$fixedInputPath,$originalPath,$oldReport,(Join-Path $PSScriptRoot 'FAILURE_PLAN.md'),(Join-Path $PSScriptRoot '../BRANCH_HISTORY_MDL_PLAN_20261004.md'),(Join-Path $PSScriptRoot '../BRANCH_HISTORY_MDL_QUESTION_20261004.md'),(Join-Path $PSScriptRoot '../direct-exact-context/RESULT_20261004.md'),(Join-Path $PSScriptRoot '../direct-exact-context/verify-artifacts.ps1'),(Join-Path $PSScriptRoot '../LOOKUP_FLOAT_CTS_RESULT_20261004.md'),(Join-Path $PSScriptRoot '../PACKED_INVERSE_MEMORY_API_NOTE_20261004.md'))){Pin-MDL $path}
+ $report.identities_before=@($pins)
+ Need-MDL (Identity (Join-Path $PSScriptRoot '../BRANCH_HISTORY_MDL_PLAN_20261004.md')).sha256 '7956138C4487C6F97114627F2791BC6D5C588FBDB73280822B3A0DF742D9757D' 'Plan SHA';Need-MDL (Identity (Join-Path $PSScriptRoot '../BRANCH_HISTORY_MDL_QUESTION_20261004.md')).sha256 'B730F06FE3C8F3B7770E451740AA5909F6ECBB5EFD49D9257390D8643D67F0BD' 'Question SHA'
+ $fixed=Identity $fixedInputPath;Need-MDL $fixed.bytes 2811006 'Input bytes';Need-MDL $fixed.sha256 '18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76' 'Input SHA';Need-MDL (Identity $compiler).sha256 'CA9988AF88B1463F6857FDFE909299FEE50A63260B3E5F7DBCB5B4D3318B27BC' 'Compiler SHA'
+ $report.environment=@{child_cwd=$project;OS=[Runtime.InteropServices.RuntimeInformation]::OSDescription;process_architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString();PowerShell=$PSVersionTable.PSVersion.ToString()};if($report.environment.process_architecture -cne 'X64' -or ![OperatingSystem]::IsWindows()){throw 'Windows x64'}
+ $report.disk_before=& $guard -WorkDirectory $work -MaxRunMiB 8;$null=New-Item -ItemType Directory -Path $work;$created=$true;$report.status='running';Save-Report
+ $version=Child $compiler @('--version') 60;Need-MDL $version.stdout 'rustc 1.98.1 (48a229cea 2026-09-01)' 'Compiler version'
+ $report.compile_settings=@('--edition=2024','--cfg','frame_audit','--cfg','primitive_audit','-C','opt-level=3','-C','lto=thin','-C','codegen-units=1','-C','panic=unwind','-C','overflow-checks=yes','-C','debuginfo=0','-C','link-arg=/DEBUG:NONE');$report.compile_limit_seconds=60;$report.native_limit_seconds=120;$report.compile_calls=1
+ $null=Child $compiler (@((Join-Path $PSScriptRoot 'probe.rs'))+$report.compile_settings+@('-o',$exe)) 60
+ $report.executable_before=Identity $exe;if($report.executable_before.bytes -gt 1048576){throw 'EXE 1MiB'};$locks.Add([IO.File]::Open($exe,'Open','Read','Read'))
+ $report.total_native_calls=1;$native=Child $exe @('screen',$fixedInputPath,$header) 120;if($native.stderr){throw 'Native stderr'};$n=$native.stdout|ConvertFrom-Json -Depth 32 -DateKind String;$report.screen=$n;Save-Report
+ Need-MDL $n.status 'passed' 'Native status';Need-MDL $n.kind 'trained_branch_history_MDL_size_only' 'Native kind'
+ $h=$n.E2E.happy;foreach($pair in @(@('Hamilton_fixtures',5),@('model_fixtures',3),@('full_CDF_comparisons',55296),@('split_histories',1024),@('empty_model_bits',558),@('split_model_bits',607))){Need-MDL $h.($pair[0]) $pair[1] $pair[0]}
+ $a=$n.E2E.adversarial;foreach($pair in @(@('Hamilton_rejections',5),@('record_rejections',4),@('parse_rejections',6),@('inconsistent_histogram_rejections',1))){Need-MDL $a.($pair[0]) $pair[1] $pair[0]};Need-MDL $a.whole_histogram_unchanged $true 'Whole Hist refusal'
+ foreach($pair in @(@('input_reads',1),@('BWT_calls',1),@('fixed_Front_walks',2),@('runs',889227),@('primary',1762795),@('escape_bytes',742),@('history_checks_per_walk',1778454),@('full_CDF_comparisons',18432),@('frame_encodes',0),@('frame_decodes',0),@('raw_event_Vecs',0))){Need-MDL $n.($pair[0]) $pair[1] $pair[0]}
+ if([Numerics.BigInteger]$n.grammar -ne [Numerics.BigInteger]::Parse('6373537040327497557') -or ($n.branches|ConvertTo-Json -Compress) -cne ' [2725772,1099568]'.Trim() -or ($n.classes|ConvertTo-Json -Compress) -cne '[889227,620240,1216305,889227,64372,145969]' -or ($n.tokens|ConvertTo-Json -Compress) -cne '[889227,889227]'){throw 'Frozen branch/class/grammar totals'}
+ Need-MDL $n.whole_two_walk_meta_equal $true 'Two walks';Need-MDL $n.trained_in_sample_only $true 'Training-only scope';Need-MDL $n.speed_claimed $false 'Speed scope';Need-MDL $n.portable_wire_verified $false 'Wire scope'
+ if($n.coded_branches+$n.implicit_prefix1_branches -ne 3825340 -or $n.minimum_actual_frequency -lt 2 -or $n.DP_vs_parsed_loss_abs_bits -gt 0.000001 -or [math]::Abs($n.quantized_branch_loss_bits-$n.DP_selected_hist_loss_bits) -gt 0.000001 -or [math]::Abs($n.whole_loss_plus_header_bits-($n.quantized_branch_loss_bits+$n.header_bits)) -gt 0.000001){throw 'DP/parsed/full loss arithmetic'}
+ if($n.Q_token_bytes_ceil -ne [math]::Ceiling($n.quantized_branch_loss_bits/8) -or $n.header_bytes -ne [math]::Ceiling($n.header_bits/8) -or $n.header_bytes -gt 106752 -or $n.header_bits -gt 854010 -or $n.screen_bytes -ne $n.Q_token_bytes_ceil+$n.header_bytes+3079 -or $n.necessary_size_condition_passed -ne ($n.screen_bytes -le 483599) -or $n.selected_leaves -ne 18+3*$n.selected_splits){throw 'Saved metadata/necessary screen arithmetic'}
+ if($n.model_working_RAM_estimate_bytes -gt 8388608 -or $n.fixed_phase_RAM_estimate_bytes -gt 33554432 -or $n.fit_node_size -gt 32){throw 'Capacity RAM bounds'}
+ Need-MDL $n.memory.API_calls 1 'WinAPI calls';Need-MDL $n.memory.ABI_size 80 'ABI extent';Need-MDL $n.memory.ABI_cb 80 'ABI cb';Need-MDL $n.memory.ABI_checked $true 'ABI selfcheck'
+ $report.model_header_before=Identity $header;Need-MDL $report.model_header_before.bytes $n.header_bytes 'Actual saved header bytes';$locks.Add([IO.File]::Open($header,'Open','Read','Read'));$report.model_header_after=Identity $header;if(!(Same-MDL $report.model_header_before $report.model_header_after)){throw 'Header changed'}
+ $report.executable_after=Identity $exe;if(!(Same-MDL $report.executable_before $report.executable_after)){throw 'EXE changed'}
+ $report.status=if($n.peak_resource_gate_passed -eq $false){'diagnostic-resource-unmet'}else{'diagnostic-passed'};$report.size_gate_passed=[bool]$n.necessary_size_condition_passed;$report.adoption_scope='private in-sample loss plus actual metadata only; no codec/speed/holdout/portable-wire adoption'
+ $report.owned_exe_processes=@(Get-Process|Where-Object {$_.Path -eq $exe}).Count;if($report.owned_exe_processes){throw 'Owned process'}
+ $entries=@(Get-ChildItem -LiteralPath $work -Force);if($entries.Count -ne 3 -or @($entries|Where-Object {$_.PSIsContainer -or $_.FullName -notin @($exe,$header,(Join-Path $work 'report.json')) -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)}).Count){throw 'Output shape'}
+}catch{$report.status='failed';$report.error=$_.Exception.Message;throw}finally{
+ try{$report.sources_after=@($sources|ForEach-Object {$now=Identity $_.path;if(!(Same-MDL $_ $now)){throw 'Source changed'};$now});$report.identities_after=@($pins|ForEach-Object {$now=Identity $_.path;if(!(Same-MDL $_ $now)){throw 'Pin changed'};$now});$report.disk_after=& $guard -WorkDirectory $work -MaxRunMiB 8;$report.ended_utc=[DateTime]::UtcNow.ToString('o');Save-Report;$finalGuard=& $guard -WorkDirectory $work -MaxRunMiB 8}finally{foreach($stream in $locks){$stream.Dispose()}}
+}
+[pscustomobject]@{status=$report.status;size_gate_passed=$report.size_gate_passed;report=Identity (Join-Path $work 'report.json');model_header=$report.model_header_after;final_guard_after_report_save=$finalGuard;source_count=$report.source_count;source_bytes=$report.source_bytes;compile_calls=$report.compile_calls;native_calls=$report.total_native_calls}|ConvertTo-Json -Depth 6

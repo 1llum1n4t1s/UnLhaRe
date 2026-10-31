@@ -1,0 +1,3 @@
+# 計画済みfinish分岐の直接証明
+
+2026-10-06。独立analystが初回sourceでfinish自体は不変だがtrailing/noncanonicalの直接契約が欠けると指摘。初回finiteは成功としてfrozen保存（report88CAAB6291AE600DB968B846540F780FE8D1FF046C8ABB3FC25F79361BE6BC30）、別choice_range_v2のCONTRACTのみ3case（末尾余分/5byte code1/5byte code0）とstate不変を追加する。choose/一般coder/encoder/wireは変えない。numeric3161881→3161884。probe_v2へwarm1/9pair/逆順を追加しcompare.ps1でCPU15%/60s/180s等の元条件を維持。通常screenが合格した場合のみfrozen同EXE再使用で逆順。初回source/reportを上書きしない。追加EXE約1.4MiB、1work8MiB。計測配列は各field9件/11fileのみでtrace/data diskなし。

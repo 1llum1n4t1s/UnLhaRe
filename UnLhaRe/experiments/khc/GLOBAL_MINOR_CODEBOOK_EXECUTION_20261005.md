@@ -1,0 +1,11 @@
+# 完成Forestの独立CDF照合pass
+
+親はworkerの追加提案を実装前に承認した。globalpacketから完成Forestを作成後、同じDenseの選択nodeごとにHist/Fitを逐次再構築し、全854016CDFを完成Forestへ直接比較する。hashやlossだけで連結の正当性を代替しない。
+
+distinct model278、Fit buildsはtrain278＋verification278＝556。training weighted rows854016とverification weighted rows854016を別fieldで数える。read1/BWT1/grammarwalk2は維持、Forest1/packet1/Dense1/node scratch1。新passで原数値が再現するかも検証する。
+
+旧個別parse→Forestの冗長比較passは必要な検証へ置換可。Fit→個別root全CDF、局所rootとglobal連結bits直接比較、完成Forest→新Fit全CDF、node/component/class/whole parsedrow lossとDP/count、全Meta/free/referenceteacherは維持する。
+
+実capacityはverificationでForest＋packet＋Dense＋Hist＋Fit＋必要Dispatchの最大同時保持を含む。8列node JSONとtypednodesのscratch65536B、stdout65536B上限を事前に見積もる。model32MiB/phase64MiB/OS160MiB、2files8MiB、compile/native各1/60秒120秒を変えない。
+
+元PLAN SHA 83087092363CEA9DE3F83A94779006CE5550E0FB0B755E143BF94525DAEC4D4B は変更しない。この補足をrunnerで識別・pinする。追加source ownershipはworker5filesのまま。全GOAL active、teacher/frame/速度未検証。

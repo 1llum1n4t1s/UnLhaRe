@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "frozen_codec": "../lookup-float-profile/codec.rs",
+  "frozen_codec_sha256": "AD21DA8FE3B2FB80BE3015E3BFD73EFBA52E2B01B5560BA04BBB8F3B6C531C3B",
+  "reference_prefix": "type Result<T> = std::result::Result<T, String>;\n\n",
+  "separator": "\n\n",
+  "suffix": "\n",
+  "allowed_edit": "Insert ASCII 'pub ' at byte 0 of each extracted definition only",
+  "source_CR": 0,
+  "definitions": [
+    {
+      "name": "filled",
+      "start_utf8_byte": 1108,
+      "original_bytes": 209,
+      "original_sha256": "FA8E33350E2BDC92764B7CF3D45938532F8546C4CDEFCBBC9B7F6B9F6CD2C4A7",
+      "visibility_insert_utf8_byte": 0,
+      "visibility_insert": "pub "
+    },
+    {
+      "name": "inverse_bwt",
+      "start_utf8_byte": 2458,
+      "original_bytes": 1788,
+      "original_sha256": "BFB11704877BF9342FEECE4D3767B1F42ACDDBCD6AC008193CFB4BDB41714B2E",
+      "visibility_insert_utf8_byte": 0,
+      "visibility_insert": "pub "
+    }
+  ]
+}

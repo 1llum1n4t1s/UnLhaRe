@@ -63,6 +63,26 @@ fn last_error_kind_classifies_archive_failures() {
 }
 
 #[test]
+fn c_abi_accepts_lh4_and_writes_a_compatible_archive() {
+    let temporary = tempdir().unwrap();
+    let source = temporary.path().join("source");
+    fs::create_dir(&source).unwrap();
+    let payload = b"LH4 C ABI contract\n".repeat(512);
+    fs::write(source.join("input"), &payload).unwrap();
+    let archive = temporary.path().join("lh4.lzh");
+    let source_c = c_path(&source);
+    let archive_c = c_path(&archive);
+    // SAFETY: 両文字列は呼び出し中に有効なNUL終端UTF-8。
+    assert_eq!(
+        unsafe { unlhare_create(archive_c.as_ptr(), source_c.as_ptr(), 4) },
+        STATUS_OK
+    );
+    let entries = unlhare::list_archive(&archive, &unlhare::Limits::default()).unwrap();
+    assert_eq!(entries[0].method, "-lh4-");
+    unlhare::verify_archive(&archive, &unlhare::Limits::default()).unwrap();
+}
+
+#[test]
 fn c_abi_round_trip_and_buffer_contract() {
     let temporary = tempdir().expect("temporary directory");
     let source = temporary.path().join("source");

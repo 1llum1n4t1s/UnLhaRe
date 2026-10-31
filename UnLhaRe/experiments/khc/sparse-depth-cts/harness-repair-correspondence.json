@@ -1,0 +1,21 @@
+{
+  "base_sha256": "25E20785438C89199271534855F2FB2321A9184062098C5743EC0A3BD42F466C",
+  "failure_report_sha256": "60C58C347A9B84451345A6BAF536CB3B2A7816EEE854B5D8080DFC11407B8807",
+  "changes": [
+    {
+      "from": "$work=Join-Path $root 'build/khc-sparse-depth-cts-20261001'",
+      "to": "$work=Join-Path $root 'build/khc-sparse-depth-cts-20261001-harness-repair'",
+      "count": 1
+    },
+    {
+      "from": "$contextIdentity.before_sha256",
+      "to": "$contextIdentity.sha256",
+      "count": 1
+    },
+    {
+      "from": " foreach($pin in $pins.GetEnumerator())",
+      "to": " $pins['experiments/khc/sparse-depth-cts/verify.ps1']='25E20785438C89199271534855F2FB2321A9184062098C5743EC0A3BD42F466C'\n foreach($pin in $pins.GetEnumerator())",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "purpose": "数値検証用に生成された未参照PDBだけを削除。実行ファイル・数値proof・原sourceは保持。",
+  "planned_files": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-simd-quotient-20261002\\audit-opt3.pdb",
+      "bytes": 1323008,
+      "sha256": "4A9492EA2FAA93FA09DFF3901760D4B371266753E7AEDF3A6E4B411A558EA97D"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-simd-quotient-20261002\\audit-opt2.pdb",
+      "bytes": 1323008,
+      "sha256": "BD36D8EC9E5C2448BC5332C1C6EB35CE8A1E923D5E31D885795493E589807BF1"
+    }
+  ]
+}

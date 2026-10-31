@@ -15,6 +15,6 @@
 
 workflowはGitHub Releaseの`SHA256SUMS.txt`と署名済みWindows x64/ARM64 ZIPを取得し、ハッシュとDLLのAuthenticode署名を検証する。native DLLを再ビルドせず、検証済みZIPから取り出した2ファイルを`runtimes/win-x64/native/`と`runtimes/win-arm64/native/`へ梱包する。package内のDLL、buildTransitive target、第三者告知とライセンス全文を検査してから、NuGet.org Trusted Publishingで公開する。
 
-初回公開前にNuGet.orgでrepository `1llum1n4t1s/UnLhaRe`、workflow `publish-unlhare-nuget.yml`のTrusted Publishing policyを登録し、GitHub repository variable `NUGET_USER`へNuGet.org usernameを設定する。公開後は正規feedで`Kagayoi.UnLhaRe`の完全一致versionを確認してから、`vava.config.json`のconsumer updateでLhamielの`UnLhaReVersion`と追跡済みlock fileを更新する。Lhamiel自体のversionとreleaseはこの同期では変更しない。
+初回公開前にNuGet.orgでrepository `1llum1n4t1s/UnLhaRe`、workflow `publish-unlhare-nuget.yml`のTrusted Publishing policyを登録し、GitHub repository variable `NUGET_USER`へNuGet.org usernameを設定する。公開後は正規feedで`Kagayoi.UnLhaRe`の完全一致versionを確認する。
 
 ビルド中間物はbuild/、公開物と再開用記録はartifacts/配下へ置く。失敗時はバージョンを変更せず、同じタグ・SHA・CI runの状態を確認して未完了工程から再開する。CI待機時間はランナーの空き状況に依存し、ローカルの短時間検証と区別する。

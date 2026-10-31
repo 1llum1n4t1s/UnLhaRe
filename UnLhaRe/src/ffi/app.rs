@@ -46,6 +46,8 @@ enum Request {
         entries: Vec<Source>,
         method: i32,
         #[serde(default)]
+        effort: crate::CompressionEffort,
+        #[serde(default)]
         limits: InputLimits,
         #[serde(default)]
         fail_if_all_skipped: bool,
@@ -93,7 +95,7 @@ unsafe fn parse_request<T: serde::de::DeserializeOwned>(
 /// ABI 1に追加されたアプリ連携APIの世代。
 #[unsafe(no_mangle)]
 pub extern "C" fn unlhare_api_level() -> u32 {
-    5
+    6
 }
 
 /// 0で続行、それ以外で中断する。同じ呼び出しスレッドで同期実行する。
@@ -163,6 +165,7 @@ pub unsafe extern "C" fn unlhare_run_json(
                 output,
                 entries,
                 method,
+                effort,
                 limits,
                 fail_if_all_skipped,
             } => {
@@ -184,6 +187,7 @@ pub unsafe extern "C" fn unlhare_run_json(
                     &sources,
                     &CreateOptions {
                         method,
+                        effort,
                         limits: limits.into(),
                     },
                     &mut report,
@@ -307,6 +311,7 @@ pub unsafe extern "C" fn unlhare_create_json_report(
             output,
             entries,
             method,
+            effort,
             limits,
             fail_if_all_skipped,
         } = request
@@ -325,6 +330,7 @@ pub unsafe extern "C" fn unlhare_create_json_report(
             &sources,
             &CreateOptions {
                 method: method_from_abi(method)?,
+                effort,
                 limits: limits.into(),
             },
             &crate::CreateReportOptions {

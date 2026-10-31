@@ -1,0 +1,62 @@
+[
+  {
+    "old": "../COMPACT_SIMD_CONTRACT_20261002.md",
+    "new": "../RECIPROCAL_BATCH_CONTRACT_20261002.md",
+    "count": 2
+  },
+  {
+    "old": "build/khc-compact-simd-20261002-coverage-repair",
+    "new": "build/khc-reciprocal-batch-20261002",
+    "count": 1
+  },
+  {
+    "old": "BE0918A76FC9438FF2C947B93B2F5275825B2F10DA40216C8C6171C24190688A",
+    "new": "F5470A66960B07EA6C4C79938218438DBFBF4B5B536110BB082C14563BAF84EB",
+    "count": 1
+  },
+  {
+    "old": "../simd-quotient/",
+    "new": "../compact-simd-quotient/",
+    "count": 4
+  },
+  {
+    "old": "767A234AF874BA615809039ACE8C6BBE6FF6BDE1C2CC1E38E9ADFA2068941856",
+    "new": "AB7222684CD2AC565CA48B18D58FDA22A821F50D8C58BC60DE027E77A14643C3",
+    "count": 1
+  },
+  {
+    "old": "9A135D48AD9C80B02B5BF916301EBBA0F95ED3EA578B6E0B0563A4E6E38645C7",
+    "new": "978B932A7D0CFAA7C8090DB75C6928E7746798F91213CA7AE89231810A9C222D",
+    "count": 1
+  },
+  {
+    "old": "build/khc-simd-quotient-20261002/report.json",
+    "new": "build/khc-compact-simd-20261002-coverage-repair/report.json",
+    "count": 1
+  },
+  {
+    "old": "FE390BBE820107F32570BFC6E416E5FA947743848131F8EB8513BFC4E02E1EDE",
+    "new": "C8B6DAA9DEFA6C97D6DD062682AA87139B0CC6C5F6782B642EA977783FCE4935",
+    "count": 1
+  },
+  {
+    "old": "'helper-correspondence.json','verify.ps1'",
+    "new": "'helper-correspondence.json','verify.ps1','verifier-correspondence.json'",
+    "count": 1
+  },
+  {
+    "old": "else{'compact_batch_numeric_verified_not_codec_or_timing'}",
+    "new": "else{'reciprocal_batch_numeric_verified_not_codec_or_timing'}",
+    "count": 1
+  },
+  {
+    "old": "    $checks.Add('full-helper-and-audit-correspondence-and-old-u128-oracle')",
+    "new": "    Hold (Join-Path $PSScriptRoot '../compact-simd-quotient/verify.ps1') 'frozen-verifier' '7EF4DF0E46BFDBDF8C3F8509CC37FF46B2FAEE6179F84B5F7858DBDCDEA19284'\n    $oldVerifier=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '../compact-simd-quotient/verify.ps1')).Replace(\"`r`n\",\"`n\")\n    foreach($change in (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'verifier-correspondence.json') -Raw|ConvertFrom-Json)){\n        if(([regex]::Matches($oldVerifier,[regex]::Escape($change.old))).Count -ne $change.count){throw 'verifier source occurrence'}\n        $oldVerifier=$oldVerifier.Replace([string]$change.old,[string]$change.new)\n    }\n    if([IO.File]::ReadAllText($PSCommandPath).Replace(\"`r`n\",\"`n\") -cne $oldVerifier){throw 'full verifier correspondence'}\n    $oldProof=Get-Content -LiteralPath (Join-Path $root 'build/khc-compact-simd-20261002-coverage-repair/report.json') -Raw|ConvertFrom-Json\n    if($oldProof.status -cne 'compact_batch_numeric_verified_not_codec_or_timing' -or $oldProof.failure -or $oldProof.timing_used -or $oldProof.checks.Count -ne 32 -or $oldProof.invocations.Count -ne 87 -or $oldProof.identities.Count -ne 13){throw 'frozen numeric matrix'}\n    foreach($oldIdentity in $oldProof.identities){\n        if($oldIdentity.before_sha256 -cne $oldIdentity.after_sha256){throw 'old identity before/after differs'}\n        Hold $oldIdentity.path 'frozen-numeric-identity' $oldIdentity.after_sha256\n        if((Get-Item -LiteralPath $oldIdentity.path).Length -ne $oldIdentity.bytes){throw 'frozen numeric identity length'}\n    }\n    $oldSummary=$oldProof.summaries[0].summary|ConvertTo-Json -Compress -Depth 4\n    $checks.Add('full-helper-audit-verifier-correspondence-and-current-old-identities')",
+    "count": 1
+  },
+  {
+    "old": "            if($null -eq $golden){$golden=$stdout}",
+    "new": "            if(($summary|ConvertTo-Json -Compress -Depth 4) -cne $oldSummary){throw 'new complete numeric summary differs from frozen proof'}\n            if($null -eq $golden){$golden=$stdout}",
+    "count": 1
+  }
+]

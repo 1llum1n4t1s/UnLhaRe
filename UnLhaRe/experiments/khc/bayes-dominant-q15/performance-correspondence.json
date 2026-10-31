@@ -1,0 +1,52 @@
+[
+  {
+    "old": "AD2D1D930F27FA73B70F1E096BBEDC35301244B0A2FA3130F689680430184A26",
+    "new": "A98326FBF88608DACE22D44DF934DF5EC3062AB684E934F644013024E69B0FBE",
+    "count": 1
+  },
+  {
+    "old": "build/khc-causal-integer-refinement-20261002-comparison-repair/performance",
+    "new": "build/khc-bayes-dominant-q15-20261002-codec/performance",
+    "count": 1
+  },
+  {
+    "old": "q32-integer-refined-group",
+    "new": "q15-dominant-shortcut-group",
+    "count": 5
+  },
+  {
+    "old": "Integer refined scheduled candidate and frozen balanced KT Q32 control",
+    "new": "Q15 dominant-shortcut integer scheduled candidate and frozen balanced KT Q32 control",
+    "count": 1
+  },
+  {
+    "old": "-WorkDirectory $work",
+    "new": "-WorkDirectory $work -MaxRunMiB 128",
+    "count": 3
+  },
+  {
+    "old": "$oldHarness=Track-File (Join-Path $PSScriptRoot '../causal-expert-scheduling/compare.ps1') 'old-performance-harness'",
+    "new": "$oldHarness=Track-File (Join-Path $PSScriptRoot '../causal-integer-refinement/compare.ps1') 'old-performance-harness'",
+    "count": 1
+  },
+  {
+    "old": "785727BDEA01C90788707E352B215048D9934DA1848FFC5982BFBD4402EC69C2",
+    "new": "1BB00E71EB54CDDDAAC5146C5DC36F43B6F23F8FC37A9F0B5F1D3F546E800B51",
+    "count": 1
+  },
+  {
+    "old": "$ordinary=@($integerJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 238080})",
+    "new": "$ordinary=@($integerJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq (Join-Path $root 'build/khc-causal-integer-refinement-20261002-comparison-repair/codec-native.exe') -and $_.before_sha256 -ceq 'AD2D1D930F27FA73B70F1E096BBEDC35301244B0A2FA3130F689680430184A26' -and $_.bytes -eq 238080})",
+    "count": 1
+  },
+  {
+    "old": "    $report['integer_proofs']=[ordered]@{codec=$integerProof;narrow=$integerNumericProof;wide=$integerWideProof}",
+    "new": "    $report['integer_proofs']=[ordered]@{codec=$integerProof;narrow=$integerNumericProof;wide=$integerWideProof}\n    $dominantProof=Track-File (Join-Path $root 'build/khc-bayes-dominant-q15-20261002-codec/report.json') 'dominant-codec-proof'\n    if($dominantProof.before_sha256 -cne '0776392ED95FEE12D1F47FF6CE06C409B7A6DEC6A086AAC131234335EC834360'){throw 'Dominant codec proof SHA'}\n    $dominantJson=Get-Content -LiteralPath $dominantProof.path -Raw|ConvertFrom-Json\n    if($dominantJson.status -cne 'correctness_and_size_passed_not_timed' -or $dominantJson.failure -or $dominantJson.timing_used -or $dominantJson.checks.Count -ne 32 -or $dominantJson.invocations.Count -ne 53 -or $dominantJson.identities.Count -ne 218 -or $dominantJson.owned_tmp_or_reparse -ne 0 -or $dominantJson.frame_bytes -ne 483496){throw 'Dominant codec proof incomplete'}\n    $dominantOrdinary=@($dominantJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 238080})\n    if($dominantOrdinary.Count -ne 1){throw 'Candidate not the dominant ordinary codec'}\n    $dominantRefusals=@($dominantJson.invocations|Where-Object exit -ne 0)\n    if($dominantRefusals.Count -ne 8 -or @($dominantRefusals|Where-Object {$_.exit -ne 1 -or !$_.stderr -or $_.stdout}).Count -or @($dominantJson.invocations|Where-Object {$_.exit -eq 0 -and $_.stderr}).Count){throw 'Dominant codec invocation mismatch'}\n    $dominantNumericProof=Track-File (Join-Path $root 'build/khc-bayes-dominant-q15-20261002-numeric/report.json') 'dominant-numeric-proof'\n    if($dominantNumericProof.before_sha256 -cne 'CD285519F0EB1A74A5DBA01CDD26AFD484471586A6555537E3A7051FB69A5C51'){throw 'Dominant numeric proof SHA'}\n    $dominantNumericJson=Get-Content -LiteralPath $dominantNumericProof.path -Raw|ConvertFrom-Json\n    if($dominantNumericJson.status -cne 'numeric_native_equivalence_passed_not_timed' -or $dominantNumericJson.failure -or $dominantNumericJson.timing_used -or $dominantNumericJson.checks.Count -ne 6 -or $dominantNumericJson.invocations.Count -ne 7 -or $dominantNumericJson.identities.Count -ne 19 -or $dominantNumericJson.owned_tmp_or_reparse -ne 0){throw 'Dominant numeric proof incomplete'}\n    foreach($call in $dominantNumericJson.invocations){\n        $expectedExit=if($call.argv.Count -eq 1 -and $call.argv[0] -ceq 'unexpected'){2}else{0}\n        if($call.exit -ne $expectedExit -or ($expectedExit -eq 0 -and $call.stderr) -or ($expectedExit -ne 0 -and $call.stdout)){throw 'Dominant numeric invocation failure'}\n    }\n    $dominantSummaries=@($dominantNumericJson.invocations|Where-Object {$_.argv.Count -eq 0})\n    if($dominantSummaries.Count -ne 2 -or $dominantSummaries[0].stdout -cne $dominantSummaries[1].stdout){throw 'Dominant optimization summary mismatch'}\n    $dominantCounts=$dominantSummaries[0].stdout|ConvertFrom-Json\n    if($dominantCounts.records -ne 5920979 -or $dominantCounts.equal_component -ne 491915 -or $dominantCounts.primary_dominant -ne 2151943 -or $dominantCounts.cts_dominant -ne 2152672 -or $dominantCounts.unchanged_path -ne 1124449 -or $dominantCounts.errors -ne 4361 -or $dominantCounts.fingerprint_fnv64 -cne '529ee7291004574b'){throw 'Dominant numeric coverage mismatch'}\n    $report['dominant_proofs']=[ordered]@{codec=$dominantProof;numeric=$dominantNumericProof}\n",
+    "count": 1
+  },
+  {
+    "old": "$schedulerJson,$integerJson,$integerNumericJson,$integerWideJson))",
+    "new": "$schedulerJson,$integerJson,$integerNumericJson,$integerWideJson,$dominantJson,$dominantNumericJson))",
+    "count": 1
+  }
+]

@@ -1,0 +1,17 @@
+# guarded64/32商の実CTS Model統合条件
+
+数値proof DF1FCBAA5884D8DB2B7234F5DF7A0356C1C3A5D198204929DEDB1F9C836EE656（46checks/49CLI、65536recordsと旧56191records、通常/forcedportable各opt2/3×2反復）の商・実残余・error一致を回収した後の段階。速度/製品/他nativeは未判定。
+
+## 実装前の失敗条件
+
+- 新helper338B2EB4F8A7C70994BD96CE28038C107F65F1106DD57A575CA6C524797310CD又は元balancedCTS9CFC6DF121A3711D704ED9F36F8D068F03A788DBC9F1A67118BB0CA89BD2F647を変更する。
+- CTS clone差分がhelperのpath1行以外に生じる。audit CLI cloneが元CD3F0D1FA5671AAC10A72222AA35F7DD84623D90CAE1DA9EAEE3104CC68859ECから変わる。
+- frozen11267 Model records（7classes/7histories/17levels×5fields）のBigInteger expected、元opt2/3両raw、通常/forcedportable×opt2/3の新rawのいずれかが異なる。layout544B/Node16Bが変わる。
+- source/contract/compiler/親proof又は使用した全input/expected/旧rawのcurrent長さSHA/readlock欠落、120秒子期限超過、format/class/bit/cap/既存出力の誤受理、no-clobber sentinel変更、所有tmp残存。
+- 再現reportを残さず失敗、既存root上書き、自動retry、数値cfgを通常codecへ混入、速度採用や総合勝利を主張する。
+
+親が新 causal-bayes-q32-native32/{cts_model.rs,audit_cli.rs,verify-model.ps1}を編集所有する。CTSはhelper pathだけ../native32-quotient/exact_div.rsへ、CLIは全文clone。実Model cfgは既存khc_mixture_reuse_auditを使い、新helperのnumeric-only audit cfgは入れない。rustc1.98.1/native/edition2024/panicabort/opt2・3、通常とkhc_force_portableの4EXEsを新work build/khc-q32-native32-model-20261001へcompileする。
+
+元balanced数値proof63ACB1BBF1A2EFE811B76E761C6AA4CFDF2F4C443F75E24AD18FD97D312F5DAFのmodel_historyと直接fixture identitiesを固定し、empty/known/zeros/ones/alternating/biased/maximumの入力・BigInteger expected・旧opt2/3両反復rawを使用する。現在SHA/長さ保持と旧raw/expected全byte同一を確認してから、新4EXEsの各fixtureを実行し680B/recordの全byte一致を検査する。親proofの深い履歴全体を再DFSして再証明はしない。独立作者の新監査とは称さず、凍結済み独立oracleを再利用する。
+
+class7/bit2、不完全record、4096records+1、既存outputのCLI拒否/未公開/sentinel保持を確認。既存CLIのancestor no-reparse/所有tmp no-replace公開はsource全文一致で保持し、この段階で新junction試験を重複しない。数値helper前段ではjunction含むpath拒否を実行済だが、製品TOCTOU/全OS保証には使わない。sourceafter/current output hashes、所有pathsとinventory、tmp0をreportへ保存する。追加unit/Gitstagecommitpush/外部write/秘密/CPU設定/製品/x86互換版を扱わない。

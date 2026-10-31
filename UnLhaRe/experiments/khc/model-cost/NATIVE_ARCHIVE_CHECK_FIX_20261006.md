@@ -1,0 +1,7 @@
+# 初回listing検査の是正
+
+2026-10-06。native-aは双方のcreate/list exit0でarchiveを作った後、guardがLZMA2:22表記を要求してfailed。失敗report C2C97D61C9B55BD3311DEB326C65AD44AEA4EB393212B680A99310B227555197、pins unchanged。7zの実listingはSolid+/Blocks1/Method LZMA2:3m。指定4MiBに対しdictionary property3MiBでも入力2810784B全体を覆う。比較条件/採用ゲートを弱めるための変更ではなく、実行不能だった検証側の表記想定を修正する。
+
+公式一次source（2026-10-06）<https://raw.githubusercontent.com/ip7z/7zip/main/C/LzmaEnc.c> LzmaEncProps_NormalizeにdictSizeがreduceSizeより大きい場合の縮小を確認した。これだけで全property符号化の内部値は証明しない。実listingと、指定4194304B/実property3145728B/全入力2810784Bを分けて記録する。
+
+v2は初回report/source/EXE/inputの全SHAを再確認し、同じ作成済みKHC466395B/7z481490Bを読み取り専用で利用する。createを重複起動/コピー/上書きしない。新規native-b workへextract/reportだけを作り、元planと元scriptは凍結して失敗を成功に書換えない。CLI・コマンド・全書庫サイズ・RAM上限・他評価要件は不変、速度は単発参考のみ。完全復元/mtimeの成功確認までは終わったとしない。

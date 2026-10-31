@@ -1,0 +1,49 @@
+[
+  {
+    "name": "bayes_old.rs",
+    "original": "experiments/khc/causal-expert-scheduling/bayes_model.rs",
+    "changes": [
+      {
+        "old": "",
+        "append": "\n#[cfg(khc_bayes_dominant_audit)]\npub(super) fn audit_predict(primary_loss: f64, cts_loss: f64, primary: u16, cts: u16)\n    -> Result<(u16, u16, u16)>\n{\n    let prediction = Class { primary: primary_loss, cts: cts_loss }.predict(primary, cts)?;\n    Ok((prediction.primary, prediction.cts, prediction.zero))\n}\n"
+      }
+    ]
+  },
+  {
+    "name": "bayes_model.rs",
+    "original": "experiments/khc/causal-expert-scheduling/bayes_model.rs",
+    "changes": [
+      {
+        "old": "        let primary = f64::from(primary_zero) / 32768.0;",
+        "new": "        let difference = self.primary - self.cts;\n        if self.primary.is_finite() && self.cts.is_finite() && difference.is_finite() {\n            let dominant = if primary_zero == cts_zero {\n                Some(primary_zero)\n            } else if difference >= 32.0 {\n                Some(cts_zero)\n            } else if difference <= -32.0 {\n                Some(primary_zero)\n            } else {\n                None\n            };\n            if let Some(zero) = dominant {\n                return Ok(Prediction { primary: primary_zero, cts: cts_zero, zero });\n            }\n        }\n        let primary = f64::from(primary_zero) / 32768.0;",
+        "count": 1
+      },
+      {
+        "old": "",
+        "append": "\n#[cfg(khc_bayes_dominant_audit)]\npub(super) fn audit_predict(primary_loss: f64, cts_loss: f64, primary: u16, cts: u16)\n    -> Result<(u16, u16, u16)>\n{\n    let prediction = Class { primary: primary_loss, cts: cts_loss }.predict(primary, cts)?;\n    Ok((prediction.primary, prediction.cts, prediction.zero))\n}\n"
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/causal-integer-refinement/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../causal-expert-scheduling/bayes_model.rs\"]",
+        "new": "#[path = \"bayes_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"cts_model.rs\"]",
+        "new": "#[path = \"../causal-integer-refinement/cts_model.rs\"]",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/causal-integer-refinement/codec.rs",
+    "changes": []
+  }
+]
+

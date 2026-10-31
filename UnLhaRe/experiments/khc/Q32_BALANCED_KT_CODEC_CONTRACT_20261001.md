@@ -1,0 +1,18 @@
+# 等カウントKT候補のcodec統合条件
+
+## 統合前の失敗条件
+
+- 正式数値proofのsource/契約/各raw/105identitiesと現在SHA・長さが不一致、132checks/137CLI又はKT65536/helper65536/Model11267の成功範囲が欠落。独立数値監査で未解決の実害が残る場合はビルドへ進めない。
+- 初回failed数値root又は途中junction数値rootを正式current proofとして使う、削除済み中間rawを正式DFSへ入れる。
+- codec grammar/precision/model/CRC/no-clobber/安全公開/資源capを変更する、通常compileへaudit cfgを入れる。通常変更はCTSの検査後等カウント短絡だけに限定する。
+- 元mixture-reuse79チェックを包含しない、7小fixtureと固定frameで旧mixture-reuseとの全byte一致・両方向復号を省く、想定外exit/timeout/既存sentinel変更/ownedtmp残存を成功にする。
+- 固定入力2811006B/SHA18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76、frame483469B/SHA7584AF15ED4A70F6AD16E278F29DBB1C4D63EACD1DD58D5164198D03D3B5D95Cが変化する。
+- 再解析点、既存output rootの上書き、source/EXE/契約/proofのbefore/after不一致、正式証拠の欠落。
+
+## 凍結と段階
+
+旧codec SHA9D757709834F501B83929C2882BCE6053FCA5CFC5AAEEC2B4A16EED7AE58680Bを変更せず新dirへ配置し、新CTSを参照する。数値CTS9CFC6DF121A3711D704ED9F36F8D068F03A788DBC9F1A67118BB0CA89BD2F647、正式数値proof63ACB1BBF1A2EFE811B76E761C6AA4CFDF2F4C443F75E24AD18FD97D312F5DAFをfreezeする。親が後段を統合し、codec/build/verifyの準備編集だけを一人の専任workerへ委任する。数値sourceは変更せず、compile/CLIは独立数値監査後に親が担当する。
+
+旧mixture-reuse build/verifyの全安全検証と旧proofを保持し、新current numeric/build/full証拠へreadlocksを追加する。旧79に8crossを加え87checks/178CLIを想定するが、成功件数だけで包含を判断せず実checkの集合とraw/cross出力を確認する。未使用 `build/khc-bwt-causal-bayes-q32-balanced-kt-20261001` でopt3候補とopt2参照を作る。
+
+codec E2Eと独立監査を通過しても性能は未判定。生成コードで短絡を確認し、旧mixture-reuseを対照とする固定条件の別比較を用意する。固定gate483599B/574.5624ms未満、quiet15/warm1+9/既存native設定を変更しない。段階診断はまだ未完遂であり、一般化・holdout・4native・製品統合・総合7-Zip超過は別の未達事項として維持する。

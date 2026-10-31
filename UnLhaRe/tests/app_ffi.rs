@@ -16,13 +16,42 @@ fn run(value: serde_json::Value) -> i32 {
 }
 
 #[test]
+fn json_high_effort_and_lh4_preserve_compatibility_and_validate_options() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input");
+    let payload = b"aabaaaabaaabaaaaab".repeat(200);
+    fs::write(&input, &payload).unwrap();
+    for method in [0, 4, 5, 6, 7] {
+        let archive = temp.path().join(format!("method-{method}.lzh"));
+        assert_eq!(
+            run(json!({"operation":"create", "output":archive,
+            "entries":[{"path":input,"name":"input"}],"method":method,"effort":"high"})),
+            STATUS_OK
+        );
+        let output = temp.path().join(format!("out-{method}"));
+        assert_eq!(
+            run(json!({"operation":"extract","archive":archive,"destination":output})),
+            STATUS_OK
+        );
+        assert_eq!(fs::read(output.join("input")).unwrap(), payload);
+    }
+    let archive = temp.path().join("invalid.lzh");
+    assert_eq!(
+        run(json!({"operation":"create", "output":archive,
+        "entries":[{"path":input,"name":"input"}],"method":5,"effort":"unknown"})),
+        STATUS_INVALID_ARGUMENT
+    );
+    assert!(!archive.exists());
+}
+
+#[test]
 fn json_api_selection_and_validation() {
     let temp = tempdir().unwrap();
     let input = temp.path().join("日本語.txt");
     let archive = temp.path().join("test.lzh");
     let output = temp.path().join("out");
     fs::write(&input, "内容").unwrap();
-    assert_eq!(unlhare_api_level(), 5);
+    assert_eq!(unlhare_api_level(), 6);
     assert_eq!(
         run(
             json!({"operation":"create", "output":archive, "entries":[{"path":input,"name":"日本語.txt"}],"method":0})

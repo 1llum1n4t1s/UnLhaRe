@@ -258,7 +258,7 @@ fn open_entry(parent: &Dir, name: &OsStr) -> io::Result<File> {
     let descriptor = openat(
         parent,
         Path::new(name),
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
         Mode::empty(),
     )
     .map_err(io::Error::from)?;

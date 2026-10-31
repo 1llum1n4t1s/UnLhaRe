@@ -1,0 +1,5 @@
+# Arithmetic witness の資源内再計画（2026-10-07）
+
+arith-aはcompilerのthinLTO一時object群が専用1MiBを超え、work boundで停止。計算プログラムは未実行、report7A30F2FBB9B6B0FC8E998641508F6D801986168F8D78E0331D40D63503062D7Dを失敗として保持する。Cargo増分なし、既存artifactを上書きしない。
+同じ1MiB上限内へ収めるため、速度証拠ではない整数witnessに限りlto=offで再コンパイルする。source arith.rs/数式/有限入力/合格条件/opt3/CGU1/一時物込み容量/RAM/timeoutは変更しない。native codec/CLI/paired性能評価のthinLTO flagsは維持する。上限を拡大せず、全stdlibのLTO中間objectを作らない方式を選ぶ。失敗時は別rootで小reportを残す。
+

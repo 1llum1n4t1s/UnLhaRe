@@ -1,0 +1,100 @@
+{
+  "codec_changes": [
+    {
+      "from": "//! 凍結primary/BWT/grammarとD16/Q32 CTS、因果的Bayesの全frame研究codec。",
+      "to": "//! 凍結BWT/grammar/primaryと因果的expert schedulingの別形式研究codec。",
+      "count": 1
+    },
+    {
+      "from": "//! KHBAYQ32 /",
+      "to": "//! KHBSCH01 /",
+      "count": 1
+    },
+    {
+      "from": "#[path = \"../causal-bayes-log-table/bayes_model.rs\"]\nmod bayes_model;\n",
+      "to": "",
+      "count": 1
+    },
+    {
+      "from": "#[path = \"cts_model.rs\"]\nmod cts_model;",
+      "to": "#[path = \"scheduler.rs\"]\nmod scheduler;",
+      "count": 1
+    },
+    {
+      "from": "const MAGIC: &[u8; 8] = b\"KHBAYQ32\";",
+      "to": "#[cfg(not(khc_scheduler_small_journal))]\nconst MAGIC: &[u8; 8] = b\"KHBSCH01\";\n#[cfg(khc_scheduler_small_journal)]\nconst MAGIC: &[u8; 8] = b\"KHBTST01\";",
+      "count": 1
+    },
+    {
+      "from": "    cts: cts_model::Model,\n    bayes: bayes_model::Model,",
+      "to": "    scheduler: scheduler::Model,",
+      "count": 1
+    },
+    {
+      "from": "        let cts = self.cts.predict(class)?;\n        let bayes = self.bayes.predict(class, primary_zero, cts.zero())?;\n        let zero = bayes.zero();",
+      "to": "        let scheduling = self.scheduler.predict(class, primary_zero)?;\n        let zero = scheduling.zero();",
+      "count": 1
+    },
+    {
+      "from": "        self.bayes.update(class, &bayes, bit)?;\n        self.cts.update(class, &cts, bit)?;",
+      "to": "        self.scheduler.update(class, &scheduling, bit)?;",
+      "count": 1
+    },
+    {
+      "from": "        cts: cts_model::Model::new()?,\n        bayes: bayes_model::Model::new()?,",
+      "to": "        scheduler: scheduler::Model::new()?,",
+      "count": 2
+    },
+    {
+      "from": "fn encode_payload(last: &[u16]) -> Result<(Vec<u8>, Vec<u16>, usize)> {",
+      "to": "fn encode_payload(last: &[u16]) -> Result<(Vec<u8>, Vec<u16>, usize, scheduler::Audit)> {",
+      "count": 1
+    },
+    {
+      "from": "    Ok((e.finish()?, alphabet, runs.len()))",
+      "to": "    Ok((e.finish()?, alphabet, runs.len(), stream.scheduler.audit()))",
+      "count": 1
+    },
+    {
+      "from": "fn decode_payload(payload: &[u8], alphabet: &[u16], n: usize) -> Result<(Vec<u16>, usize)> {",
+      "to": "fn decode_payload(payload: &[u8], alphabet: &[u16], n: usize) -> Result<(Vec<u16>, usize, scheduler::Audit)> {",
+      "count": 1
+    },
+    {
+      "from": "    Ok((last, runs))",
+      "to": "    Ok((last, runs, stream.scheduler.audit()))",
+      "count": 1
+    },
+    {
+      "from": "    let (payload, alphabet, runs) = encode_payload(&last)?;",
+      "to": "    let (payload, alphabet, runs, scheduling) = encode_payload(&last)?;",
+      "count": 1
+    },
+    {
+      "from": "    let (last, runs) = decode_payload(",
+      "to": "    let (last, runs, scheduling) = decode_payload(",
+      "count": 1
+    },
+    {
+      "from": "    payload_crc: u32,\n}",
+      "to": "    payload_crc: u32,\n    scheduling: scheduler::Audit,\n}",
+      "count": 1
+    },
+    {
+      "from": "            payload_crc,\n        },",
+      "to": "            payload_crc,\n            scheduling,\n        },",
+      "count": 2
+    },
+    {
+      "from": "\\\"payload_crc\\\":{}}}\",",
+      "to": "\\\"payload_crc\\\":{},\\\"scheduling\\\":{}}}\",",
+      "count": 1
+    },
+    {
+      "from": "        s.payload_crc\n",
+      "to": "        s.payload_crc,\n        s.scheduling.json()\n",
+      "count": 1
+    }
+  ],
+  "bayes_insertion": "\n    pub(super) fn gain(&self, class: u32) -> Result<f64> {\n        let state = self.classes.get(class as usize).ok_or(\"Bayes class outside bounds\")?;\n        let gain = state.primary - state.cts;\n        if !gain.is_finite() {\n            return Err(\"Bayes gain not finite\".into());\n        }\n        Ok(gain)\n    }\n\n"
+}

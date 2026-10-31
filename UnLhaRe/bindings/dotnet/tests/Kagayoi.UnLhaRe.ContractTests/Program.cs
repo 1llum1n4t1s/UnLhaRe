@@ -53,6 +53,30 @@ internal static class ContractTests
         };
         ArchiveClient.Create(archive, sources, CompressionMethod.Lh5);
 
+        var methodSource = Path.Combine(root, "methods.txt");
+        var methodContents = string.Concat(Enumerable.Repeat("LH method contract\n", 512));
+        File.WriteAllText(methodSource, methodContents, new UTF8Encoding(false));
+        foreach (var method in new[] { CompressionMethod.Stored, CompressionMethod.Lh4,
+            CompressionMethod.Lh5, CompressionMethod.Lh6, CompressionMethod.Lh7 })
+        {
+            var methodArchive = Path.Combine(root, $"method-{(int)method}.lzh");
+            ArchiveClient.Create(methodArchive, [new ArchiveSourceEntry(methodSource, "methods.txt")],
+                method, CompressionEffort.High);
+            Assert(ArchiveClient.List(methodArchive).Single().Method == $"-lh{(int)method}-",
+                "Create did not preserve the selected compression method.");
+            ArchiveClient.Verify(methodArchive);
+            var methodOutput = Path.Combine(root, $"method-{(int)method}");
+            ArchiveClient.Extract(methodArchive, methodOutput);
+            Assert(File.ReadAllText(Path.Combine(methodOutput, "methods.txt")) == methodContents,
+                "Compression changed the entry payload.");
+        }
+
+        var highReport = ArchiveClient.CreateWithResults(Path.Combine(root, "high-report.lzh"),
+            [new ArchiveSourceEntry(methodSource, "methods.txt")], CompressionMethod.Lh4,
+            CompressionEffort.High, new ArchiveCreateReportOptions(FailIfAllSkipped: true));
+        Assert(highReport.Entries.Single().Status == ArchiveCreateEntryStatus.Written,
+            "High compression must work through the report API.");
+
         var entries = ArchiveClient.List(archive);
         Assert(entries.Count == 3, "List must return every created entry.");
         Assert(entries.Any(entry => entry.Name == "資料/こんにちは.txt"), "List lost a Unicode entry name.");

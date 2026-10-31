@@ -1,0 +1,7 @@
+# 実行前補足：selfcheckにもpeak計測を付ける
+
+親が先行e2e.rs9815B SHA2655B4B5C02A144334DDD2C42576D29C8E5FD37F7B40B256A34290D7FA955D9Dを全文確認し、編集停止・返却後にこの補足を追加する。旧数値/forge/正常/拒否censusは変更しない。
+
+PLANの「全native process終了時WinAPI計測」を実装するため、新先行e2e.runのprintln一行だけを、run_depth(5)完了→有限Vec解放後にcrate::memory::read_once()→同一stdoutの1JSONへE2Eとmemoryをネストする形に置換。pub(crate)run()->Result<()>を維持し、新codecのrun_selfcheckの数値/返却signatureは変更しない。selfcheck JSONはstatus/E2E/memory/peak_WS_gate_onlyであり、root peak_WS_gate_onlyはWSだけ、runnerがWSとprivateを各160MiBへ別に判定する。WinAPI取得不能や超過は採用成功にしない。fixed CLIでも独立peak計測する。
+
+変更は検証報告wrapperだけ、wire_audit ON専用。原Model/frame_audit/primary_auditはOFF、原fixture/helper/全Proof14/全再frame/14正常34破損4短headerは維持。親レビュー前にcodec/probe/runnerの実装を始めない。先行FAILURE_PLANの元allowlistは歴史として保ち、runnerの追加allowlistはこのexact wrapper一置換だけを足す。

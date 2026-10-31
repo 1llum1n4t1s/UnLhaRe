@@ -1,0 +1,2 @@
+REJECTED: normal55.0835->79.5073ms reverse55.5702->79.7972ms;15% gate fails.
+Proof: build/khc-native-dual-rans-speed-a-20261008/report.json

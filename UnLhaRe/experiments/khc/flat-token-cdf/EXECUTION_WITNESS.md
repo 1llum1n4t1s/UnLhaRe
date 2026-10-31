@@ -1,0 +1,6 @@
+# 完成している算術EXEの限定実行（2026-10-07）
+
+arith-a/thinLTOとarith-no-lto-aは、いずれもcompiler/link一時物の1MiB上限超過で停止した。最終残存が小さくてもcompile成功・資源gate通過と解釈しない。後者のfailed report SHA24074D67AFD7640EFDA6F70AAF43FC0D6975F8479D4276AC8A193FB4329A5D52は保持。
+新しくcompileしない。残存138240B EXE SHA038A5087504340CB669FDAEDBAB57C0B7E143CD2F733032609B44D9DD339B289をsource/failed compiler command/hash/bytes/mtime照合のうえ限定実行し、整数計算のruntime証拠だけを採る。child16MiB/10s、outputは別root1MiB/report16KiB、sourceを変更しない、Cargo増分0。artifactが壊れている/未知/原典不一致なら実行を中止、未完を成功として扱わない。
+このruntime有限照合は数学的証明・coder完全復元・性能・出荷build・compiler資源gate合格の代わりにはならない。次は既存native crateへ追加する小さいcensus等、stdlib/link一時物を重複生成しない経路を事前見積りする。今回の失敗を避けるために上限を緩めない。
+

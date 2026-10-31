@@ -1,0 +1,18 @@
+pub const EMPTY:u32=u32::MAX;
+pub fn hash(key:u32)->u32{let mut h=(key^(key>>16)).wrapping_mul(0x7feb352d);h=(h^(h>>15)).wrapping_mul(0x846ca68b);h^(h>>16)}
+fn fill(len:usize,value:u32)->Result<Vec<u32>,String>{let mut data=Vec::new();data.try_reserve_exact(len).map_err(|_|"map allocation")?;data.resize(len,value);Ok(data)}
+#[derive(Clone,Copy,Debug)]
+pub struct Plan {key:u32,slot:usize,row:usize,used:usize,existing:bool}
+impl Plan {pub fn row(&self)->usize{self.row}}
+pub struct ExactMap {pub keys:Vec<u32>,pub rows:Vec<u32>,pub used:usize,pub capacity:usize}
+impl ExactMap {
+    pub fn new(capacity:usize)->Result<Self,String>{if capacity==0 || capacity>65536{return Err("map capacity".into());}let slots=capacity.checked_mul(2).ok_or("map slots overflow")?;Ok(Self{keys:fill(slots,EMPTY)?,rows:fill(slots,EMPTY)?,used:0,capacity})}
+    fn shape(&self)->Result<usize,String>{let slots=self.capacity.checked_mul(2).ok_or("map slots overflow")?;if self.capacity==0 || self.capacity>65536 || self.used>self.capacity || self.keys.len()!=slots || self.rows.len()!=slots{return Err("map shape".into());}Ok(slots)}
+    fn locate(&self,key:u32)->Result<(usize,bool),String>{if key==EMPTY{return Err("empty key forbidden".into());}let slots=self.shape()?;let start=hash(key) as usize%slots;for step in 0..slots{let slot=(start+step)%slots;let stored=self.keys[slot];if stored==EMPTY{if self.rows[slot]!=EMPTY{return Err("empty map row mismatch".into());}return Ok((slot,false));}if stored==key{let row=self.rows[slot] as usize;if row>=self.used{return Err("map row range".into());}return Ok((slot,true));}}Err("Limit: exact context slots exhausted".into())}
+    pub fn find(&self,key:u32)->Result<Option<usize>,String>{let(slot,found)=self.locate(key)?;Ok(if found{Some(self.rows[slot] as usize)}else{None})}
+    pub fn prepare(&self,key:u32)->Result<Plan,String>{let(slot,existing)=self.locate(key)?;if !existing && self.used==self.capacity{return Err("Limit: exact context rows full".into());}let row=if existing{self.rows[slot] as usize}else{self.used};Ok(Plan{key,slot,row,used:self.used,existing})}
+    pub fn validate_plan(&self,plan:&Plan)->Result<(),String>{let slots=self.shape()?;if self.used!=plan.used || plan.slot>=slots || plan.key==EMPTY{return Err("stale map reservation".into());}let valid=if plan.existing{self.keys[plan.slot]==plan.key && self.rows[plan.slot] as usize==plan.row && plan.row<self.used}else{self.keys[plan.slot]==EMPTY && self.rows[plan.slot]==EMPTY && plan.row==self.used && self.used<self.capacity};if !valid{return Err("stale map slot/key".into());}Ok(())}
+    pub fn commit(&mut self,plan:Plan)->Result<usize,String>{self.validate_plan(&plan)?;if !plan.existing{self.keys[plan.slot]=plan.key;self.rows[plan.slot]=u32::try_from(plan.row).map_err(|_|"map row conversion")?;self.used+=1;}Ok(plan.row)}
+    pub fn allocation_bytes(&self)->usize{(self.keys.capacity()+self.rows.capacity())*4}
+    pub fn verify_rows(&self,first:&[u32])->Result<usize,String>{let slots=self.shape()?;if first.len()!=self.capacity{return Err("map first-key shape".into());}let mut occupied=0;for slot in 0..slots{let key=self.keys[slot];if key==EMPTY{if self.rows[slot]!=EMPTY{return Err("terminal empty map slot".into());}}else{let row=self.rows[slot] as usize;if row>=self.used || first[row]!=key || self.find(key)?!=Some(row){return Err("terminal map slot/key/row".into());}occupied+=1;}}if occupied!=self.used{return Err("terminal map occupied count".into());}for(row,&key)in first.iter().enumerate(){if row<self.used{if key==EMPTY || self.find(key)?!=Some(row){return Err("terminal registered map row".into());}}else if key!=EMPTY{return Err("terminal unused map row".into());}}Ok(occupied)}
+}

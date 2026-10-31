@@ -1,0 +1,63 @@
+{
+  "original": "experiments/khc/bayes-dominant-q15/verify-codec.ps1",
+  "changes": [
+    {
+      "old": "# 実装前失敗計画: ../BAYES_DOMINANT_Q15_CONTRACT_20261002.md",
+      "new": "# 実装前失敗計画: ../SIMD_CODEC_CONTRACT_20261002.md",
+      "count": 1
+    },
+    {
+      "old": "build/khc-bayes-dominant-q15-20261002-codec",
+      "new": "build/khc-causal-simd-quotient-20261002-warning-fix",
+      "count": 1
+    },
+    {
+      "old": "Hold (Join-Path $PSScriptRoot '../BAYES_DOMINANT_Q15_CONTRACT_20261002.md') 'preimplementation-contract' '9BC66305D8C01DEFD56CF33A643BA0963F49CB351EB3DCE84C4ED3F3E56EEFE5'",
+      "new": "Hold (Join-Path $PSScriptRoot '../SIMD_CODEC_CONTRACT_20261002.md') 'preimplementation-contract' 'B9F62327BB9209C796B53AAADB3F4385DDEE5DE42A9219966AC75A9AC8BD6062'\n    Hold (Join-Path $PSScriptRoot '../simd-quotient/exact_div.rs') 'batch-helper' '9A135D48AD9C80B02B5BF916301EBBA0F95ED3EA578B6E0B0563A4E6E38645C7'\n    Hold (Join-Path $root 'build/khc-simd-quotient-20261002/report.json') 'batch-numeric-proof' 'FE390BBE820107F32570BFC6E416E5FA947743848131F8EB8513BFC4E02E1EDE'",
+      "count": 1
+    },
+    {
+      "old": "@('bayes_model.rs','bayes_old.rs','scheduler.rs','codec.rs','correspondence.json','verify-codec.ps1')",
+      "new": "@('cts_model.rs','exact_kt.rs','scheduler.rs','codec.rs','correspondence.json','verify.ps1')",
+      "count": 1
+    },
+    {
+      "old": "$correspondence=Get-Content -LiteralPath",
+      "new": "Hold (Join-Path $PSScriptRoot '../bayes-dominant-q15/bayes_model.rs') 'unchanged-bayes' 'DC0852C55C5CDA8B97D445C231B92ACF446FCBC17959B6ABC58244E7D0E6797B'\n    Hold (Join-Path $PSScriptRoot '../bayes-dominant-q15/scheduler.rs') 'old-scheduler' 'C286EC6D84894A889B5BD2153E0817BDA4FD22A2A684B8E2554F47BB21475656'\n    Hold (Join-Path $PSScriptRoot '../bayes-dominant-q15/codec.rs') 'old-codec' '0AD79D2C15CFFA96CDBED33421C20418C146BA223C872CFDCF5FD3F263ED0B64'\n    $batchNumeric=Get-Content -LiteralPath (Join-Path $root 'build/khc-simd-quotient-20261002/report.json') -Raw|ConvertFrom-Json\n    if($batchNumeric.status -cne 'batch_numeric_verified_not_codec_or_timing' -or $batchNumeric.checks.Count -ne 32 -or $batchNumeric.invocations.Count -ne 87 -or $batchNumeric.identities.Count -ne 10){throw 'batch numeric proof counts/status'}\n    if(!$batchNumeric.features.avx2_available){throw 'Four-variant verifier requires observed AVX2 availability'}\n    foreach($summary in $batchNumeric.summaries){if($summary.summary.records -ne 9293629 -or $summary.summary.matched -ne 9293629 -or $summary.summary.batches -ne 2323408 -or $summary.summary.fingerprint_u64 -cne 'e5c97b90b4768836' -or $summary.summary.certificate_fallback -ne 0){throw 'batch numeric summary'}}\n    foreach($id in $batchNumeric.identities){Hold $id.path 'batch-numeric-current-identity' $id.before_sha256}\n    $checks.Add('four-condition-streamed-independent-batch-numeric-proof')\n    $correspondence=Get-Content -LiteralPath",
+      "count": 1
+    },
+    {
+      "old": "@('native','checked')",
+      "new": "@('native','checked','scalar','scalar-checked')",
+      "count": 2
+    },
+    {
+      "old": "'opt-level=3','-o',$exe",
+      "new": "'opt-level=3','-C','link-arg=/DEBUG:NONE','-o',$exe",
+      "count": 1
+    },
+    {
+      "old": "if($variant -ceq 'checked'){$argv+=@('-C','overflow-checks=yes')}",
+      "new": "if($variant.EndsWith('checked')){$argv+=@('-C','overflow-checks=yes')}\n        if($variant.StartsWith('scalar')){$argv+=@('--cfg','khc_force_scalar_batch')}",
+      "count": 1
+    },
+    {
+      "old": "    $temporary=@(Get-ChildItem",
+      "new": "    $pdbs=@(Get-ChildItem -LiteralPath $work -File|Where-Object {$_.Extension -ceq '.pdb'})\n    if($pdbs.Count -and !$failure){$failure='unneeded PDB unexpectedly generated'}\n    $temporary=@(Get-ChildItem",
+      "count": 1
+    },
+    {
+      "old": "owned_tmp_or_reparse=$temporary.Count;timing_used=$false",
+      "new": "owned_tmp_or_reparse=$temporary.Count;owned_pdb=$pdbs.Count;variants=@('native','checked','scalar','scalar-checked');timing_used=$false",
+      "count": 1
+    },
+    {
+      "old": "Write-New (Join-Path $work 'report.json') ([Text.Encoding]::UTF8.GetBytes($json))",
+      "new": "Write-New (Join-Path $work 'report.json') ([Text.Encoding]::UTF8.GetBytes($json))\n    $null=& (Join-Path $PSScriptRoot '../disk-budget.ps1') -WorkDirectory $work -MaxRunMiB 32",
+      "count": 1
+    },
+    {
+      "append": "\n"
+    }
+  ]
+}

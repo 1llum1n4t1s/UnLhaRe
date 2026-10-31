@@ -1,0 +1,75 @@
+{
+  "original": "experiments/khc/causal-simd-quotient/verify.ps1",
+  "changes": [
+    {
+      "old": "../SIMD_CODEC_CONTRACT_20261002.md",
+      "new": "../COMPACT_CODEC_CONTRACT_20261002.md",
+      "count": 2
+    },
+    {
+      "old": "build/khc-causal-simd-quotient-20261002-warning-fix",
+      "new": "build/khc-causal-compact-simd-20261002",
+      "count": 1
+    },
+    {
+      "old": "B9F62327BB9209C796B53AAADB3F4385DDEE5DE42A9219966AC75A9AC8BD6062",
+      "new": "D7A25F74B7B1CC4AF888449009052AE124F6A81B94A41A3BFBE66670FAF7C396",
+      "count": 1
+    },
+    {
+      "old": "../simd-quotient/exact_div.rs",
+      "new": "../compact-simd-quotient/exact_div.rs",
+      "count": 1
+    },
+    {
+      "old": "9A135D48AD9C80B02B5BF916301EBBA0F95ED3EA578B6E0B0563A4E6E38645C7",
+      "new": "978B932A7D0CFAA7C8090DB75C6928E7746798F91213CA7AE89231810A9C222D",
+      "count": 1
+    },
+    {
+      "old": "build/khc-simd-quotient-20261002/report.json",
+      "new": "build/khc-compact-simd-20261002-coverage-repair/report.json",
+      "count": 2
+    },
+    {
+      "old": "FE390BBE820107F32570BFC6E416E5FA947743848131F8EB8513BFC4E02E1EDE",
+      "new": "C8B6DAA9DEFA6C97D6DD062682AA87139B0CC6C5F6782B642EA977783FCE4935",
+      "count": 1
+    },
+    {
+      "old": "batch_numeric_verified_not_codec_or_timing",
+      "new": "compact_batch_numeric_verified_not_codec_or_timing",
+      "count": 1
+    },
+    {
+      "old": "$batchNumeric.identities.Count -ne 10",
+      "new": "$batchNumeric.identities.Count -ne 13",
+      "count": 1
+    },
+    {
+      "old": "$summary.summary.fingerprint_u64 -cne 'e5c97b90b4768836'",
+      "new": "$summary.summary.fingerprint_u64 -cne 'f02dbdcb00adbe1d' -or $summary.summary.compact -ne 8398832",
+      "count": 1
+    },
+    {
+      "old": "$fixedFrame=$null",
+      "new": "$fixedFrame=$null\n$diagnostic=$null",
+      "count": 1
+    },
+    {
+      "old": "    foreach($case in @('empty','single','all_bytes','repeated','periodic','seeded_random','fixed')) {",
+      "new": "    $countedExe=Join-Path $work 'codec-counted.exe'\n    $null=Child $compiler @((Join-Path $PSScriptRoot 'codec.rs'),'--edition=2024','-C','panic=abort','-C','opt-level=3','-C','overflow-checks=yes','-C','link-arg=/DEBUG:NONE','--cfg','khc_compact_counts','-o',$countedExe)\n    Hold $countedExe 'counted-codec'\n    foreach($case in @('empty','single','all_bytes','repeated','periodic','seeded_random','fixed')) {",
+      "count": 1
+    },
+    {
+      "old": "    foreach($case in @('magic','header_crc','payload_crc','truncated','trailing')) {",
+      "new": "\n    $fixedInput=Join-Path $root 'build/khc-current-source-native-solid-20260923-group/all.group'\n    $countedFrame=Join-Path $work 'fixed-counted.frame'\n    $countedRestore=Join-Path $work 'fixed-counted.restore'\n    $countedEncode=Child $countedExe @('encode',$fixedInput,$countedFrame)\n    $split=$countedEncode.IndexOf(\"`n\")\n    if($split -lt 0 -or $countedEncode.Substring(0,$split+1) -cne $oldCalls[0].stdout){throw 'counted encode primary stdout'}\n    $encodeCounts=$countedEncode.Substring($split+1).Trim()|ConvertFrom-Json\n    $countedDecode=Child $countedExe @('decode',$countedFrame,$countedRestore)\n    $split=$countedDecode.IndexOf(\"`n\")\n    if($split -lt 0){throw 'counted decode diagnostic missing'}\n    $decodePrimary=$countedDecode.Substring(0,$split+1)|ConvertFrom-Json\n    $decodeCounts=$countedDecode.Substring($split+1).Trim()|ConvertFrom-Json\n    if(($encodeCounts|ConvertTo-Json -Compress) -cne ($decodeCounts|ConvertTo-Json -Compress)){throw 'encode/decode compact counters differ'}\n    $fixedPrimary=$oldCalls[0].stdout|ConvertFrom-Json\n    $heavyEvents=[long](($fixedPrimary.scheduling.processed|Measure-Object -Sum).Sum)\n    if($heavyEvents -ne 3223156 -or $encodeCounts.compact_groups -le 0 -or $encodeCounts.compact_groups+$encodeCounts.fallback_groups -ne $heavyEvents*4){throw 'bounded actual compact kernel coverage'}\n    if($encodeCounts.plain_array_bytes -ne 32 -or $encodeCounts.legacy_array_bytes -ne 96 -or $encodeCounts.compact_option_bytes -ge 96){throw 'compact diagnostic type layout'}\n    if(($decodePrimary.scheduling|ConvertTo-Json -Compress) -cne ($fixedPrimary.scheduling|ConvertTo-Json -Compress)){throw 'counted decode schedule differs'}\n    Same $countedFrame (Join-Path $work 'fixed-native.frame')\n    Same $countedRestore $fixedInput\n    Hold $countedFrame 'counted-fixed-frame';Hold $countedRestore 'counted-fixed-restore'\n    $diagnostic=[ordered]@{scope='one native diagnostic encode/decode, no reference cfg, no timing';heavy_events=$heavyEvents;encode=$encodeCounts;decode=$decodeCounts}\n    $checks.Add('bounded-actual-kernel-counts-frame-summary-and-restore')\n\n    foreach($case in @('magic','header_crc','payload_crc','truncated','trailing')) {",
+      "count": 1
+    },
+    {
+      "old": "timing_used=$false}",
+      "new": "timing_used=$false;compact_diagnostic=$diagnostic}",
+      "count": 1
+    }
+  ]
+}

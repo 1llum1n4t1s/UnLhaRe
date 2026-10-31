@@ -1,0 +1,237 @@
+//! 固定Q32 CTS。観測側ceilingをposterior分母とする独立した研究数値仕様。
+#[path = "exact_div.rs"]
+mod exact_div;
+
+const DEPTH: usize = 16;
+const LEVELS: usize = DEPTH + 1;
+const CLASSES: usize = 7;
+const NODES: usize = (1 << LEVELS) - 1;
+const Q: u64 = 1 << 32;
+const MAX_OBSERVATIONS: u32 = 562_036_803;
+type Result<T> = super::Result<T>;
+
+#[derive(Clone, Copy)]
+struct Node {
+    zero: u32,
+    one: u32,
+    weight: u64,
+}
+impl Node {
+    fn fresh() -> Self {
+        Self {
+            zero: 0,
+            one: 0,
+            weight: Q / 2,
+        }
+    }
+    fn kt(&self) -> Result<u64> {
+        let total = self
+            .zero
+            .checked_add(self.one)
+            .ok_or("CTS node total overflow")?;
+        if total > MAX_OBSERVATIONS {
+            return Err("CTS node observation cap exceeded".into());
+        }
+        let numerator_factor = u64::from(self.zero)
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(1))
+            .ok_or("CTS KT numerator overflow")?;
+        let denominator = u64::from(total)
+            .checked_add(1)
+            .ok_or("CTS KT denominator overflow")?;
+        probability(ratio(Q / 2, numerator_factor, denominator)?)
+    }
+}
+
+#[inline(always)]
+fn ratio(a: u64, b: u64, denominator: u64) -> Result<u64> {
+    if denominator == 0 {
+        return Err("CTS zero denominator".into());
+    }
+    exact_div::ratio(a, b, denominator)
+        .map(|(quotient, _flags)| quotient)
+        .map_err(|_| "CTS ratio product overflow".into())
+}
+fn probability(p: u64) -> Result<u64> {
+    if !(1..Q).contains(&p) {
+        return Err("CTS Q32 probability outside bounds".into());
+    }
+    Ok(p)
+}
+fn weighted_sum(weight: u64, kt: u64, child: u64) -> Result<u64> {
+    if weight > Q {
+        return Err("CTS weight outside bounds".into());
+    }
+    probability(kt)?;
+    probability(child)?;
+    let complement = Q
+        .checked_sub(weight)
+        .ok_or("CTS weight complement underflow")?;
+    let a = weight
+        .checked_mul(kt)
+        .ok_or("CTS mixture product overflow")?;
+    let b = complement
+        .checked_mul(child)
+        .ok_or("CTS mixture product overflow")?;
+    a.checked_add(b)
+        .ok_or_else(|| "CTS mixture sum overflow".into())
+}
+fn mixture(weight: u64, kt: u64, child: u64) -> Result<u64> {
+    probability(weighted_sum(weight, kt, child)? / Q)
+}
+
+pub(super) struct Prediction {
+    indexes: [usize; LEVELS],
+    kt: [u64; LEVELS],
+    zero: [u64; LEVELS],
+}
+struct Tree {
+    nodes: Vec<Node>,
+    history: u16,
+    observations: u32,
+}
+impl Tree {
+    fn new() -> Result<Self> {
+        let nodes = super::filled(NODES, Node::fresh())?;
+        Ok(Self {
+            nodes,
+            history: 0,
+            observations: 0,
+        })
+    }
+    // current bitは引数にも含めず、最新の過去bitから木をたどる。
+    fn predict(&self) -> Result<Prediction> {
+        let mut prediction = Prediction {
+            indexes: [0; LEVELS],
+            kt: [0; LEVELS],
+            zero: [0; LEVELS],
+        };
+        for level in 0..LEVELS {
+            if level != 0 {
+                prediction.indexes[level] = prediction.indexes[level - 1]
+                    .checked_mul(2)
+                    .and_then(|n| n.checked_add(1 + usize::from((self.history >> (level - 1)) & 1)))
+                    .ok_or("CTS path index overflow")?;
+            }
+            prediction.kt[level] = self
+                .nodes
+                .get(prediction.indexes[level])
+                .ok_or("CTS node outside bounds")?
+                .kt()?;
+        }
+        prediction.zero[DEPTH] = prediction.kt[DEPTH];
+        for level in (0..DEPTH).rev() {
+            prediction.zero[level] = mixture(
+                self.nodes[prediction.indexes[level]].weight,
+                prediction.kt[level],
+                prediction.zero[level + 1],
+            )?;
+        }
+        Ok(prediction)
+    }
+    fn update(&mut self, prediction: &Prediction, bit: bool) -> Result<()> {
+        let after = self
+            .observations
+            .checked_add(1)
+            .ok_or("CTS class observation overflow")?;
+        if after > MAX_OBSERVATIONS {
+            return Err("CTS class observation cap exceeded".into());
+        }
+        let denominator = u64::from(after)
+            .checked_add(1)
+            .ok_or("CTS switch denominator overflow")?;
+        let alpha = ratio(Q, 1, denominator)?;
+        let retained = Q
+            .checked_sub(alpha.checked_mul(2).ok_or("CTS switch overflow")?)
+            .ok_or("CTS switch outside bounds")?;
+        // childの予測は更新前に保存済み。posterior/countはleafからrootの順。
+        for level in (0..LEVELS).rev() {
+            let node = self
+                .nodes
+                .get_mut(prediction.indexes[level])
+                .ok_or("CTS update node outside bounds")?;
+            if node.weight > Q {
+                return Err("CTS update weight outside bounds".into());
+            }
+            if level != DEPTH {
+                let pk = if bit {
+                    Q.checked_sub(prediction.kt[level])
+                        .ok_or("CTS KT complement underflow")?
+                } else {
+                    prediction.kt[level]
+                };
+                let child = if bit {
+                    Q.checked_sub(prediction.zero[level + 1])
+                        .ok_or("CTS child complement underflow")?
+                } else {
+                    prediction.zero[level + 1]
+                };
+                // 観測側の上側丸めはzero予測floorとは別のcanonical仕様。
+                let ceiling = weighted_sum(node.weight, pk, child)?
+                    .checked_add(Q.checked_sub(1).ok_or("CTS ceiling offset underflow")?)
+                    .ok_or("CTS ceiling sum overflow")?
+                    / Q;
+                let posterior = ratio(node.weight, probability(pk)?, ceiling)?;
+                if posterior > Q {
+                    return Err("CTS posterior outside bounds".into());
+                }
+                node.weight = alpha
+                    .checked_add(ratio(retained, posterior, Q)?)
+                    .ok_or("CTS next weight overflow")?;
+                if node.weight > Q {
+                    return Err("CTS next weight outside bounds".into());
+                }
+            }
+            let count = if bit { &mut node.one } else { &mut node.zero };
+            *count = count.checked_add(1).ok_or("CTS node count overflow")?;
+            let total = node
+                .zero
+                .checked_add(node.one)
+                .ok_or("CTS updated node total overflow")?;
+            if total > MAX_OBSERVATIONS {
+                return Err("CTS node observation cap exceeded".into());
+            }
+        }
+        self.observations = after;
+        self.history = (self.history << 1) | u16::from(bit);
+        Ok(())
+    }
+}
+
+impl Prediction {
+    pub(super) fn zero(&self) -> u16 {
+        // 検査済みroot probabilityはQ未満であり、丸め加算はu64内。
+        ((self.zero[0] + (1 << 16)) >> 17).clamp(1, 32767) as u16
+    }
+}
+
+pub(super) struct Model {
+    trees: [Tree; CLASSES],
+}
+impl Model {
+    pub(super) fn new() -> Result<Self> {
+        Ok(Self {
+            trees: [
+                Tree::new()?,
+                Tree::new()?,
+                Tree::new()?,
+                Tree::new()?,
+                Tree::new()?,
+                Tree::new()?,
+                Tree::new()?,
+            ],
+        })
+    }
+    pub(super) fn predict(&self, class: u32) -> Result<Prediction> {
+        self.trees
+            .get(class as usize)
+            .ok_or("CTS class outside bounds")?
+            .predict()
+    }
+    pub(super) fn update(&mut self, class: u32, prediction: &Prediction, bit: bool) -> Result<()> {
+        self.trees
+            .get_mut(class as usize)
+            .ok_or("CTS class outside bounds")?
+            .update(prediction, bit)
+    }
+}

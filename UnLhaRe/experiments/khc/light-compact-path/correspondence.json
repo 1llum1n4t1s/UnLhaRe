@@ -1,0 +1,70 @@
+[
+  {
+    "name": "old_audit.rs",
+    "original": "experiments/khc/adaptive-suffix-kt/cts_model.rs",
+    "changes": [
+      {
+        "old": "        Ok(Prediction {\n",
+        "new": "        #[cfg(khc_light_path_audit)]\n        LAST_SELECTED.with(|slot| slot.set(selected));\n        Ok(Prediction {\n",
+        "count": 1
+      },
+      {
+        "append": "\n#[cfg(khc_light_path_audit)]\nstd::thread_local! { static LAST_SELECTED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }\n#[cfg(khc_light_path_audit)]\npub(super) fn audit_index(history: u16, level: usize) -> Result<usize> {\n    if level > DEPTH { return Err(\"suffix level outside bounds\".into()); }\n    let mut index = 0_usize;\n    for bit in 0..level {\n        index = index.checked_mul(2).and_then(|n| n.checked_add(1 + usize::from((history >> bit) & 1)))\n            .ok_or(\"suffix path index overflow\")?;\n    }\n    Ok(index)\n}\n#[cfg(khc_light_path_audit)]\nimpl Model {\n    pub(super) fn audit_layout() -> (usize, usize) {\n        (std::mem::size_of::<Prediction>(), std::mem::size_of::<Node>())\n    }\n    pub(super) fn audit_step(&mut self, class: u32, bit: bool) -> Result<[u64; 72]> {\n        let p = self.predict(class)?;\n        let selected = LAST_SELECTED.with(|slot| slot.get());\n        self.update(class, &p, bit)?;\n        let tree = self.trees.get(class as usize).ok_or(\"suffix class outside bounds\")?;\n        let mut state = [0; 72];\n        for level in 0..LEVELS {\n            let index = p.indexes[level];\n            let node = tree.nodes.get(index).ok_or(\"suffix node outside bounds\")?;\n            let zero = node.zero;\n            let total = node.zero.checked_add(node.one).ok_or(\"suffix node total overflow\")?;\n            state[level * 4..level * 4 + 4].copy_from_slice(&[\n                index as u64, u64::from(zero), u64::from(node.one), u64::from(total)]);\n        }\n        state[68..].copy_from_slice(&[p.zero, u64::from(tree.history), u64::from(tree.observations), selected as u64]);\n        Ok(state)\n    }\n    pub(super) fn audit_snapshot(&self, class: u32) -> Result<[u64; 70]> {\n        let tree = self.trees.get(class as usize).ok_or(\"suffix class outside bounds\")?;\n        let mut state = [0; 70];\n        for level in 0..LEVELS {\n            let index = audit_index(tree.history, level)?;\n            let node = tree.nodes.get(index).ok_or(\"suffix node outside bounds\")?;\n            let zero = node.zero;\n            let total = node.zero.checked_add(node.one).ok_or(\"suffix node total overflow\")?;\n            state[level * 4..level * 4 + 4].copy_from_slice(&[index as u64, u64::from(zero), u64::from(node.one), u64::from(total)]);\n        }\n        state[68..].copy_from_slice(&[u64::from(tree.history), u64::from(tree.observations)]);\n        Ok(state)\n    }\n    pub(super) fn audit_set_class_cap(&mut self, class: u32) -> Result<()> {\n        self.trees.get_mut(class as usize).ok_or(\"suffix class outside bounds\")?.observations = MAX_OBSERVATIONS;\n        Ok(())\n    }\n}\n"
+      }
+    ]
+  },
+  {
+    "name": "light.rs",
+    "original": "experiments/khc/adaptive-suffix-kt/cts_model.rs",
+    "changes": [
+      {
+        "old": "struct Node {\n    zero: u32,",
+        "new": "struct Node {\n    total: u32,",
+        "count": 1
+      },
+      {
+        "old": "    indexes: [usize; LEVELS],\n",
+        "new": "",
+        "count": 1
+      },
+      {
+        "old": "Node { zero: 0, one: 0 }",
+        "new": "Node { total: 0, one: 0 }",
+        "count": 1
+      },
+      {
+        "old": "impl Tree {\n",
+        "new": "#[inline(always)]\nfn leaf_index(history: u16) -> usize {\n    ((1_usize << DEPTH) - 1) + usize::from(history.reverse_bits())\n}\nimpl Tree {\n",
+        "count": 1
+      },
+      {
+        "old": "        let mut indexes = [0usize; LEVELS];\n        for level in 1..LEVELS {\n            indexes[level] = indexes[level - 1]\n                .checked_mul(2)\n                .and_then(|n| n.checked_add(1 + usize::from((self.history >> (level - 1)) & 1)))\n                .ok_or(\"suffix path index overflow\")?;\n        }\n        let mut selected = 0;\n        for level in (1..LEVELS).rev() {\n            let node = self\n                .nodes\n                .get(indexes[level])\n                .ok_or(\"suffix node outside bounds\")?;\n            let total = node\n                .zero\n                .checked_add(node.one)\n                .ok_or(\"suffix node total overflow\")?;\n            if total > MAX_OBSERVATIONS {\n                return Err(\"suffix node observation cap exceeded\".into());\n            }\n            if total >= MIN_OBSERVATIONS {\n                selected = level;\n                break;\n            }\n        }\n",
+        "new": "        let mut selected_index = leaf_index(self.history);\n        #[cfg(khc_light_path_audit)]\n        let mut selected = 0;\n        for _level in (1..LEVELS).rev() {\n            let node = self.nodes.get(selected_index).ok_or(\"suffix node outside bounds\")?;\n            let total = node.total;\n            if total > MAX_OBSERVATIONS {\n                return Err(\"suffix node observation cap exceeded\".into());\n            }\n            if total >= MIN_OBSERVATIONS {\n                #[cfg(khc_light_path_audit)]\n                { selected = _level; }\n                break;\n            }\n            selected_index = selected_index.checked_sub(1).ok_or(\"suffix parent index underflow\")? >> 1;\n        }\n",
+        "count": 1
+      },
+      {
+        "old": ".get(indexes[selected])",
+        "new": ".get(selected_index)",
+        "count": 1
+      },
+      {
+        "old": "table.kt(node.zero, node.one)",
+        "new": "table.kt(node.total.checked_sub(node.one).ok_or(\"suffix compact count invariant\")?, node.one)",
+        "count": 1
+      },
+      {
+        "old": "        Ok(Prediction {\n            indexes,\n",
+        "new": "        #[cfg(khc_light_path_audit)]\n        LAST_SELECTED.with(|slot| slot.set(selected));\n        Ok(Prediction {\n",
+        "count": 1
+      },
+      {
+        "old": "        for level in (0..LEVELS).rev() {\n            let node = self\n                .nodes\n                .get_mut(prediction.indexes[level])\n                .ok_or(\"suffix update node outside bounds\")?;\n            let count = if bit { &mut node.one } else { &mut node.zero };\n            *count = count.checked_add(1).ok_or(\"suffix node count overflow\")?;\n            let total = node\n                .zero\n                .checked_add(node.one)\n                .ok_or(\"suffix updated node total overflow\")?;\n            if total > MAX_OBSERVATIONS {\n                return Err(\"suffix node observation cap exceeded\".into());\n            }\n        }\n",
+        "new": "        let mut index = leaf_index(prediction.history);\n        for level in (0..LEVELS).rev() {\n            let node = self.nodes.get_mut(index).ok_or(\"suffix update node outside bounds\")?;\n            if bit {\n                node.one = node.one.checked_add(1).ok_or(\"suffix node count overflow\")?;\n            }\n            node.total = node.total.checked_add(1).ok_or(\"suffix updated node total overflow\")?;\n            if node.total > MAX_OBSERVATIONS {\n                return Err(\"suffix node observation cap exceeded\".into());\n            }\n            if level != 0 {\n                index = index.checked_sub(1).ok_or(\"suffix parent index underflow\")? >> 1;\n            }\n        }\n",
+        "count": 1
+      },
+      {
+        "append": "\n#[cfg(khc_light_path_audit)]\nstd::thread_local! { static LAST_SELECTED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }\n#[cfg(khc_light_path_audit)]\npub(super) fn audit_index(history: u16, level: usize) -> Result<usize> {\n    if level > DEPTH { return Err(\"suffix level outside bounds\".into()); }\n    let mut index = leaf_index(history);\n    for _ in level..DEPTH { index = index.checked_sub(1).ok_or(\"suffix parent index underflow\")? >> 1; }\n    Ok(index)\n}\n#[cfg(khc_light_path_audit)]\nimpl Model {\n    pub(super) fn audit_layout() -> (usize, usize) {\n        (std::mem::size_of::<Prediction>(), std::mem::size_of::<Node>())\n    }\n    pub(super) fn audit_step(&mut self, class: u32, bit: bool) -> Result<[u64; 72]> {\n        let p = self.predict(class)?;\n        let selected = LAST_SELECTED.with(|slot| slot.get());\n        self.update(class, &p, bit)?;\n        let tree = self.trees.get(class as usize).ok_or(\"suffix class outside bounds\")?;\n        let mut state = [0; 72];\n        for level in 0..LEVELS {\n            let index = audit_index(p.history, level)?;\n            let node = tree.nodes.get(index).ok_or(\"suffix node outside bounds\")?;\n            let zero = node.total.checked_sub(node.one).ok_or(\"suffix compact count invariant\")?;\n            let total = node.total;\n            state[level * 4..level * 4 + 4].copy_from_slice(&[\n                index as u64, u64::from(zero), u64::from(node.one), u64::from(total)]);\n        }\n        state[68..].copy_from_slice(&[p.zero, u64::from(tree.history), u64::from(tree.observations), selected as u64]);\n        Ok(state)\n    }\n    pub(super) fn audit_snapshot(&self, class: u32) -> Result<[u64; 70]> {\n        let tree = self.trees.get(class as usize).ok_or(\"suffix class outside bounds\")?;\n        let mut state = [0; 70];\n        for level in 0..LEVELS {\n            let index = audit_index(tree.history, level)?;\n            let node = tree.nodes.get(index).ok_or(\"suffix node outside bounds\")?;\n            let zero = node.total.checked_sub(node.one).ok_or(\"suffix compact count invariant\")?;\n            let total = node.total;\n            state[level * 4..level * 4 + 4].copy_from_slice(&[index as u64, u64::from(zero), u64::from(node.one), u64::from(total)]);\n        }\n        state[68..].copy_from_slice(&[u64::from(tree.history), u64::from(tree.observations)]);\n        Ok(state)\n    }\n    pub(super) fn audit_set_class_cap(&mut self, class: u32) -> Result<()> {\n        self.trees.get_mut(class as usize).ok_or(\"suffix class outside bounds\")?.observations = MAX_OBSERVATIONS;\n        Ok(())\n    }\n}\n"
+      }
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+# Paired decode after unchanged size gate
+
+Same overall96KiB source/docs/controller/backup and8MiB output,512MiB/60s compiler,64MiB/60s each run,300s suite,15%CPUquiet/60s,free5GiB+8MiB,Cargo/download0. No native/core/model/threshold/limits changed. Existing full private frame proof required and core SHA checked before run. Actual constructor re-encodes whole RAW then verifies every private byte OUTSIDE decode clock, min-selection fixed proof fee456816/changed1. Constructors are NOT evidence of paid integrated hybrid encode performance. No new archive produced.
+
+Warm1/pairs9 AB normal/BA reverse. Dictionary allocation/learning, header/native model/CRC validation, inverse and raw restoration INSIDE every decode clock. Full raw compare/capacity checks OUTSIDE. Per-file candidate median<=1.10 baseline; aligned pair-index summed decode group median<=.85 baseline BOTH orders. No timing/size threshold retuning, same bad-order result stops specified candidate. Group sums are component diagnostics, not CLI wall time. Final strong7Zip/Zstd/unseen/true RAW hybrid encode/native integration/fourOS gates remain unproven.
+
+Win32 directory metadata count avoids leaf-open deletion-pending compiler race without ignoring files; same8MiB bound, no deletion. Failed attempt b and all prior proofs retained. Add highest dictionary ID three-byte varint test only (34→36 normal), codec unchanged;164 invalid. Parent/source ownership returned at READY, total96KiB unchanged; dormant core allocation unused if parent files need it, no cap growth.

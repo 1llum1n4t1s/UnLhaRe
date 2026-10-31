@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "host": "m3mb14",
+  "root": "/Users/szk/Library/Caches/Kagayoi/UnLhaRe/goal-restore-20261019",
+  "source_sha256": "030eaef48e23004e7902bfe81c0ba28eca15b505252ee59b5d0caa1e43926c3f",
+  "old_controller_sha256": "51baf46cb26f441e1148123409a271421bd17944893e9bbd3e2fd68401c56a97",
+  "environment": {
+    "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+    "DYLD_LIBRARY_PATH": "/Users/szk/Library/Caches/Kagayoi/UnLhaRe/goal-restore-20261019/tools/rust/lib",
+    "PATH": "/Users/szk/Library/Caches/Kagayoi/UnLhaRe/goal-restore-20261019/tools/native-bin:/Users/szk/Library/Caches/Kagayoi/UnLhaRe/goal-restore-20261019/tools/rust/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+  },
+  "cc_shim_sha256": "4623cf9926461aeba37d195812a5a657db751a921d743ec01ddc4a08a8e92827",
+  "native_probe_sha256": "402f11594060e0739653a95e669df8ac2076493d8e1e2bb304411d7b0a9a13ea",
+  "previous_terminal_sha256": {
+    "prepare-source": "80b5803599293ffc7909fa99904c3d7afaec0bf570b9b06c45a6f2ad55f92d59",
+    "fetch": "ca5439f520c8d7bc5d5e50b230742b511ee44c293f5989ae145c1a947e80512d",
+    "check": "80e848d522773b5ec9a47b3eea677d87d38641b72bb12dd1036c19bed214c161"
+  }
+}

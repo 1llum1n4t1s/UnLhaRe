@@ -1,0 +1,60 @@
+{
+  "original": "experiments/khc/bayes-dominant-q15/compare.ps1",
+  "changes": [
+    {
+      "old": "'A98326FBF88608DACE22D44DF934DF5EC3062AB684E934F644013024E69B0FBE'",
+      "new": "'C54FADC9A17F584EBF6267A337107EB1149F0B3B954EA9F30B409A9AB3BFD948'",
+      "count": 1
+    },
+    {
+      "old": "build/khc-bayes-dominant-q15-20261002-codec/performance",
+      "new": "build/khc-causal-simd-quotient-20261002-warning-fix/performance",
+      "count": 1
+    },
+    {
+      "old": "frozen integer refinement codec performance directory.",
+      "new": "frozen SIMD posterior codec performance directory.",
+      "count": 1
+    },
+    {
+      "old": "-MaxRunMiB 128",
+      "new": "-MaxRunMiB 96",
+      "count": 3
+    },
+    {
+      "old": "Q15 dominant-shortcut integer scheduled candidate",
+      "new": "Q32 SIMD-posterior dominant-shortcut scheduled candidate",
+      "count": 1
+    },
+    {
+      "old": "q15-dominant-shortcut-group",
+      "new": "q32-simd-posterior-group",
+      "count": 5
+    },
+    {
+      "old": "$_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 238080",
+      "new": "$_.path -ceq (Join-Path $root 'build/khc-bayes-dominant-q15-20261002-codec/codec-native.exe') -and $_.before_sha256 -ceq 'A98326FBF88608DACE22D44DF934DF5EC3062AB684E934F644013024E69B0FBE' -and $_.bytes -eq 238080",
+      "count": 1
+    },
+    {
+      "old": "(Join-Path $PSScriptRoot '../causal-integer-refinement/compare.ps1') 'old-performance-harness'",
+      "new": "(Join-Path $PSScriptRoot '../bayes-dominant-q15/compare.ps1') 'old-performance-harness'",
+      "count": 1
+    },
+    {
+      "old": "1BB00E71EB54CDDDAAC5146C5DC36F43B6F23F8FC37A9F0B5F1D3F546E800B51",
+      "new": "3E5E745572D8F6AEEB5026E481AF329D8FD00ED000F85BA673F143EC8E81F232",
+      "count": 1
+    },
+    {
+      "old": "    $report['historical_budget_guard_repairs']=",
+      "new": "\n    $simdProof=Track-File (Join-Path $root 'build/khc-causal-simd-quotient-20261002-warning-fix/report.json') 'simd-codec-proof'\n    if($simdProof.before_sha256 -cne '09A9497FC34C580E7D18EFF3F0BCB988439FF40B6221BE77074C354B8D19BE7E'){throw 'SIMD codec proof SHA'}\n    $simdJson=Get-Content -LiteralPath $simdProof.path -Raw|ConvertFrom-Json\n    if($simdJson.status -cne 'correctness_and_size_passed_not_timed' -or $simdJson.failure -or $simdJson.timing_used -or $simdJson.checks.Count -ne 47 -or $simdJson.invocations.Count -ne 83 -or $simdJson.identities.Count -ne 263 -or $simdJson.owned_tmp_or_reparse -ne 0 -or $simdJson.owned_pdb -ne 0 -or $simdJson.frame_bytes -ne 483496){throw 'SIMD codec proof incomplete'}\n    if(($simdJson.variants -join ',') -cne 'native,checked,scalar,scalar-checked'){throw 'SIMD codec variant matrix'}\n    $simdOrdinary=@($simdJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 247296})\n    if($simdOrdinary.Count -ne 1){throw 'Candidate not the SIMD ordinary codec'}\n    $simdRefusals=@($simdJson.invocations|Where-Object exit -ne 0)\n    if($simdRefusals.Count -ne 8 -or @($simdRefusals|Where-Object {$_.exit -ne 1 -or !$_.stderr -or $_.stdout}).Count -or @($simdJson.invocations|Where-Object {$_.exit -eq 0 -and $_.stderr}).Count){throw 'SIMD codec invocation mismatch'}\n    $simdNumericProof=Track-File (Join-Path $root 'build/khc-simd-quotient-20261002/report.json') 'simd-numeric-proof'\n    if($simdNumericProof.before_sha256 -cne 'FE390BBE820107F32570BFC6E416E5FA947743848131F8EB8513BFC4E02E1EDE'){throw 'SIMD numeric proof SHA'}\n    $simdNumericJson=Get-Content -LiteralPath $simdNumericProof.path -Raw|ConvertFrom-Json\n    if($simdNumericJson.status -cne 'batch_numeric_verified_not_codec_or_timing' -or $simdNumericJson.failure -or $simdNumericJson.timing_used -or $simdNumericJson.checks.Count -ne 32 -or $simdNumericJson.invocations.Count -ne 87 -or $simdNumericJson.identities.Count -ne 10 -or $simdNumericJson.owned_tmp_or_reparse -ne 0 -or !$simdNumericJson.features.avx2_available -or $simdNumericJson.summaries.Count -ne 4){throw 'SIMD numeric proof incomplete'}\n    foreach($call in $simdNumericJson.invocations){\n        $expectedExit=if($call.argv.Count -eq 0 -or ($call.argv.Count -gt 2 -and $call.argv[0] -ceq 'query' -and $call.argv[2] -ceq '-1')){2}else{0}\n        if($call.exit -ne $expectedExit -or ($expectedExit -eq 0 -and $call.stderr) -or ($expectedExit -ne 0 -and (!$call.stderr -or $call.stdout))){throw 'SIMD numeric invocation failure'}\n    }\n    $matrix=@($simdNumericJson.summaries|ForEach-Object {\"$($_.opt)/$($_.backend)\"}|Sort-Object)\n    if(($matrix -join ',') -cne '2/avx2,2/scalar,3/avx2,3/scalar'){throw 'SIMD numeric matrix'}\n    foreach($summary in $simdNumericJson.summaries){\n        $counts=$summary.summary\n        if($counts.records -ne 9293629 -or $counts.matched -ne 9293629 -or $counts.batches -ne 2323408 -or $counts.certificate_fallback -ne 0 -or $counts.fingerprint_u64 -cne 'e5c97b90b4768836'){throw 'SIMD numeric coverage mismatch'}\n        if(($counts|ConvertTo-Json -Compress) -cne ($simdNumericJson.summaries[0].summary|ConvertTo-Json -Compress)){throw 'SIMD numeric summary mismatch'}\n    }\n    $report['simd_proofs']=[ordered]@{codec=$simdProof;numeric=$simdNumericProof}\n\n    $report['historical_budget_guard_repairs']=",
+      "count": 1
+    },
+    {
+      "old": "$dominantJson,$dominantNumericJson))",
+      "new": "$dominantJson,$dominantNumericJson,$simdJson,$simdNumericJson))",
+      "count": 1
+    }
+  ]
+}

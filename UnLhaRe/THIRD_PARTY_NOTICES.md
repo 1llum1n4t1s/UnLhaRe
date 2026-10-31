@@ -1,5 +1,7 @@
 # 第三者ソフトウェアの告知
 
+開発版KHC revision 3のrANS整数写像・byte renormalizationは、Fabian Giesenの[公開rANS実装](https://github.com/rygorous/ryg_rans/blob/master/rans_byte.h)に記述された既存原理を参考にしています。Rust実装、因果幅copy文法、4クラス保存モデル、安全な整数下界は本リポジトリで実装しています。rANS自体を独自発明とは扱いません。新たなCargo依存は追加していません。
+
 この近代化版は旧 `UnLha32Re` のC/C++エンジンを組み込まず、Cargo.lockで固定したRust依存関係を使用します。旧版の告知は旧版に引き続き適用されます。
 
 | 主な依存 | 用途 | ライセンス |

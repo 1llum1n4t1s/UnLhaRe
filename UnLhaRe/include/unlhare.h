@@ -60,6 +60,7 @@ _Static_assert(sizeof(void *) == 8, "UnLhaRe requires 64-bit pointers");
 #define UNLHARE_ERROR_KIND_INTERNAL INT32_C(10)
 
 #define UNLHARE_METHOD_STORED INT32_C(0)
+#define UNLHARE_METHOD_LH4 INT32_C(4)
 #define UNLHARE_METHOD_LH5 INT32_C(5)
 #define UNLHARE_METHOD_LH6 INT32_C(6)
 #define UNLHARE_METHOD_LH7 INT32_C(7)
@@ -90,6 +91,14 @@ UNLHARE_API uint32_t unlhare_abi_version(void);
 typedef int32_t (*unlhare_progress_callback)(void *user, uint32_t phase,
                                            uint64_t completed, uint64_t total);
 UNLHARE_API uint32_t unlhare_api_level(void);
+/* API level 6: creation accepts method 4 (LH4). JSON create requests also
+ * accept optional "effort":"standard" (default) or "effort":"high".
+ * High compares standard and two-pass parsing output and stores the smaller
+ * result, falling back to LH0 if compression grows the input. It costs more
+ * CPU time and memory proportional to entry size. Method 0 remains stored.
+ * Both run_json and create_json_report accept effort. Legacy create uses
+ * standard effort. No function signatures or ABI version are changed.
+ */
 UNLHARE_API int32_t unlhare_run_json(const char *request_utf8,
                                     unlhare_progress_callback callback,
                                     void *user);

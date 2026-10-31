@@ -1,0 +1,11 @@
+# float/static gap：丸め済み表示とexact Proofの参照訂正
+
+初回はcompile1/native1で失敗、終端の複合エラーだけを保存した。失敗report build/khc-float-static-node-gap-20261004/report.json SHA E6C92D06FA9F35C26DACDD1F7AC210E4C3CAAA61C914421C40D858EF7DEAE090と全sourceを変更せず保持する。失敗時はactual digest/entropyが保存されていないため、どのpredicateが失敗したかまでは未観測。
+
+lookup-float-cts/codec.rs:401はstats.cdf_entropy_bitsを{:.9}で表示する。親PLANの「このstats値をexact f64 bitsとして利用する」は誤り。表示3820764.172789027から変換したu64=4705459439931356010は丸め前Proofを表さない。
+
+既存の成功済みbuild/khc-float-fresh-transaction-20261004/report.json（SHA D21A852CCDE81624DBB3138838E722A1CF547E33AC0419B81CB618B884BD0507）screen.recordsのcase=fixed-all-groupに、元referenceと候補間のtyped Proof14全比較を経たproof.cdf_bits=4705459439931356009が保存されている。input2811006B/固定SHA、runs889227、primary1762795、payload478465、grammar6373537040327497557、base_pool16543436934116980951、branches[2725772,1099568]/classes6も一致する。新実行はこの正確なintegerを参照し、f64 bit一致を緩めない。
+
+新private float-static-node-gap-proof-reference/のrunnerとfailure noteのみ作る。Rustの21source closureは初回のまま、一文字も変えずpin。既存runnerを参照し、source基点を旧rootへ固定、outputを未使用build/khc-float-static-node-gap-proof-reference-20261004へ変更し、正確な既存Proof reportを追加pinしてreferenceBitsを取得する。元rounded statsは診断表示比較にだけ残す。旧失敗report/この訂正noteもpin。新source数/数値/feature/grammar/fixtures/coder等の契約を変更しない。
+
+runner編集停止・親確認後、新outputでsingle compile/native各1回。これは係数・設定sweepや盲目的retryではなく、特定済みの参照値誤りの修正を実経路で検証する再実行。初回失敗の事実を消さない。8MiB/free5GiB/モデル32MiB/phase64MiB/peak160MiB等を維持。生成はEXE/report2files、入力/frame/plain/rawtraceコピーなし。成功後RESULT/readonly verifierを新rootへ保存、全停止後親が一度照合する。GOALは総合未達/active。

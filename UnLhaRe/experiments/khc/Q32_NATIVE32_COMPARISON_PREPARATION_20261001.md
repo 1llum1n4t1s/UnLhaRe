@@ -1,0 +1,9 @@
+# native32比較の実行前検証
+
+凍結compare source SHA `5F33B8638875865965E09ABAF535EE10E231D7E25EB283560E9377D28EF6A521`。親が編集・検証所有。前回goal turnはModel/codec E2E実行と新状態更新がありprogress、今回は比較実装と実参照照合へ進む。新たな独立作者の監査とは称さない。
+
+元balanced compare SHA869873...からcloneし、candidateを44CF...、controlを直前balanced7E149...、workをnative32 codec配下へ変更。7measurement helpers（Assert-NoReparse/Get-FileIdentity/Track-File/Write-NewBytes/Invoke-Recorded/Assert-NativeListing/Get-Median）のAST Extent.Text全文一致・PowerShell Parser成功を確認した。時刻/timeout/quiet/memory/thread polling/native listing/medianは変更しない。旧歴史proofの全predicateとDFS、清掃済みLUT数値rawの厳格retained-copy adapterを保持し、新numeric/Model/codecの3proofとcandidate-E2E bindingを追加した。新codecは34check focused E2Eであり、旧87checkを新candidateでも再実行したとは称さない。
+
+親の読み取り実関数検証: 旧71pinsを絶対パスへ正規化して新85pins内に同じSHAで一意に存在、旧pins変更欠落0。新proof各schema/exit/timeout/status/layout/frame/current identityを実predicateへ通し、1878proof files・2044readholdsを回収、全current長さSHA差0、測定invocations0、work未作成。その読取確認では動的scriptblockのPSScriptRootが空になる問題をtask専用変数へ局所置換して対処した（凍結sourceは通常入口のPSScriptRootを保持）。比較元hashの置換が一致せず残った誤参照も読取段階が拒否し、明示patchで修正した。これらの失敗はtiming実行前で性能root/測定値を生成していない。
+
+正式実行は新rootで一度のみ。quiet pre5/全子前後<=15%失敗なら採用不可、閾値変更・他process停止・自動retryなし。前回preflight拒否を、今回の新candidateの測定成功と混同しない。実測結果は別recordへ残す。全7-Zip目標は未達・goal active。

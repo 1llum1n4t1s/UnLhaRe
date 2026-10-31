@@ -1,0 +1,61 @@
+{
+  "status": "four_owned_unreferenced_pdbs_removed",
+  "ended_utc": "2026-10-01T16:56:11.9150053Z",
+  "removed_files": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric\\audit-opt2.pdb",
+      "bytes": 1306624,
+      "sha256": "810CE57A309B7250209AAAA0BA428F7685B8C544957DD0B4F81188B5620D0F04",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric\\audit-opt3.pdb",
+      "bytes": 1306624,
+      "sha256": "E733D15A455AFCFBC9BF857FF093234847B537388F3B78CB45A5B42AEC9642F2",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec\\codec-checked.pdb",
+      "bytes": 1363968,
+      "sha256": "ED8EDD08139E055F37222D26C5D6F81573D2ADD8D44F5E9904760521F0E6A968",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec\\codec-native.pdb",
+      "bytes": 1363968,
+      "sha256": "A8FD6649BE25DE7DC937EA4213B85A3E512476334133B7931FB029BD36ABCA9C",
+      "referenced": 0
+    }
+  ],
+  "removed_bytes": 5341184,
+  "recovery": "not in trash; reproducible from retained sources/compiler; no backup created",
+  "checked_retained_identity_records": 237,
+  "unchanged_reports": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric\\report.json",
+      "sha": "CD285519F0EB1A74A5DBA01CDD26AFD484471586A6555537E3A7051FB69A5C51"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec\\report.json",
+      "sha": "0776392ED95FEE12D1F47FF6CE06C409B7A6DEC6A086AAC131234335EC834360"
+    }
+  ],
+  "budgets": [
+    {
+      "work_directory": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric",
+      "used_bytes": 298847,
+      "max_bytes": 8388608,
+      "free_bytes": 69335023616,
+      "minimum_free_bytes": 5368709120
+    },
+    {
+      "work_directory": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec",
+      "used_bytes": 12979149,
+      "max_bytes": 33554432,
+      "free_bytes": 69335023616,
+      "minimum_free_bytes": 5368709120
+    }
+  ],
+  "related_processes": 0,
+  "remaining_planned_files": 0
+}

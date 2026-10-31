@@ -1,0 +1,92 @@
+[
+  {
+    "old": "標本内訳の診断。正式速度評価・同候補の再試行ではない。",
+    "new": "同一componentの件数診断。正式速度評価・同候補の再試行ではない。",
+    "count": 1
+  },
+  {
+    "old": "build/khc-sampled-stage-profile-20261002",
+    "new": "build/khc-equal-component-opportunity-20261002",
+    "count": 1
+  },
+  {
+    "old": "build/khc-light-compact-codec-20261002",
+    "new": "build/khc-reciprocal-codec-20261002",
+    "count": 1
+  },
+  {
+    "old": "../SAMPLED_STAGE_PROFILE_CONTRACT_20261002.md",
+    "new": "../EQUAL_COMPONENT_OPPORTUNITY_CONTRACT_20261002.md",
+    "count": 1
+  },
+  {
+    "old": "B9FEA87D801C2C3F05522862D84C7394347CDA38B72DB51960DF22DE76A8A25E",
+    "new": "4226FE6A55B0B513C021F1978D2A0E6FCF87CFA5892CE5E6C2C0326B9E50CBBB",
+    "count": 1
+  },
+  {
+    "old": "9DB9E948B5D9F270FB5C58D003DC6BF6650C61121A7F499D361B407B8108D2BD",
+    "new": "22C7D3364743D2FD962A330BCA5EC9BBE2DF4EC6E1603F8BB4ED655FE0D645BE",
+    "count": 1
+  },
+  {
+    "old": "$base.status -cne 'correctness_and_size_passed_not_timed' -or $base.failure -or $base.timing_used -or $base.checks.Count -ne 51 -or $base.invocations.Count -ne 86 -or $base.identities.Count -ne 841 -or $base.frame_bytes -ne 483496 -or $base.owned_tmp_or_reparse -ne 0 -or $base.owned_pdb -ne 0",
+    "new": "$base.status -cne 'reciprocal_codec_correctness_and_size_passed_not_timed' -or $base.failure -or $base.timing_used -or $base.checks.Count -ne 51 -or $base.invocations.Count -ne 86 -or $base.identities.Count -ne 466 -or $base.owned_tmp_pdb_reparse -ne 0",
+    "count": 1
+  },
+  {
+    "old": "@('codec.rs','scheduler.rs','light.rs','heavy.rs','timing.rs','correspondence.json','verify.ps1')",
+    "new": "@('codec.rs','scheduler.rs','heavy.rs','correspondence.json','verify.ps1','verifier-correspondence.json')",
+    "count": 1
+  },
+  {
+    "old": "'four-source-full-correspondence'",
+    "new": "'three-source-full-correspondence'",
+    "count": 1
+  },
+  {
+    "old": "khc_stage_timing",
+    "new": "khc_equal_component_counts",
+    "count": 1
+  },
+  {
+    "old": "8BA849D4C3122D8F49DF8667D08A0DB497B575F2099EF37B73CD6A911FE04C3E",
+    "new": "7DCB3AC8CD16139D48483FEE8FB2078902EAB7DF3AE0912F33A843F40714944B",
+    "count": 1
+  },
+  {
+    "old": "$_.argv[2] -ceq (Join-Path $baseWork 'fixed-native.restore')",
+    "new": "$_.argv[1] -ceq $golden",
+    "count": 1
+  },
+  {
+    "old": "    $labels=@('bwt','inverse_bwt','entropy_encode','entropy_decode','light_init','heavy_init','light_predict','light_update','heavy_predict','heavy_update')\n    foreach($operation in @('encode','decode')){\n        $operationArgv=if($operation -ceq 'encode'){@('encode',$fixedInput,$outputFrame)}else{@('decode',$outputFrame,$restore)}\n        $stdout=Child (Join-Path $work 'codec-profile-on.exe') $operationArgv\n        $split=$stdout.IndexOf(\"`n\")\n        if($split -lt 0){throw 'profile summary absent'}\n        $expectedStdout=if($operation -ceq 'encode'){$encRef[0].stdout}else{$decRef[0].stdout}\n        if($stdout.Substring(0,$split+1) -cne $expectedStdout){throw 'profile primary summary changed'}\n        $metric=$stdout.Substring($split+1).Trim()|ConvertFrom-Json\n        if($metric.kind -cne 'sampled_stage_diagnostic_not_formal_performance' -or $metric.sampling_mask -ne 1023 -or $metric.salt_u64_hex -cne '9e3779b97f4a7c15' -or !$metric.nested_spans_overlap -or ($metric.spans.name -join ',') -cne ($labels -join ',')){throw 'sampling header/span order'}\n        $estimates=[Collections.Generic.List[object]]::new()\n        foreach($s in $metric.spans){\n            $expectedCalls=switch($s.name){\n                'bwt' {if($operation -ceq 'encode'){1}else{0}}\n                'inverse_bwt' {if($operation -ceq 'decode'){1}else{0}}\n                'entropy_encode' {if($operation -ceq 'encode'){1}else{0}}\n                'entropy_decode' {if($operation -ceq 'decode'){1}else{0}}\n                'light_init' {1}\n                'heavy_init' {1}\n                'light_predict' {$events}\n                'light_update' {$events}\n                'heavy_predict' {$processed}\n                'heavy_update' {$processed}\n            }\n            if($s.calls -ne $expectedCalls -or $s.samples -gt $s.calls -or $s.log2_ns_buckets.Count -ne 65 -or ($s.log2_ns_buckets|Measure-Object -Sum).Sum -ne $s.samples){throw 'span call/sample/histogram coverage'}\n            if($s.calls -eq 0){if($s.samples -ne 0 -or $s.sample_sum_ns -ne 0 -or $s.sample_min_ns -ne 0 -or $s.sample_max_ns -ne 0){throw 'inactive span nonzero'}}\n            elseif($s.calls -eq 1){if($s.samples -ne 1 -or $s.sample_sum_ns -ne $s.sample_min_ns -or $s.sample_sum_ns -ne $s.sample_max_ns){throw 'coarse span accounting'}}\n            elseif($s.samples -lt 1000){throw 'model sample coverage insufficient'}\n            if($s.samples -gt 0){\n                if($s.sample_min_ns -gt $s.sample_max_ns -or [decimal]$s.sample_sum_ns -lt [decimal]$s.sample_min_ns*[decimal]$s.samples -or [decimal]$s.sample_sum_ns -gt [decimal]$s.sample_max_ns*[decimal]$s.samples){throw 'sample duration bounds'}\n                $target=[long][Math]::Ceiling($s.samples/2.0);$count=0L;$bucket=-1\n                for($i=0;$i -lt 65;$i++){$count+=$s.log2_ns_buckets[$i];if($count -ge $target){$bucket=$i;break}}\n                $low=if($bucket -eq 0){[bigint]0}else{[bigint]::Pow(2,$bucket-1)}\n                $high=if($bucket -eq 0){[bigint]0}else{[bigint]::Pow(2,$bucket)-1}\n                $mean=[decimal]$s.sample_sum_ns/[decimal]$s.samples\n                $estimates.Add([pscustomobject]@{span=$s.name;sample_mean_ns=$mean;sample_p50_bucket_low_ns=$low.ToString();sample_p50_bucket_high_ns=$high.ToString();estimated_all_calls_ms_from_sample_mean=[decimal]$s.calls*$mean/1000000;not_observed_total_or_competitive_time=$true})\n            }\n        }\n        $profiles.Add([pscustomobject]@{operation=$operation;metric=$metric;estimates_not_formal_performance=$estimates})\n        $checks.Add(\"$operation-primary-summary-sampling-and-frozen-call-counts\")\n    }\n    foreach($name in $labels){\n        $e=@($profiles[0].metric.spans|Where-Object name -ceq $name)[0]\n        $d=@($profiles[1].metric.spans|Where-Object name -ceq $name)[0]\n        if($name -notin @('bwt','inverse_bwt','entropy_encode','entropy_decode') -and ($e.calls -ne $d.calls -or $e.samples -ne $d.samples)){throw 'encode/decode model count/sampling differs'}\n    }\n",
+    "new": "    foreach($operation in @('encode','decode')){\n        $operationArgv=if($operation -ceq 'encode'){@('encode',$fixedInput,$outputFrame)}else{@('decode',$outputFrame,$restore)}\n        $stdout=Child (Join-Path $work 'codec-profile-on.exe') $operationArgv\n        $split=$stdout.IndexOf(\"`n\")\n        if($split -lt 0){throw 'counter summary absent'}\n        $expectedStdout=if($operation -ceq 'encode'){$encRef[0].stdout}else{$decRef[0].stdout}\n        if($stdout.Substring(0,$split+1) -cne $expectedStdout){throw 'counter primary summary changed'}\n        $metric=$stdout.Substring($split+1).Trim()|ConvertFrom-Json\n        if($metric.kind -cne 'equal_component_opportunity_not_performance' -or ($metric.upper_levels -join ',') -cne '3,7,11,15' -or $metric.groups -ne $processed*4 -or $metric.equal_component_ceiling_mismatch -ne 0 -or $metric.masks_by_upper.Count -ne 4){throw 'counter header/group domain'}\n        $groups=0L;$equal=0L;$complete=0L\n        for($upperIndex=0;$upperIndex -lt 4;$upperIndex++){\n            $row=@($metric.masks_by_upper[$upperIndex])\n            if($row.Count -ne 16 -or ($row|Measure-Object -Sum).Sum -ne $processed -or @($row|Where-Object {$_ -lt 0}).Count){throw 'histogram upper coverage'}\n            for($mask=0;$mask -lt 16;$mask++){\n                $groups+=[long]$row[$mask]\n                $equal+=[long]$row[$mask]*[long][Numerics.BitOperations]::PopCount([uint32]$mask)\n            }\n            $complete+=[long]$row[15]\n        }\n        if($groups -ne $metric.groups -or $equal -ne $metric.equal_lanes -or $complete -ne $metric.all_equal_groups -or $equal -gt $groups*4){throw 'independent mask reduction differs'}\n        $profiles.Add([pscustomobject]@{operation=$operation;metric=$metric;independent_groups=$groups;independent_equal_lanes=$equal;independent_all_equal_groups=$complete})\n        $checks.Add(\"$operation-primary-summary-and-counter-histogram\")\n    }\n    if(($profiles[0].metric|ConvertTo-Json -Compress -Depth 6) -cne ($profiles[1].metric|ConvertTo-Json -Compress -Depth 6)){throw 'counter encode/decode histogram differs'}\n",
+    "count": 1
+  },
+  {
+    "old": "    $null=Hold $restore 'profile-restore' '18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76'\n    $checks.Add('exact-profile-frame-restore-and-model-sample-counts')",
+    "new": "    $restoreEvidence=[pscustomobject]@{transient_path=$restore;bytes=(Get-Item -LiteralPath $restore).Length;sha256=(Get-FileHash -LiteralPath $restore).Hash;reference_sha256='18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76';full_bytes_compared=$true;deleted=$false}\n    if($restoreEvidence.bytes -ne 2811006 -or $restoreEvidence.sha256 -cne $restoreEvidence.reference_sha256){throw 'counter restore identity'}\n    $fullRestore=[IO.Path]::GetFullPath($restore)\n    if($fullRestore -cne (Join-Path $work 'profile.restore') -or $seen.ContainsKey($fullRestore)){throw 'not explicitly owned transient restore'}\n    $ancestor=$fullRestore\n    while($ancestor){if((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'restore reparse'};$ancestor=[IO.Path]::GetDirectoryName($ancestor)}\n    $exclusive=[IO.File]::Open($fullRestore,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)\n    try{if($exclusive.Length -ne $restoreEvidence.bytes){throw 'restore changed'}}finally{$exclusive.Dispose()}\n    if((Get-FileHash -LiteralPath $fullRestore).Hash -cne $restoreEvidence.sha256){throw 'restore changed before removal'}\n    Remove-Item -LiteralPath $fullRestore\n    if(Test-Path -LiteralPath $fullRestore){throw 'restore cleanup failed'}\n    $restoreEvidence.deleted=$true\n    $checks.Add('exact-frame-restore-and-independent-counts-transient-restore-removed')",
+    "count": 1
+  },
+  {
+    "old": "$failure=$null\n",
+    "new": "$failure=$null\n$restoreEvidence=$null\n",
+    "count": 1
+  },
+  {
+    "old": "sampled_stage_profile_completed_not_formal_performance",
+    "new": "equal_component_opportunity_verified_not_timed",
+    "count": 1
+  },
+  {
+    "old": "diagnostic_timing_used=$true",
+    "new": "diagnostic_timing_used=$false;counter_only=$true;restore_cleanup=$restoreEvidence",
+    "count": 1
+  },
+  {
+    "old": "    $checks.Add('three-source-full-correspondence')",
+    "new": "    $oldVerifierPath=Join-Path $PSScriptRoot '../sampled-stage-profile/verify.ps1'\n    $null=Hold $oldVerifierPath 'frozen-verifier' 'EE06A07CA0E7AC21512C2DE6B9AA923A3C761F05BE8227723C86F214C682BCA6'\n    $expectedVerifier=[IO.File]::ReadAllText($oldVerifierPath).Replace(\"`r`n\",\"`n\")\n    foreach($change in (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'verifier-correspondence.json') -Raw|ConvertFrom-Json)){\n        if(([regex]::Matches($expectedVerifier,[regex]::Escape($change.old))).Count -ne $change.count){throw 'verifier replacement occurrence'}\n        $expectedVerifier=$expectedVerifier.Replace([string]$change.old,[string]$change.new)\n    }\n    if([IO.File]::ReadAllText($PSCommandPath).Replace(\"`r`n\",\"`n\") -cne $expectedVerifier){throw 'full verifier correspondence'}\n    $checks.Add('three-source-and-verifier-full-correspondence')",
+    "count": 1
+  }
+]

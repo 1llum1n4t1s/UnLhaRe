@@ -1,0 +1,25 @@
+# 高精度混合primitiveの独立検証結果
+
+Q32768/lambda64モデルを実装し、数値・state oracle検証は成功した。fullサイズ・速度・製品採用の証拠ではない。
+
+実行前契約DIRECT_TOKEN_DIRICHLET_CONTRACT_20261002.md SHA B9E3D754F2EF288B7A8C1A6DECF668DE71A2BBE14150EE5C693EDC3508616E5E。
+cdf source D766225B2EE9DB5DA2F303ED65101E7F0A012A0067CED1F3F7CF4D66385A6020。
+math source7296E6ADFFB2EE66F75F90FD35C2385D6FF224FE56B58C9B9A4C12345B48F398。
+actual source/rootとreportは凍結、過去のP256/direct sourceを変更しない。
+
+- opt2/3×overflowyes/no4条件、各393216events、424319interval、455422select、1118306count値照合。
+- scale11113731照合、111388補正1証人、683 scale拒否、1014model拒否。root/local rescale45/21。
+- 生配列/通常u128商/線形slot探索の独立oracle。D/T端点と113組、Q出力境界前後、seededprefix、n0、最大mass、invalid保持を確認。den全域網羅ではない。
+- 同一prepared分布のtotal/interval/selectとcfg wrapperを比較。cold/hot証人3件。alphabet256/root0=8193/rootTotal8448/localcold0でtoken0 frequency31779/total33024を確認。coldで一様支持256/33024≒0.775%（旧P256は50%）。全書庫の圧縮率改善とはまだ断定しない。
+- 4条件のfingerprint e2541b02ba300ce0とTrim後JSON stdout全文が一致。末尾改行を含むstdoutの厳密byte一致は未観測。frameの正確性は後段fullで実byte比較する。
+- 親もreport hashとsource/compiler/runtime/EXEの実識別値を再照合して差異なし。EXE4個+小JSONで725454byte、8MiB予算内、Cargo/PDB/raw traceなし。
+
+report build/khc-direct-token-dirichlet-model-20261002/report.json、18894byte、SHA16E04ABE35B6EA28E030BFA4B3794F63A7379C2F7DBC6640A2A35421BA4E6B83。
+oracle source7E4417D102FBA81AE5538FB161F8CB199BDF3C7A27E6D30AD1BA42606B8A579B。
+verifier FC253D4B3BE1C99581F066B3252862C11DEECE12A509B42A43A1F7D18D3CE2EB。
+failure plan F5FA11BFA042A19FB1E566FCA19322961344B808903B178B4C265FE10B488859。
+
+codec AC7541A7657F9CE9E56FEC06EFA07ADA00410AF2EBFA5FF966D64AA5DF9A4787はnewmagic KHNDR001、math import、usage、prepared queryだけを接続。親が旧normalized sourceとのCRC/read/publish/inverseとrank/length/run/headerの領域を文字列で照合し、一致した。これは接続実行/E2Eの代替ではない。full workerへ数値成功と固定SHAを通知し、独立full forge/CLI E2Eを許可した。
+
+allocation失敗注入、holdout/カテゴリ、正式同境界encode/decode性能、4native、製品/API統合は未検証。7-Zip総合超えgoalはactive・未達のまま。
+

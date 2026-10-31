@@ -1,0 +1,20 @@
+{
+  "purpose": "今回の論理回数監査が生成したPDB二つのみ。reportの299identityに未参照。削除前に絶対範囲/reparse/使用中/追跡有無/SHAを検査し、証拠を保持する。",
+  "roots": [
+    "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002"
+  ],
+  "planned_files": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002\\codec-checked.pdb",
+      "bytes": 1380352,
+      "sha256": "95D91C227434A451C87166605ADD9CA5076548E772D5B637E85E483C996EBD2C",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002\\codec-native.pdb",
+      "bytes": 1363968,
+      "sha256": "570C05DC14F59FAC8405CB40CB77C0ED8F3B649EC06D9B027219FDF52FDF9BAB",
+      "referenced": 0
+    }
+  ]
+}

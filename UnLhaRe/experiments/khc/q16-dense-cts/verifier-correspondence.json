@@ -1,0 +1,66 @@
+{
+  "base_sha256": "99CB9966342207F8B4DFC8AE02B6D1F32459343C4216F02A4EA09BE179CAD4C0",
+  "normalization": "CRLF to LF; terminal LF",
+  "changes": [
+    {
+      "from": "khc-causal-expert-scheduling-20261001",
+      "to": "khc-q16-dense-cts-20261001",
+      "count": 1
+    },
+    {
+      "from": "causal-expert-scheduling",
+      "to": "q16-dense-cts",
+      "count": 5
+    },
+    {
+      "from": "CAUSAL_EXPERT_SCHEDULING_CONTRACT_20261001.md",
+      "to": "Q16_DENSE_CTS_CONTRACT_20261001.md",
+      "count": 1
+    },
+    {
+      "from": "3599F4C04C3EA6985A1A470B44C94980117B4DF3088C9A9AF79DCC674CD776E6",
+      "to": "CD42C8ECD73232F1626A1E06C8F0A91F93ED6BA94DB3D754049ECF3C140F5BB4",
+      "count": 1
+    },
+    {
+      "from": "0AD79D2C15CFFA96CDBED33421C20418C146BA223C872CFDCF5FD3F263ED0B64",
+      "to": "3C47771AA6375114532FBBCC693EAF7634B7D7E365749DC5C4C1C535FE5C36B8",
+      "count": 1
+    },
+    {
+      "from": "7207E2467E7C0FCDA699D62DBB8D906770A4EB3AB6EED16EC6801DAB5918000D",
+      "to": "7246DDCF19668DF1D2E8BF41E765950C1591F929FF43B1EAAB41432362FA0DB4",
+      "count": 1
+    },
+    {
+      "from": "CABE510C4566B63C7AAB7F5EA0507BC3DA1EB2FA0E146E2FE568C134E3CFB9B8",
+      "to": "881CFFC59A8DEEDB0F57563AAF195539E6C3626CBDC3246EE396AF32B5B5F15F",
+      "count": 1
+    },
+    {
+      "from": "378DD52D48E9DF987062194F0BF1835680946FBA77ABDF6A01417AB4C12F4F1E",
+      "to": "942FD8EB83A333A850E6A54DB2D59FE2B591C77FA5452790D228E35E0EBE83F0",
+      "count": 1
+    },
+    {
+      "from": " foreach($pin in $pins.GetEnumerator())",
+      "to": " $pins['experiments/khc/q16-dense-cts/cts_model.rs']='DD7B6D56F86A6939EB3E750B23BD90FBBD50D96CEF20526E1E84BBAD58509D65'\n $pins['experiments/khc/q16-dense-cts/ratio_table.rs']='25278223C03F03DF2FC1ECAF616E57A2FA1C2E2C7FE26715894591383270FC73'\n $pins['experiments/khc/q16-dense-cts/numeric_audit.rs']='008EB8D5CC700CFABDA53B29D603D321805CAF76CFFA3A1DCFE50859424BC669'\n $pins['experiments/khc/causal-expert-scheduling/scheduler.rs']='7207E2467E7C0FCDA699D62DBB8D906770A4EB3AB6EED16EC6801DAB5918000D'\n $pins['experiments/khc/causal-expert-scheduling/verify.ps1']='99CB9966342207F8B4DFC8AE02B6D1F32459343C4216F02A4EA09BE179CAD4C0'\n $pins['build/khc-causal-expert-scheduling-20261001/report.json']='370534F32A979FE2768CD60C29DFBD8342CD7B358C15C4D510945B8F8DD35E7A'\n $pins['build/khc-causal-expert-scheduling-20261001/codec-native.exe']='0737E2FFD936ECD89EA2FD4F8907AC0CD6C0766072BCE56CBB65AABDA7C981EA'\n $pins['build/khc-causal-expert-scheduling-20261001/fixed-native.frame']='CF62CD2324B4CF889CDDDB25C9508C28E4BD4D24217B93BB7D4FF9318C3EAD12'\n foreach($pin in $pins.GetEnumerator())",
+      "count": 1
+    },
+    {
+      "from": " Check 'wrapper-and-bayes-full-source-correspondence'",
+      "to": " Check 'wrapper-and-bayes-full-source-correspondence'\n $oldHeavy=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '../causal-bayes-q32-kt-reciprocal/cts_model.rs')).Replace(\"`r`n\",\"`n\")\n foreach($change in $mapping.heavy_changes){if($oldHeavy.Split([string[]]@($change.from),[StringSplitOptions]::None).Length-1 -ne $change.count){throw 'Heavy marker count differs'};$oldHeavy=$oldHeavy.Replace($change.from,$change.to)}\n $newHeavy=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'cts_model.rs')).Replace(\"`r`n\",\"`n\")\n if($oldHeavy.TrimEnd([char]10) -cne $newHeavy.TrimEnd([char]10)){throw 'Q16 heavy full source correspondence differs'};Check 'q16-heavy-full-source-correspondence'\n $oldScheduler=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '../causal-expert-scheduling/scheduler.rs')).Replace(\"`r`n\",\"`n\")\n $change=$mapping.scheduler_change\n if($oldScheduler.Split([string[]]@($change.from),[StringSplitOptions]::None).Length-1 -ne $change.count){throw 'Scheduler marker count differs'}\n $expectedScheduler=$oldScheduler.Replace($change.from,$change.to)\n $actualScheduler=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'scheduler.rs')).Replace(\"`r`n\",\"`n\")\n if($expectedScheduler.TrimEnd([char]10) -cne $actualScheduler.TrimEnd([char]10)){throw 'Scheduler source correspondence differs'};Check 'scheduler-model-route-only-correspondence'",
+      "count": 1
+    },
+    {
+      "from": " $executables=@()",
+      "to": " $numericExecutables=@();$numericFirst=$null;$numericSummary=$null\n foreach($mode in @('native','portable')){\n  $numericExe=Join-Path $work \"numeric-$mode.exe\";$records=Join-Path $work \"numeric-$mode.records\"\n  $argv=@('--edition=2024','-C','panic=abort','-C','opt-level=3','--cfg','khc_balanced_kt_audit','--cfg','khc_mixture_reuse_audit')\n  if($mode -eq 'portable'){$argv+=@('--cfg','khc_force_portable')}\n  $argv+=@((Join-Path $PSScriptRoot 'numeric_audit.rs'),'-o',$numericExe)\n  $null=Invoke-Child $compiler $argv;$owned.Add($numericExe);$null=Hold $numericExe 'compiled-numeric-audit'\n  $row=Invoke-Child $numericExe @($records);$numeric=$row.stdout|ConvertFrom-Json\n  if($numeric.records -ne 918707 -or $numeric.record_bytes -ne 18 -or $numeric.ratio_cases -ne 720904 -or $numeric.kt_cases -ne 196633 -or $numeric.model_cases -ne 1170 -or $numeric.table_bytes -ne 524296 -or $numeric.prediction_bytes -ne 544 -or $numeric.node_bytes -ne 16 -or (Get-Item -LiteralPath $records).Length -ne 16536726){throw 'Q16 numeric coverage/layout differs'}\n  $owned.Add($records);$null=Hold $records 'numeric-records'\n  if($null -eq $numericFirst){$numericFirst=$records;$numericSummary=$row.stdout}\n  else{Same-Bytes $numericFirst $records;if($numericSummary -cne $row.stdout){throw 'Native/portable numeric summary differs'};Check 'native-portable-full-numeric-records'}\n  Check \"$mode-u128-ratio-kt-mixture-posterior-switch-oracle\"\n  $numericExecutables+=@{path=$numericExe;records=$records}\n }\n $report['numeric_evidence']=[ordered]@{summary=($numericSummary|ConvertFrom-Json);native=Identity $numericFirst;portable=Identity $numericExecutables[1].records;scope='Finite u128 direct arithmetic oracle and all denominator boundary/midpoint cases; not independent author or exhaustive u64 domain.'}\n $null=Invoke-Child $numericExecutables[0].path @($numericFirst) 1\n if((Identity $numericFirst).sha256 -cne $report.numeric_evidence.native.sha256){throw 'Numeric no-clobber failed'};Check 'numeric-audit-create-new-no-clobber'\n $null=Invoke-Child $numericExecutables[0].path @() 1;Check 'numeric-audit-invalid-arguments'\n $executables=@()",
+      "count": 1
+    },
+    {
+      "from": " $raw=[IO.File]::ReadAllBytes($fixed);$bad=[ordered]@{}",
+      "to": " $scheduledExe=Join-Path $root 'build/khc-causal-expert-scheduling-20261001/codec-native.exe'\n $scheduledFrame=Join-Path $root 'build/khc-causal-expert-scheduling-20261001/fixed-native.frame'\n foreach($cross in @(@{exe=$exe;frame=$scheduledFrame;label='scheduled-by-q16'},@{exe=$scheduledExe;frame=$fixed;label='q16-by-scheduled'})){\n  $out=Join-Path $work \"$($cross.label).rejected\";$row=Invoke-Child $cross.exe @('decode',$cross.frame,$out) 1\n  if($row.stderr -notmatch 'magic' -or (Test-Path -LiteralPath $out)){throw 'Scheduled/Q16 magic refusal differs'};Check \"$($cross.label)-format-refusal\"\n }\n $raw=[IO.File]::ReadAllBytes($fixed);$bad=[ordered]@{}",
+      "count": 1
+    }
+  ]
+}

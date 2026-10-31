@@ -1,0 +1,77 @@
+[
+  {
+    "old": "../BAYES_DOMINANT_Q15_CONTRACT_20261002.md",
+    "new": "../OPERATION_COUNTS_CONTRACT_20261002.md",
+    "count": 2
+  },
+  {
+    "old": "build/khc-bayes-dominant-q15-20261002-codec",
+    "new": "build/khc-operation-counts-20261002",
+    "count": 1
+  },
+  {
+    "old": "$oldRoot=Join-Path $root 'build/khc-causal-integer-refinement-20261002-comparison-repair'",
+    "new": "$oldRoot=Join-Path $root 'build/khc-bayes-dominant-q15-20261002-codec'",
+    "count": 1
+  },
+  {
+    "old": "9BC66305D8C01DEFD56CF33A643BA0963F49CB351EB3DCE84C4ED3F3E56EEFE5",
+    "new": "7BBE5B16A6C68135C0F7D04A6B197E0D409EDF507922E796A11EB43524EC63CD",
+    "count": 1
+  },
+  {
+    "old": "B7BE539DB0DA5786EAAA1BC7F4E43DC983A4495F21E6B2E80BADD999407D459D",
+    "new": "0776392ED95FEE12D1F47FF6CE06C409B7A6DEC6A086AAC131234335EC834360",
+    "count": 1
+  },
+  {
+    "old": "@('bayes_model.rs','bayes_old.rs','scheduler.rs','codec.rs','correspondence.json','verify-codec.ps1')",
+    "new": "@('bayes_model.rs','light_model.rs','cts_model.rs','exact_kt.rs','counts.rs','scheduler.rs','codec.rs','correspondence.json','verifier-correspondence.json','verify.ps1')",
+    "count": 1
+  },
+  {
+    "old": "'full-source-correspondence-four-files'",
+    "new": "'full-source-correspondence-six-files'",
+    "count": 1
+  },
+  {
+    "old": "'-C','opt-level=3','-o',$exe",
+    "new": "'-C','opt-level=3','--cfg','khc_operation_counts','-o',$exe",
+    "count": 1
+  },
+  {
+    "old": "            if($stdout -cne $oldCalls[0].stdout){throw 'exact scheduling/full encode summary changed'}\n            $null=Child $exe @('decode',$frame,$restore)",
+    "new": "            $encode=Read-Counts $stdout\n            if($encode.plain_text -cne $oldCalls[0].stdout.Replace(\"`r`n\",\"`n\")){throw 'exact scheduling/full encode summary changed'}\n            Assert-Counts $encode.counts $encode.plain.scheduling\n            $countRows.Add([pscustomobject]@{case=$case;variant=$variant;operation='encode';scheduling=$encode.plain.scheduling;counts=$encode.counts})\n            $decodedStdout=Child $exe @('decode',$frame,$restore)\n            $decoded=Read-Counts $decodedStdout\n            Assert-Counts $decoded.counts $decoded.plain.scheduling\n            if($decoded.counts_text -cne $encode.counts_text){throw 'encode/decode counts differ'}\n            if($variant -ceq 'native'){$caseCounts[$case]=$encode.counts_text}elseif($encode.counts_text -cne $caseCounts[$case]){throw 'checked/ordinary counts differ'}\n            $countRows.Add([pscustomobject]@{case=$case;variant=$variant;operation='decode';scheduling=$decoded.plain.scheduling;counts=$decoded.counts})",
+    "count": 1
+  },
+  {
+    "old": "        $null=Child (Join-Path $work 'codec-native.exe') @('decode',$golden,$cross)",
+    "new": "        $crossStdout=Child (Join-Path $work 'codec-native.exe') @('decode',$golden,$cross)\n        $crossCounts=Read-Counts $crossStdout\n        Assert-Counts $crossCounts.counts $crossCounts.plain.scheduling\n        if($crossCounts.counts_text -cne $caseCounts[$case]){throw 'cross decode counts differ'}",
+    "count": 1
+  },
+  {
+    "old": "$failure=$null\n$fixedFrame=$null",
+    "new": "$failure=$null\n$fixedFrame=$null\n$countRows=[Collections.Generic.List[object]]::new()\n$caseCounts=@{}",
+    "count": 1
+  },
+  {
+    "old": ";timing_used=$false}",
+    "new": ";timing_used=$false;operation_counts=$countRows}",
+    "count": 1
+  },
+  {
+    "old": "'correctness_and_size_passed_not_timed'});failure",
+    "new": "'operation_counts_verified_not_timed'});failure",
+    "count": 1
+  },
+  {
+    "old": "$budgetBefore=&",
+    "new": "\nfunction Total([object[]]$Values) {\n    $sum=0L\n    foreach($value in $Values){if($value -isnot [long] -and $value -isnot [int]){throw 'noninteger counter'};if($value -lt 0){throw 'negative counter'};$sum += [long]$value}\n    return $sum\n}\nfunction Read-Counts([string]$Stdout) {\n    $lines=$Stdout.Replace(\"`r`n\",\"`n\").Split(\"`n\")\n    if($lines.Count -ne 3 -or $lines[2] -cne ''){throw 'exactly two stdout JSON lines required'}\n    return [pscustomobject]@{plain_text=$lines[0]+\"`n\";plain=($lines[0]|ConvertFrom-Json);counts_text=$lines[1];counts=($lines[1]|ConvertFrom-Json)}\n}\nfunction Assert-Counts($Counts,$Schedule) {\n    if(!$Counts.operation_counts -or $Counts.overflow -or !$Counts.phase_restored -or $Counts.counter_state_bytes -ne 14360 -or $Counts.stages.Count -ne 4){throw 'counter state failure'}\n    for($stage=0;$stage -lt 4;$stage++){\n        if($Counts.stages[$stage].stage -cne @('light','active','replay','reference')[$stage] -or $Counts.stages[$stage].classes.Count -ne 7){throw 'stage/class schema'}\n        for($class=0;$class -lt 7;$class++){\n            $row=$Counts.stages[$stage].classes[$class]\n            if($row.bayes.Count -ne 4 -or $row.light_depth.Count -ne 17 -or $row.heavy_kt.Count -ne 4 -or $row.ratio_flags.Count -ne 32){throw 'counter array schema'}\n            $expected=if($stage -eq 0){[long]$Schedule.events[$class]}elseif($stage -eq 1){[long]$Schedule.active_events[$class]}elseif($stage -eq 2){[long]$Schedule.replayed[$class]}else{0L}\n            if((Total $row.bayes) -ne $expected){throw 'Bayes calls versus schedule mismatch'}\n            if($stage -eq 0){\n                if((Total $row.light_depth) -ne $expected -or $row.light_nodes -ne 17*$expected -or $row.light_probes -lt $expected -or $row.light_probes -gt 16*$expected){throw 'light histogram/nodes/probes mismatch'}\n                if($row.heavy_predicts -ne 0 -or $row.heavy_updates -ne 0 -or (Total $row.heavy_kt) -ne 0 -or $row.heavy_mixtures -ne 0 -or $row.heavy_nodes -ne 0 -or $row.ratio_wrapper -ne 0 -or (Total $row.ratio_flags) -ne 0){throw 'heavy leaked into light'}\n            }else{\n                if((Total $row.light_depth) -ne 0 -or $row.light_probes -ne 0 -or $row.light_nodes -ne 0){throw 'light leaked into heavy'}\n                if($row.heavy_predicts -ne $expected -or $row.heavy_updates -ne $expected -or (Total $row.heavy_kt) -ne 17*$expected -or $row.heavy_kt[0] -ne 0 -or $row.heavy_mixtures -ne 16*$expected -or $row.heavy_nodes -ne 17*$expected -or $row.ratio_wrapper -ne 33*$expected -or (Total $row.ratio_flags) -ne $row.ratio_wrapper+$row.heavy_kt[3]){throw 'heavy operations mismatch'}\n                for($flag=0;$flag -lt 32;$flag++){if($flag -notin @(1,2,6,8,18,22) -and $row.ratio_flags[$flag] -ne 0){throw 'unexpected ratio flags'}}\n                if($row.ratio_flags[18] -ne 0 -or $row.ratio_flags[22] -ne 0){throw 'certificate fallback in normal codec'}\n            }\n        }\n    }\n}\n\n$budgetBefore=&",
+    "count": 1
+  },
+  {
+    "old": "    $checks.Add('all-held-identities-unchanged')",
+    "new": "    if($countRows.Count -ne 28){throw 'expected 28 paired count summaries'}\n    $checks.Add('all-seven-input-counts-paired-encode-decode-and-checked')\n    $checks.Add('all-class-stage-loop-and-ratio-identities')\n    $checks.Add('all-held-identities-unchanged')",
+    "count": 1
+  }
+]

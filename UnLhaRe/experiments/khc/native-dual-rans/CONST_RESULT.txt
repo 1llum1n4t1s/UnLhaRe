@@ -1,0 +1,2 @@
+CONST also REJECTED: normal56.4562->80.2042ms; reverse56.2393->79.8944ms.
+Proof: build/khc-native-dual-rans-speed-const-a-20261008/report.json

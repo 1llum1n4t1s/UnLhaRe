@@ -1,0 +1,22 @@
+[
+  {
+    "old": "{ unsafe { divide4_avx2(nf, df) } }\n                #[cfg(not(any(target_arch = \"x86\", target_arch = \"x86_64\")))]\n                { std::array::from_fn(|lane| nf[lane] / df[lane]) }\n            }\n        };\n        let mut output",
+    "new": "{ unsafe { estimate4_avx2(nf, df) } }\n                #[cfg(not(any(target_arch = \"x86\", target_arch = \"x86_64\")))]\n                { std::array::from_fn(|lane| nf[lane] / df[lane]) }\n            }\n        };\n        let mut output",
+    "count": 1
+  },
+  {
+    "old": "use std::arch::x86_64::{_mm256_div_pd, _mm256_setr_pd, _mm256_storeu_pd};",
+    "new": "use std::arch::x86_64::{_mm256_div_pd, _mm256_setr_pd, _mm256_storeu_pd,\n    _mm_rcp_ps, _mm256_cvtpd_ps, _mm256_cvtps_pd, _mm256_set1_pd, _mm256_mul_pd, _mm256_sub_pd};",
+    "count": 1
+  },
+  {
+    "old": "use std::arch::x86::{_mm256_div_pd, _mm256_setr_pd, _mm256_storeu_pd};",
+    "new": "use std::arch::x86::{_mm256_div_pd, _mm256_setr_pd, _mm256_storeu_pd,\n    _mm_rcp_ps, _mm256_cvtpd_ps, _mm256_cvtps_pd, _mm256_set1_pd, _mm256_mul_pd, _mm256_sub_pd};",
+    "count": 1
+  },
+  {
+    "old": "    output\n}\n",
+    "new": "    output\n}\n\n#[cfg(any(target_arch = \"x86\", target_arch = \"x86_64\"))]\n#[target_feature(enable = \"avx2\")]\nunsafe fn estimate4_avx2(n: [f64; 4], d: [f64; 4]) -> [f64; 4] {\n    let left = _mm256_setr_pd(n[0], n[1], n[2], n[3]);\n    let right = _mm256_setr_pd(d[0], d[1], d[2], d[3]);\n    // 初期値だけf32。補正は元のdを用いる。精度不足は呼出し側certificateで拒否。\n    let initial = _mm_rcp_ps(_mm256_cvtpd_ps(right));\n    let mut reciprocal = _mm256_cvtps_pd(initial);\n    let two = _mm256_set1_pd(2.0);\n    reciprocal = _mm256_mul_pd(reciprocal, _mm256_sub_pd(two, _mm256_mul_pd(right, reciprocal)));\n    reciprocal = _mm256_mul_pd(reciprocal, _mm256_sub_pd(two, _mm256_mul_pd(right, reciprocal)));\n    let result = _mm256_mul_pd(left, reciprocal);\n    let mut output = [0.0; 4];\n    // 正確に4doubleの領域。丸めた推定からの商は必ずchecked整数余りで検算する。\n    unsafe { _mm256_storeu_pd(output.as_mut_ptr(), result); }\n    output\n}\n",
+    "count": 1
+  }
+]

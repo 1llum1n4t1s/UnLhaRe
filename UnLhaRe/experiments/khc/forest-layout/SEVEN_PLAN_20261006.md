@@ -1,0 +1,7 @@
+# 新Forestと固定7-Zipの直接比較
+
+通常＋逆順の旧新版比較が終わった後の評価。公開public-e EXEを固定7-Zip26.03 x64 SHA EDBEE35370E14030E4C785CF88200F42DC651C1EB4217C1E3963C38A12F099B0と比較する。派生compare-public.ps1のBaselineKind lzma2 / AllowDifferentFrames、paid、Canterburyの全11実file、warm1＋9交互。同じchild64MiB上限、CPU quiet15%、1thread、KHC1MiB、7Zip xz/LZMA2 mx9 md4m fb273。各サイズはframe/xz全費用込み。stdoutはRAMのみ、3partition5–8/9–12/13–15で直列実行、各8MiB/free5GiB、report256KiB。追加Cargo生成・download・raw/frameディスク0。
+
+これは既存の単独block診断条件で、より強い全archive solid比較や未見評価の代替ではない。固定GOAL_GATE_20261005.mdの合格条件を緩めない。初回全11の5%以上総bytes削減に加えてencode/decode双方が7-Zip以下となった場合のみ、この条件の独立逆順確認へ進める。どちらかが遅ければ、その時点の弱点を記録して次の有望な改善へ進め、盲目的な再試行で勝ったreportを選ばない。
+
+old/new公開経路比較のsource/flags来歴と差の限界はPUBLIC_RESULT_20261006.md。以前の日付の7Zip時間と今回の候補時間を引き算して優位と主張しない。正式な目標達成には強い全archive条件、未見、Zstd等との公平比較、安全性と独自性の監査が別途必要。

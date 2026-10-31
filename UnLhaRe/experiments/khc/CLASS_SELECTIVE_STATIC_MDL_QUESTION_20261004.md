@@ -1,0 +1,13 @@
+# 次の問い：mantissa class限定の費用込み静的CDFと軽い状態更新
+
+訂正済みfloat/static node診断report SHA AFC738A0949275414F6F08E3E53E92D54904FE2C99276267C223B59574442794。全21Rust sourceを初回から変えず、保存typed Proof整数6009を参照してnative成功。元statsの9decimalを整数6010へ変換した初回は失敗として保持し、成功に書き換えない。終了時のreadonly verifierラッチは別途確認する。
+
+class別static-minus-teacher Q loss（bits）は[85725.07515544165,70429.04505908384,-44041.99314676807,92196.74757939577,4439.363607084393,-17048.840792443196]。rank/lengthのmantissa class2/5のみstaticのin-sample lossが小さい。両classは1362274/3825340枝=35.611841%。これは分布保存を無料にした診断で、時間短縮率や個別featureの寄与ではない。
+
+次の一設定研究候補はclass2/5だけnode/history static CDFを費用込みMDLで保存し、他classは元適応予測を維持する。選択はこのtraining診断を見た探索判断で、独立holdoutの成功ではない。事後のevent別min routingは使わず、mask2/5をコード前に固定する。楽観混合loss3759673.338849815bits、ceil token469960B+従来診断side3079B=473039B、診断gateまで10560Bだが、header込み実codecサイズではない。3079Bに2048B reserveが含まれ、不可避のwire下界でもない。モデルheader・剪定によるloss増分・実coder費用を払って初めて候補判定する。
+
+重要な因果制約：元Modelのsymbol/recent/previous count tablesはhash衝突を含めclass間で共有される。他class予測を維持するにはstatic branchでも4count更新を省けない。weightsはcomponent/context/node別でclassごとのnodeを分離し、CTSのclass stateも分離する。static classだけpool学習/CTS処理を省き、共有countと必要なserial/履歴を軽い経路で更新できるか、定義・呼出し元・失敗時状態契約から先に確定する。元教師を全枝で動かすshadow実装は参照用であり、最終候補の高速経路ではない。残るheavy classのCDF逐次一致は実行して確認し、推測だけで状態保持を主張しない。
+
+まずserializer/decoderを伴うMDL費用screenをコード前failure planと有限親fixtureから検証する。既存の全class共有MDL失敗を繰り返さず、node条件と限定maskを明示する。codebookが10560Bの余裕を越す、剪定でlossが悪化する等なら実codecへ進めない。RAM/source/output上限を先に計算し、全rows/event/raw tracesを保存せず、古い証拠を消さない。係数/depth/Q sweepや失敗coder再試行をしない。
+
+速度の限界：35.6%の枝だけで重処理を省けても元encode数秒から固定574.5624msへ到達する保証はない。全CLI decode47.3884ms、size483599B、同資源/静穏CPU/固定warmup+9回/holdout/完成書庫metadata/API/4nativeを維持し、全部成功するまで7-Zip超えとは呼ばない。本候補は未実装・未採用、GOAL activeで続行。

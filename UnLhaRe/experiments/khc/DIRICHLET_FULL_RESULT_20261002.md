@@ -1,0 +1,19 @@
+# 高精度Dirichlet full候補の結果
+
+判定: KHNDR001は不採用。固定frame590737byte、前P256610222byteより19485byte（約3.19%）減ったが、旧direct575791byteより14946byte増加。固定gate483599byteを107138byte超過した。サイズgate未達のため正式benchmarkを起動しない。7-Zip総合超えgoalは未達・active。
+
+full7入力×opt2/3・overflowyes/no4条件の28encode/28decodeと21wireを実byte比較。独立naive配列/u128通常除算forgeのzeros255/256/257、validempty+23拒否、no-clobber/missing/args/operation、balancedとの相互magic拒否・旧KHNPR001拒否成功。旧候補の性能再試行ではない。
+52比較で13591744byteを照合、所有一時物91件を逐次削除。親もreport SHA、40個のsource/compiler/runtime/input/旧証拠識別値、12個の保持生成物識別値を再照合し、全91削除pathの不在を確認。E2E elapsedは診断のみ、速度改善の証明ではない。
+
+report build/khc-direct-token-dirichlet-full-20261002/report.json、184229byte、SHA DA54B607BC0076D380ACF43B292EBE2D6E8F26940640E0B35B387B7A21A7F4CD。
+frame SHA853E614109E37ADE93661EFD103AD5A59E174556970FEC51CE945D7E9F739DAE。
+codec AC7541A7657F9CE9E56FEC06EFA07ADA00410AF2EBFA5FF966D64AA5DF9A4787。
+verifier20B08BA72CE657CF2410D1C327E7C672DF2A6DA117602C3EDADEA66655A6031D。
+forge6DAE4CA062993F29C9F525A1209185018427D2BB0111CCF0558262E8E63A85AB。
+failure plan104EED2E2A28020A9949CB6B244D1970D06859A316E88A1F5FAFCE7181F92C39。
+
+保持は13file1765265byte（4codec+forge+7reference+report）、numeric725454byteと合わせて2490719byte（約2.38MiB）。full64MiB/numeric8MiB事前事後予算内。Cargo/PDB/cache/rawtraceなし、固定inputを複製しない。今回のsourceも凍結し、旧契約/SHA/証拠を書き換えない。
+
+冷文脈でのsupport改善は確認済みだが、その改善だけではsize gateへ届かず、旧directよりもまだ悪い。次は同一run token列を用いてrank/length・local観測量別のprequential ideal bitsを集計する。P256/Dirichletの共通の連続prior64分布を対照に、支持と丸めの効果を、旧rootTotal/4 prior強度との違いから分離する。小さなEXE+JSONで集計し、frame/復元/トレースを増やさない。これは性能再測定や新候補の当てずっぽうなparameter gridではない。
+holdout/カテゴリ、同境界正式encode/decode性能、4native、実allocation失敗、製品/API統合は未検証。Gitstage/commit/push/version/公開/x86は変更していない。
+

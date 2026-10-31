@@ -1,0 +1,7 @@
+Restore current-before-overwrite contents only in an explicitly requested restoration, not during measurements.
+lexeme.pre-source-review.zip: exact READY lexeme.rs before parent formatting, SHA256 F2501659FF73C096862B44F2B3E8BBF6FA4893240AE0D3A33D0A17A3316F8F25.
+parent.before-format.zip: exact happy.rs, adversarial.rs, probe.rs before edition2024/max_width160/skip_children formatting.
+controller.before-template-fix.zip: exact first generated malformed probe.ps1; JS replacement interpreted dollar-apostrophe as matched suffix. Replaced using literal callbacks before parse/build. Backup SHA256 77F34A127ACADA0139A92CD9426455952398AE4E6E62265DAB8E43C91546D2D8.
+All original data retained in this folder. No deletes, budget reset, Cargo run, native or public API changes.
+Failure ledger: tests designed from PLAN failure-first cases; baseline dual const E2E-c preserved. New tests are finite frontend/dictionary/math checks, not compressed-payload E2E.
+Ownership: core worker READY/stopped, parent now owns all experiment files. Independent readonly explorer source audit found no core issue; physical peaks and screen selection are parent checks.

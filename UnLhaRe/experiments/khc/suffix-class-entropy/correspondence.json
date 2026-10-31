@@ -1,0 +1,66 @@
+[
+  {
+    "variant": "old",
+    "source_from": "../causal-bayes-q32-kt-reciprocal/codec.rs",
+    "source_to": "old.rs",
+    "changes": [
+      {
+        "from": "#[path = \"cts_model.rs\"]",
+        "to": "#[path = \"../causal-bayes-q32-kt-reciprocal/cts_model.rs\"]",
+        "count": 1
+      },
+      {
+        "from": "use bwt::bwt;",
+        "to": "use bwt::bwt;\n#[cfg(khc_class_entropy_audit)]\n#[path = \"histogram.rs\"]\nmod histogram;\n",
+        "count": 1
+      },
+      {
+        "from": "        self.bayes.update(class, &bayes, bit)?;",
+        "to": "\n        #[cfg(khc_class_entropy_audit)]\n        histogram::observe(class, [primary_zero, cts.zero(), zero], bit)?;\n        self.bayes.update(class, &bayes, bit)?;",
+        "count": 1
+      },
+      {
+        "from": "    let input = read_bounded(Path::new(&args[2]), limit)?;",
+        "to": "\n    #[cfg(khc_class_entropy_audit)]\n    histogram::initialize(Path::new(&args[3]))?;\n    let input = read_bounded(Path::new(&args[2]), limit)?;",
+        "count": 1
+      },
+      {
+        "from": "    publish(Path::new(&args[3]), &output)?;",
+        "to": "    publish(Path::new(&args[3]), &output)?;\n    #[cfg(khc_class_entropy_audit)]\n    histogram::publish(Path::new(&args[3]))?;",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "variant": "new",
+    "source_from": "../adaptive-suffix-kt/codec.rs",
+    "source_to": "new.rs",
+    "changes": [
+      {
+        "from": "#[path = \"cts_model.rs\"]",
+        "to": "#[path = \"../adaptive-suffix-kt/cts_model.rs\"]",
+        "count": 1
+      },
+      {
+        "from": "use bwt::bwt;",
+        "to": "use bwt::bwt;\n#[cfg(khc_class_entropy_audit)]\n#[path = \"histogram.rs\"]\nmod histogram;\n",
+        "count": 1
+      },
+      {
+        "from": "        self.bayes.update(class, &bayes, bit)?;",
+        "to": "\n        #[cfg(khc_class_entropy_audit)]\n        histogram::observe(class, [primary_zero, cts.zero(), zero], bit)?;\n        self.bayes.update(class, &bayes, bit)?;",
+        "count": 1
+      },
+      {
+        "from": "    let input = read_bounded(Path::new(&args[2]), limit)?;",
+        "to": "\n    #[cfg(khc_class_entropy_audit)]\n    histogram::initialize(Path::new(&args[3]))?;\n    let input = read_bounded(Path::new(&args[2]), limit)?;",
+        "count": 1
+      },
+      {
+        "from": "    publish(Path::new(&args[3]), &output)?;",
+        "to": "    publish(Path::new(&args[3]), &output)?;\n    #[cfg(khc_class_entropy_audit)]\n    histogram::publish(Path::new(&args[3]))?;",
+        "count": 1
+      }
+    ]
+  }
+]

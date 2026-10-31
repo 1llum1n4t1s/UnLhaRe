@@ -1,0 +1,96 @@
+{
+  "base_sha256": "CE15DBEB417857C351A412ADF366C95511EEA00AFCCCA69FE228EDA2EF1C550C",
+  "normalization": "CRLF to LF; one terminal LF",
+  "changes": [
+    {
+      "from": "$candidateExpectedHash = '74704D097CC6D70E531086DE73A3311716E1C3F96CEB62F6A5794067331B99FE'",
+      "to": "$candidateExpectedHash = '0737E2FFD936ECD89EA2FD4F8907AC0CD6C0766072BCE56CBB65AABDA7C981EA'",
+      "count": 1
+    },
+    {
+      "from": "build/khc-bwt-causal-bayes-q32-kt-reciprocal-20261001/performance",
+      "to": "build/khc-causal-expert-scheduling-20261001/performance",
+      "count": 1
+    },
+    {
+      "from": "WorkDirectory must be the frozen KT reciprocal codec performance directory.",
+      "to": "WorkDirectory must be the frozen causal scheduling codec performance directory.",
+      "count": 1
+    },
+    {
+      "from": "'The 262144-byte stream-owned loss table and its construction are included in full process wall time and memory; no global cache is used.'",
+      "to": "'Light and heavy stream-owned loss tables, light learning, lazy heavy allocation and journal growth/replay are included in full process wall time and memory; no global cache is used.'",
+      "count": 1
+    },
+    {
+      "from": "'Guarded KT reciprocal Q32 candidate and frozen balanced KT Q32 control use identical KHSGRP0 input, numeric model and frame; full frame equivalence is mandatory. Native 11-file 7z solid archive has different container and output boundaries.'",
+      "to": "'Causal scheduled candidate and frozen balanced KT Q32 control use identical KHSGRP0 input but different magic/predictions/frames. Their independently E2E-verified exact frames are mandatory. Native 11-file 7z solid archive has different container and output boundaries.'",
+      "count": 1
+    },
+    {
+      "from": "$sourcePins['codec.rs']",
+      "to": "$sourcePins['../causal-bayes-q32-kt-reciprocal/codec.rs']",
+      "count": 1
+    },
+    {
+      "from": "$sourcePins['cts_model.rs']",
+      "to": "$sourcePins['../causal-bayes-q32-kt-reciprocal/cts_model.rs']",
+      "count": 1
+    },
+    {
+      "from": "$sourcePins['audit_cli.rs']",
+      "to": "$sourcePins['../causal-bayes-q32-kt-reciprocal/audit_cli.rs']",
+      "count": 1
+    },
+    {
+      "from": "$sourcePins['exact_kt.rs']",
+      "to": "$sourcePins['../causal-bayes-q32-kt-reciprocal/exact_kt.rs']",
+      "count": 1
+    },
+    {
+      "from": "$sourcePins['verify-model.ps1']",
+      "to": "$sourcePins['../causal-bayes-q32-kt-reciprocal/verify-model.ps1']",
+      "count": 1
+    },
+    {
+      "from": "$sourcePins['verify-codec.ps1']",
+      "to": "$sourcePins['../causal-bayes-q32-kt-reciprocal/verify-codec.ps1']",
+      "count": 1
+    },
+    {
+      "from": "    foreach($name in $sourcePins.Keys) {",
+      "to": "    $sourcePins['../causal-bayes-q32-kt-reciprocal/compare.ps1']='CE15DBEB417857C351A412ADF366C95511EEA00AFCCCA69FE228EDA2EF1C550C'\n    $sourcePins['codec.rs']='0AD79D2C15CFFA96CDBED33421C20418C146BA223C872CFDCF5FD3F263ED0B64'\n    $sourcePins['scheduler.rs']='7207E2467E7C0FCDA699D62DBB8D906770A4EB3AB6EED16EC6801DAB5918000D'\n    $sourcePins['bayes_model.rs']='CABE510C4566B63C7AAB7F5EA0507BC3DA1EB2FA0E146E2FE568C134E3CFB9B8'\n    $sourcePins['correspondence.json']='378DD52D48E9DF987062194F0BF1835680946FBA77ABDF6A01417AB4C12F4F1E'\n    $sourcePins['verify.ps1']='99CB9966342207F8B4DFC8AE02B6D1F32459343C4216F02A4EA09BE179CAD4C0'\n    $sourcePins['../adaptive-suffix-kt/cts_model.rs']='F6E6BABE00ECB2063117D554135E8ED6F13B3B458E4FBCFA7D4B0596C6CCBB32'\n    $sourcePins['../CAUSAL_EXPERT_SCHEDULING_CONTRACT_20261001.md']='3599F4C04C3EA6985A1A470B44C94980117B4DF3088C9A9AF79DCC674CD776E6'\n    $sourcePins['../CAUSAL_EXPERT_SCHEDULING_PERFORMANCE_CONTRACT_20261001.md']='BCC266C6AC60AF1139A912C3790F8D4F95CA8AAED13A88C319951CAE0AA26549'\n    foreach($name in $sourcePins.Keys) {",
+      "count": 1
+    },
+    {
+      "from": "    if(@($reciprocalCodecJson.identities|Where-Object {$_.role -ceq 'compiled-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.before_bytes -eq $candidate.before_bytes}).Count -ne 1){throw 'Candidate not bound to reciprocal codec E2E proof.'}",
+      "to": "    if(@($reciprocalCodecJson.identities|Where-Object {$_.role -ceq 'compiled-codec' -and $_.path -ceq (Join-Path $root 'build/khc-bwt-causal-bayes-q32-kt-reciprocal-20261001/codec-native.exe') -and $_.before_sha256 -ceq '74704D097CC6D70E531086DE73A3311716E1C3F96CEB62F6A5794067331B99FE' -and $_.before_bytes -eq 218112}).Count -ne 1){throw 'Frozen reciprocal binary not bound to reciprocal codec E2E proof.'}",
+      "count": 1
+    },
+    {
+      "from": "    $proofFiles=@{}",
+      "to": "    $schedulerProof=Track-File (Join-Path $root 'build/khc-causal-expert-scheduling-20261001/report.json') 'causal-scheduler-codec-proof'\n    if($schedulerProof.before_sha256 -cne '370534F32A979FE2768CD60C29DFBD8342CD7B358C15C4D510945B8F8DD35E7A'){throw 'Scheduler proof identity mismatch.'}\n    $schedulerJson=Get-Content -LiteralPath $schedulerProof.path -Raw|ConvertFrom-Json\n    if($schedulerJson.status -cne 'correctness_and_size_passed_not_timed' -or $schedulerJson.timing_used -or $schedulerJson.checks.Count -ne 50 -or $schedulerJson.invocations.Count -ne 63 -or $schedulerJson.identities.Count -ne 83 -or $schedulerJson.owned_tmp_count -ne 0 -or $schedulerJson.owned_reparse_count -ne 0 -or @($schedulerJson.checks|Where-Object {-not $_.passed}).Count -or @($schedulerJson.invocations|Where-Object {$_.timeout -or $_.exit -ne $_.expected_exit}).Count){throw 'Scheduler codec proof incomplete.'}\n    if(-not $schedulerJson.size_result.passed -or $schedulerJson.size_result.timing_used -or $schedulerJson.size_result.maximum_archive_bytes -ne 483599 -or $schedulerJson.size_result.candidate.bytes -ne 483496 -or $schedulerJson.size_result.candidate.sha256 -cne 'CF62CD2324B4CF889CDDDB25C9508C28E4BD4D24217B93BB7D4FF9318C3EAD12'){throw 'Scheduler complete frame proof mismatch.'}\n    if(@($schedulerJson.identities|Where-Object {$_.role -ceq 'compiled-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.before_bytes -eq 236544}).Count -ne 1){throw 'Candidate not bound to scheduler codec E2E proof.'}\n    $schedule=$schedulerJson.fixed_schedule\n    if($schedule.maximum_records -ne 8388608 -or $schedule.peak_reserved_records -gt $schedule.maximum_records -or $schedule.reserved_records -gt $schedule.peak_reserved_records -or ($schedule.events|Measure-Object -Sum).Sum -ne 7622618 -or ($schedule.processed|Measure-Object -Sum).Sum -ne 3223156 -or ($schedule.replayed|Measure-Object -Sum).Sum -ne 434286){throw 'Scheduler normal history evidence mismatch.'}\n    for($class=0;$class -lt 7;$class++){\n        if($schedule.processed[$class]+$schedule.pending[$class] -ne $schedule.events[$class] -or $schedule.replayed[$class]+$schedule.active_events[$class] -ne $schedule.processed[$class] -or $schedule.reference_checks[$class] -ne 0){throw 'Scheduler normal event invariant mismatch.'}\n        if($schedulerJson.small_journal_schedule.reference_checks[$class] -ne $schedulerJson.small_journal_schedule.active_events[$class]){throw 'Small journal reference evidence mismatch.'}\n    }\n    if($schedulerJson.small_journal_schedule.maximum_records -ne 64 -or ($schedulerJson.small_journal_schedule.forced|Measure-Object -Sum).Sum -le 0){throw 'Small journal forced catch-up evidence missing.'}\n    $report['scheduler_proof']=$schedulerProof\n    $report['scheduler_scope']='50 checks/63 CLI; native/portable/finite Q15 continuous reference; small-journal forced replay; representative malformed/no-clobber. Not a full internal-state oracle, new normal over-cap fixture, four-native or product proof.'\n    $proofFiles=@{}",
+      "count": 1
+    },
+    {
+      "from": "$reciprocalModelJson,$reciprocalCodecJson)) {",
+      "to": "$reciprocalModelJson,$reciprocalCodecJson,$schedulerJson)) {",
+      "count": 1
+    },
+    {
+      "from": "q32-kt-reciprocal-group",
+      "to": "causal-scheduled-group",
+      "count": 5
+    },
+    {
+      "from": "$reciprocalCodecJson.fixed_frames[0].bytes -or $encoding.output_sha256 -cne $reciprocalCodecJson.fixed_frames[0].sha256",
+      "to": "$schedulerJson.size_result.candidate.bytes -or $encoding.output_sha256 -cne $schedulerJson.size_result.candidate.sha256",
+      "count": 1
+    },
+    {
+      "from": "Candidate is not the E2E-verified complete Q32 frame.",
+      "to": "Candidate is not the E2E-verified complete scheduled frame.",
+      "count": 1
+    }
+  ]
+}

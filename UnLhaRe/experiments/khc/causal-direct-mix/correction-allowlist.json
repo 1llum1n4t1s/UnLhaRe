@@ -1,0 +1,27 @@
+{
+  "failure_report_sha256": "193939C7A911AA00F309AC79DA371E386FF5BF16623A530179B00676C5CAFB95",
+  "probe": {
+    "byte_offset": 4990,
+    "removed_byte": 41,
+    "before_bytes": 5095,
+    "after_bytes": 5094,
+    "before_sha256": "5719F7EB5D53CB2C8C85A545CF97A2296665088F1B9990552F568BF26AB95382",
+    "after_sha256": "C82B688BEC6E1CF5D4F19282385F9DB780F2803DD23FD73E7002F541E1FDEC1E"
+  },
+  "original_runner_sha256": "142445C484F22948B05B82F322D9FCBD4A853F8F340D73CB8E1B33BE53592E7F",
+  "runner_operations": [
+    {
+      "from": "$work=Join-Path $project 'build/khc-causal-direct-mix-20261004'",
+      "to": "$work=Join-Path $project 'build/khc-causal-direct-mix-20261004/corrected-native'",
+      "count": 1
+    },
+    {
+      "from": "foreach($path in @($PSCommandPath,",
+      "to": "foreach($path in @($PSCommandPath,(Join-Path $PSScriptRoot 'run-native.ps1'),(Join-Path $PSScriptRoot 'CORRECTION_PLAN.md'),",
+      "count": 1
+    }
+  ],
+  "numerical_changes": 0,
+  "additional_compile_limit": 1,
+  "additional_native_limit": 1
+}

@@ -1,0 +1,11 @@
+# 公開経路の統合・比較計画
+
+2026-10-06。前turnはdecode phase/cdf重複の実測とcompact候補screenでprogress。本turnは全可変852root・high/low・最後のgroup/最後のhistory等の6正常モデル5234688CDF、50不正モデルの結果を境界runnerで確認してから製品Forestだけへ候補を移す。モデルwire/CDF/CRC/range/履歴/既定戦略/API/versionを変えない。最大保持6989848B、構築追加parse_transient4222622Bは従来の約7MBだけより大きい条件もあり、隠さない。
+
+実装前に固定baseline packet SHA BA0BE650557F7F7224AA6632ECDD3BCB7023CF3DC4D69F0A293ADC33192EC618、compact候補058D43FA627009D47C7E9F589558673AF19F80C1757E6D7DD6569F29668CDCA1とprefix一致を確認する。親だけ編集。未採用の仮統合であり、公開経路の試験に届くまで採用済みと報告しない。
+
+関連7target/9E2Eを3＋4の直列cargo test --no-runで生成後、固定all.group/正常専用rootを明示して生成EXEを実行する。実CLI、多block/空、全strategy、最大split、意味不正/CRC/切断、no-clobberと回復を含める。新unitを作らない。候補のfmt、lib/CLI/hybrid E2E clippyも実行。容量確保のため今回の非参照PDB3のみ3805184Bを共通recycle→今回分purge→元/$R/$I不在の手順で整理済み。ledger khc-forest-symbol-cleanup-20261006.json complete、既存ごみ箱不変、EXE/report/依存cacheは保持。これらPDBはごみ箱から復元不可だがデバッグ用中間物として再生成可能。
+
+Cargo固定cap6175228536B、清掃後6163534280B/残11694256B。各codegen一時約8MB＋2MiB余裕、serial予約11MiBで監視、180秒、free5GiB、同shared targetのみ。停止guard/超過を成功にしない。専用E2E各8MiB上限を事前/事後照合。新public IO helperは固定baselineと同じexamples/khc_compact_io.rsを、更新済みlibunlhare.rlib＋既存depsに単体rustcでリンクする（専用8MiB、EXE＋PDB＋link4MiB、compiler512MiB/60秒）。実際の公開APIを呼び、namespace screenの性能を採用証拠へ転用しない。Cargo新example約2.4MB増を避けるが、不足時は黙って予算を拡張しない。
+
+旧compact public EXE SHA330598C11A9464E3671155AEDE330F7862389A89CBF7C0A6187F71947618AC8Cをbaselineとする。凍結cpu-measurement-v2で全16fixture warm1＋9交互、全frame一致/自己/交差復号を確認し、初回改善した場合だけ入力・pair逆順でも再現する。過去compact採用と同様、decode改善がどちらかで再現しなければこの候補を戻す。encoderへの影響も別途正直に集計し、改悪なら原因と採否を検討する。7Zip直接/強い全archive条件/未見との固定ゲートはこれとは別で、初回比較だけでGOAL完了にしない。

@@ -1,0 +1,36 @@
+{
+  "status": "two_owned_unreferenced_pdbs_removed",
+  "ended_utc": "2026-10-01T18:02:36.7718322Z",
+  "removed_files": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-simd-quotient-20261002\\audit-opt3.pdb",
+      "bytes": 1323008,
+      "sha256": "4A9492EA2FAA93FA09DFF3901760D4B371266753E7AEDF3A6E4B411A558EA97D"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-simd-quotient-20261002\\audit-opt2.pdb",
+      "bytes": 1323008,
+      "sha256": "BD36D8EC9E5C2448BC5332C1C6EB35CE8A1E923D5E31D885795493E589807BF1"
+    }
+  ],
+  "removed_bytes": 2646016,
+  "recovery": "not in trash; reproducible from retained sources/compiler; no backup created",
+  "checked_retained_identity_records": 10,
+  "unchanged_reports": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-simd-quotient-20261002\\report.json",
+      "sha": "FE390BBE820107F32570BFC6E416E5FA947743848131F8EB8513BFC4E02E1EDE"
+    }
+  ],
+  "budgets": [
+    {
+      "work_directory": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-simd-quotient-20261002",
+      "used_bytes": 355662,
+      "max_bytes": 8388608,
+      "free_bytes": 68562653184,
+      "minimum_free_bytes": 5368709120
+    }
+  ],
+  "related_processes": 0,
+  "remaining_planned_files": 0
+}

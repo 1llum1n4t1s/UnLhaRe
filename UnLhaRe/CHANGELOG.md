@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- ABI 1のAPI level 6としてLH4作成と、LH4/LH5/LH6/LH7の明示的な高圧縮オプションをRust・C JSON・CLI・.NETへ追加。標準と2パス最適化の本文サイズを比較して小さい方を採用し、LH0は無圧縮を維持する。既定の標準圧縮と公開版1.0.4は変更しない。高圧縮は追加の時間・入力サイズ比例の作業メモリを必要とする。
+
 ## 1.0.4 - 2026-09-18
 
 - ABI 1を維持したAPI level 5として、Rustの`visit_archive_entries*`、Cの`unlhare_list_entries_json`、.NETの`ArchiveClient.VisitEntries`を追加。一覧項目を書庫順に同期通知し、全件の`Entry`配列と集約JSONをnative側へ保持せず処理できるようにした。API level 5のnativeでは従来の.NET `List`も項目通知経路でmanaged側の結果だけを収集する。

@@ -5,3 +5,11 @@ UnLhaRe/**/*.png binary -eol
 # 第三者の告知原文は空白・改行を含めて保持する。
 UnLhaRe/THIRD_PARTY_LICENSES.txt -text -whitespace
 UnLhaRe/licensing/** -text -whitespace
+
+# 実験で保持するアーカイブはバイト列を変更しない。
+UnLhaRe/**/*.zip binary -eol
+UnLhaRe/**/*.7z binary -eol
+
+# 実験の固定入力・記録は改行を含む元のバイト列を保持する。
+UnLhaRe/experiments/khc/mod.rs -text
+UnLhaRe/experiments/khc/STORAGE.md -text

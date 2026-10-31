@@ -1,0 +1,47 @@
+[
+  {
+    "old": "$candidateExpectedHash = '362282160B038EF495927DE2F855E8EF651D4611101BA8D8D0F842AA8D61DDB9'",
+    "new": "$candidateExpectedHash = '000670272980C2AA19AC9912611ED15DD43C85DC96D5F5BB64F0FEECF89E25B8'",
+    "count": 1
+  },
+  {
+    "old": "Q32 compact-posterior dominant-shortcut scheduled candidate",
+    "new": "Q32 node-u32 compact-posterior dominant-shortcut scheduled candidate",
+    "count": 1
+  },
+  {
+    "old": "build/khc-causal-compact-simd-20261002/performance",
+    "new": "build/khc-cts-node-u32-20261002/performance",
+    "count": 1
+  },
+  {
+    "old": "frozen compact posterior codec performance directory",
+    "new": "frozen node-u32 codec performance directory",
+    "count": 1
+  },
+  {
+    "old": "../causal-simd-quotient/compare.ps1') 'old-performance-harness'",
+    "new": "../causal-compact-simd/compare.ps1') 'old-performance-harness'",
+    "count": 1
+  },
+  {
+    "old": "if($oldHarness.before_sha256 -cne 'D31CF484DB4078D733DB70CD7DF9271241B079366144C1C54BCCF078ED280165')",
+    "new": "if($oldHarness.before_sha256 -cne '1BE81D1A34C8CDACDA75550C68F49ED3A2CA86AF3E1DFA8D256F8D0C5BF53C80')",
+    "count": 1
+  },
+  {
+    "old": "$compactOrdinary=@($compactJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 243712})",
+    "new": "$compactOrdinary=@($compactJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq (Join-Path $root 'build/khc-causal-compact-simd-20261002/codec-native.exe') -and $_.before_sha256 -ceq '362282160B038EF495927DE2F855E8EF651D4611101BA8D8D0F842AA8D61DDB9' -and $_.bytes -eq 243712})",
+    "count": 1
+  },
+  {
+    "old": "    $report['compact_proofs']=[ordered]@{codec=$compactProof;numeric=$compactNumericProof}",
+    "new": "    $report['compact_proofs']=[ordered]@{codec=$compactProof;numeric=$compactNumericProof}\n\n    $nodeProof=Track-File (Join-Path $root 'build/khc-cts-node-u32-20261002/report.json') 'node-u32-codec-proof'\n    if($nodeProof.before_sha256 -cne '9627A3391CDC5995ADF757D2432235F9078899F026B02239AAA829D88EA8DF04'){throw 'Node-u32 full proof SHA'}\n    $nodeJson=Get-Content -LiteralPath $nodeProof.path -Raw|ConvertFrom-Json\n    if($nodeJson.status -cne 'correctness_and_size_passed_not_timed' -or $nodeJson.failure -or $nodeJson.timing_used -or $nodeJson.checks.Count -ne 55 -or $nodeJson.invocations.Count -ne 94 -or $nodeJson.identities.Count -ne 550 -or $nodeJson.owned_tmp_or_reparse -ne 0 -or $nodeJson.owned_pdb -ne 0 -or $nodeJson.frame_bytes -ne 483496){throw 'Node-u32 full proof matrix/status'}\n    if(($nodeJson.variants -join ',') -cne 'native,checked,scalar,scalar-checked'){throw 'Node-u32 variant matrix'}\n    $nodeOrdinary=@($nodeJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 243712})\n    if($nodeOrdinary.Count -ne 1){throw 'Candidate not the node-u32 ordinary codec'}\n    $nodeRefusals=@($nodeJson.invocations|Where-Object exit -ne 0)\n    if($nodeRefusals.Count -ne 8 -or @($nodeRefusals|Where-Object {$_.exit -ne 1 -or !$_.stderr -or $_.stdout}).Count -or @($nodeJson.invocations|Where-Object {$_.exit -eq 0 -and $_.stderr}).Count){throw 'Node-u32 invocation mismatch'}\n    $nodeStates=@($nodeJson.state_audit_summaries)\n    if($nodeStates.Count -ne 4 -or (($nodeStates|ForEach-Object variant) -join ',') -cne 'native,checked,scalar,scalar-checked'){throw 'Node-u32 state audit matrix'}\n    foreach($item in $nodeStates){\n        $s=$item.summary\n        if($s.status -cne 'node_u32_state_and_bounds_verified_not_timing' -or $s.transitions -ne 65644 -or $s.storage_cases -ne 9 -or $s.storage_rejections -ne 3 -or $s.state_events -ne 131072 -or $s.path_values_per_event -ne 85 -or $s.post_error_events -ne 1 -or $s.invalid_class_refusals -ne 4 -or $s.fingerprint_u64 -cne '0dc7c1e133772fd7'){throw 'Node-u32 numeric/state coverage'}\n        if($s.old_node_bytes -ne 16 -or $s.new_node_bytes -ne 12 -or $s.prediction_bytes -ne 544 -or $s.node_count -ne 917497 -or $s.logical_node_bytes -ne 11009964 -or $s.saved_node_bytes -ne 3669988 -or $s.minimum_alpha -ne 7 -or $s.maximum_updated_weight -ne 4294967289){throw 'Node-u32 bound/layout'}\n        if($item.stdout -cne $nodeStates[0].stdout -or ($s|ConvertTo-Json -Compress) -cne ($nodeStates[0].summary|ConvertTo-Json -Compress)){throw 'Node-u32 state summary differs'}\n        $stateExe=Join-Path ([IO.Path]::GetDirectoryName($nodeProof.path)) \"state-audit-$($item.variant).exe\"\n        $stateCalls=@($nodeJson.invocations|Where-Object {$_.program -ceq $stateExe -and $_.argv.Count -eq 0 -and $_.exit -eq 0 -and !$_.stderr -and $_.stdout -ceq $item.stdout})\n        if($stateCalls.Count -ne 1){throw 'Node-u32 state summary invocation binding'}\n    }\n    $nodeDiagnostic=$nodeJson.compact_diagnostic\n    if($nodeDiagnostic.heavy_events -ne 3223156 -or ($nodeDiagnostic.encode|ConvertTo-Json -Compress) -cne ($nodeDiagnostic.decode|ConvertTo-Json -Compress)){throw 'Node-u32 full diagnostic mismatch'}\n    $nd=$nodeDiagnostic.encode\n    if($nd.compact_groups -ne 12892624 -or $nd.fallback_groups -ne 0 -or $nd.compact_option_bytes -ne 40 -or $nd.plain_array_bytes -ne 32 -or $nd.legacy_array_bytes -ne 96 -or $nd.node_bytes -ne 12 -or $nd.node_count -ne 917497 -or $nd.logical_node_storage_bytes -ne 11009964){throw 'Node-u32 full kernel use/layout'}\n    $report['node_u32_proof']=$nodeProof\n    $null=Track-File (Join-Path $PSScriptRoot '../CTS_NODE_U32_PERFORMANCE_CONTRACT_20261002.md') 'node-u32-performance-contract'\n",
+    "count": 1
+  },
+  {
+    "old": "$simdJson,$simdNumericJson,$compactJson,$compactNumericJson))",
+    "new": "$simdJson,$simdNumericJson,$compactJson,$compactNumericJson,$nodeJson))",
+    "count": 1
+  }
+]

@@ -1,0 +1,55 @@
+{
+  "original": "experiments/khc/causal-compact-simd/verify.ps1",
+  "changes": [
+    {
+      "old": "COMPACT_CODEC_CONTRACT_20261002.md",
+      "new": "CTS_NODE_U32_CONTRACT_20261002.md",
+      "count": 2
+    },
+    {
+      "old": "build/khc-causal-compact-simd-20261002",
+      "new": "build/khc-cts-node-u32-20261002",
+      "count": 1
+    },
+    {
+      "old": "D7A25F74B7B1CC4AF888449009052AE124F6A81B94A41A3BFBE66670FAF7C396",
+      "new": "808411BA225B917A0E534F61CC6C46E93C7ECFC0E98D0CB13CE491EB49025340",
+      "count": 1
+    },
+    {
+      "old": "$diagnostic=$null",
+      "new": "$diagnostic=$null\n$stateSummaries=[Collections.Generic.List[object]]::new()",
+      "count": 1
+    },
+    {
+      "old": "    foreach($name in @('cts_model.rs','exact_kt.rs','scheduler.rs','codec.rs','correspondence.json','verify.ps1'))",
+      "new": "    $compactProofPath=Join-Path $root 'build/khc-causal-compact-simd-20261002/report.json'\n    Hold $compactProofPath 'compact-full-proof' 'A98CA8C5B4ABA79F03D91171909755887DEC528AE50325F191EEA3BF63DC43CD'\n    $compactProof=Get-Content -LiteralPath $compactProofPath -Raw|ConvertFrom-Json\n    if($compactProof.status -cne 'correctness_and_size_passed_not_timed' -or $compactProof.checks.Count -ne 48 -or $compactProof.invocations.Count -ne 86 -or $compactProof.identities.Count -ne 269){throw 'compact full proof matrix/status'}\n    foreach($id in $compactProof.identities){Hold $id.path 'compact-full-current-identity' $id.after_sha256}\n    $checks.Add('compact-full-proof-and-frozen-source-identities')\n    foreach($name in @('cts_model.rs','exact_kt.rs','scheduler.rs','codec.rs','correspondence.json','verify.ps1','verifier-correspondence.json','state_audit.rs'))",
+      "count": 1
+    },
+    {
+      "old": "    Hold (Join-Path $PSScriptRoot '../disk-budget.ps1') 'budget-guard'",
+      "new": "    Hold (Join-Path $PSScriptRoot '../causal-compact-simd/codec.rs') 'frozen-compact-codec.rs' '1E32F2AEAD5ACC93D10F04A2FA04E3380CB9BEC6F4D98E1A842E7A24663EF5EE'\n    Hold (Join-Path $PSScriptRoot '../causal-compact-simd/cts_model.rs') 'frozen-compact-cts_model.rs' '857A5A870159BB516138FB1B9D28978B317FBFD61D91953D896831B5D64FF7E3'\n    Hold (Join-Path $PSScriptRoot '../causal-compact-simd/exact_kt.rs') 'frozen-compact-exact_kt.rs' 'A208D7BE5E9519FA636ABD94B0BDD9306F5CFDE3AAC03E24C2144A391EAB06E5'\n    Hold (Join-Path $PSScriptRoot '../causal-compact-simd/scheduler.rs') 'frozen-compact-scheduler.rs' 'DA48F8E69E72D3C455BF86718D38B39FF6C6BD1E24FC9D834A343CF1A36DA5B2'\n    Hold (Join-Path $PSScriptRoot '../causal-compact-simd/verify.ps1') 'frozen-compact-verify.ps1' '27BCE6AF9C53E8103CF2F54763952C6493E840547655F6982352B12BF69E37BB'\n    Hold (Join-Path $PSScriptRoot '../disk-budget.ps1') 'budget-guard'",
+      "count": 1
+    },
+    {
+      "old": "    $checks.Add('full-source-correspondence-four-files')",
+      "new": "    $verifierCorrespondence=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'verifier-correspondence.json') -Raw|ConvertFrom-Json\n    $expectedVerifier=[IO.File]::ReadAllText((Join-Path $root $verifierCorrespondence.original)).Replace(\"`r`n\",\"`n\")\n    foreach($change in $verifierCorrespondence.changes){if(([regex]::Matches($expectedVerifier,[regex]::Escape($change.old))).Count -ne $change.count){throw 'verifier replacement occurrence'};$expectedVerifier=$expectedVerifier.Replace([string]$change.old,[string]$change.new)}\n    if([IO.File]::ReadAllText($PSCommandPath).Replace(\"`r`n\",\"`n\") -cne $expectedVerifier){throw 'full verifier correspondence'}\n    $checks.Add('full-source-correspondence-four-files')",
+      "count": 1
+    },
+    {
+      "old": "    $null=Child $compiler @('--version','--verbose')",
+      "new": "    $null=Child $compiler @('--version','--verbose')\n    foreach($variant in @('native','checked','scalar','scalar-checked')) {\n        $auditExe=Join-Path $work \"state-audit-$variant.exe\"\n        $auditArgv=@((Join-Path $PSScriptRoot 'state_audit.rs'),'--edition=2024','-C','panic=abort','-C','opt-level=3','-C','link-arg=/DEBUG:NONE','--cfg','khc_mixture_reuse_audit','--cfg','khc_balanced_kt_audit','-o',$auditExe)\n        if($variant.EndsWith('checked')){$auditArgv+=@('-C','overflow-checks=yes')}\n        if($variant.StartsWith('scalar')){$auditArgv+=@('--cfg','khc_force_scalar_batch')}\n        $null=Child $compiler $auditArgv\n        Hold $auditExe \"$variant-state-audit\"\n        $auditText=Child $auditExe @()\n        $summary=$auditText|ConvertFrom-Json\n        if($summary.status -cne 'node_u32_state_and_bounds_verified_not_timing' -or $summary.transitions -ne 65644 -or $summary.storage_cases -ne 9 -or $summary.storage_rejections -ne 3 -or $summary.state_events -ne 131072 -or $summary.path_values_per_event -ne 85 -or $summary.post_error_events -ne 1 -or $summary.invalid_class_refusals -ne 4){throw 'numeric/state audit coverage'}\n        if($summary.old_node_bytes -ne 16 -or $summary.new_node_bytes -ne 12 -or $summary.node_count -ne 917497 -or $summary.logical_node_bytes -ne 11009964 -or $summary.saved_node_bytes -ne 3669988 -or $summary.minimum_alpha -ne 7 -or $summary.maximum_updated_weight -ne 4294967289){throw 'node bounds/layout'}\n        $stateSummaries.Add([pscustomobject]@{variant=$variant;summary=$summary;stdout=$auditText})\n        $checks.Add(\"$variant-streamed-node-storage-and-state-e2e\")\n    }\n    foreach($summary in $stateSummaries){if($summary.stdout -cne $stateSummaries[0].stdout){throw 'four-condition numeric/state output differs'}}\n    $checks.Add('four-condition-full-numeric-state-summary-identical')",
+      "count": 1
+    },
+    {
+      "old": "    if(($decodePrimary.scheduling|ConvertTo-Json -Compress)",
+      "new": "    if($encodeCounts.node_bytes -ne 12 -or $encodeCounts.node_count -ne 917497 -or $encodeCounts.logical_node_storage_bytes -ne 11009964){throw 'full codec compact node layout'}\n    $checks.Add('full-codec-node-layout-and-logical-state-footprint')\n    if(($decodePrimary.scheduling|ConvertTo-Json -Compress)",
+      "count": 1
+    },
+    {
+      "old": "compact_diagnostic=$diagnostic}",
+      "new": "compact_diagnostic=$diagnostic;state_audit_summaries=$stateSummaries}",
+      "count": 1
+    }
+  ]
+}

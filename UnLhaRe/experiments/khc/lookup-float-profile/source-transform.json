@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact frozen source transformation ledger. No arithmetic/threshold/state/audit expression or rejection order replaced; timing plus return-object/local constructor moves and typed proof accessor only.",
+  "modules": [
+    {
+      "reference": "../lookup-float-cts/model.rs",
+      "profile": "model.rs",
+      "replacements": [
+        {
+          "before": "use super::{fixed_math",
+          "after": "use crate::timing;\nuse super::{fixed_math"
+        },
+        {
+          "before": "        if component>1||!(1..=4).contains(&prefix)",
+          "after": "        let profile_parent=timing::mark();\n        if component>1||!(1..=4).contains(&prefix)"
+        },
+        {
+          "before": "        let cts=self.cts.predict(component*3+n.class,prefix)?;",
+          "after": "        let profile_child=timing::mark();\n        let cts=self.cts.predict(component*3+n.class,prefix)?;\n        timing::end(timing::PREDICT_CTS,profile_child);"
+        },
+        {
+          "before": "        let pool=integer_pool::predict(&self.math,counts.map(|c|c.values),self.weights[ids[0]],cts.mixed(),prefix)?;",
+          "after": "        let profile_child=timing::mark();\n        let pool=integer_pool::predict(&self.math,counts.map(|c|c.values),self.weights[ids[0]],cts.mixed(),prefix)?;\n        timing::end(timing::PREDICT_POOL,profile_child);"
+        },
+        {
+          "before": "        Ok(BranchPrediction{serial:self.serial,component,ids,counts,cts,pool})",
+          "after": "        let prediction=BranchPrediction{serial:self.serial,component,ids,counts,cts,pool};\n        timing::end(timing::PREDICT,profile_parent);\n        Ok(prediction)"
+        },
+        {
+          "before": "    pub fn observe(&mut self,s:&BranchPrediction,child:usize)->Result<()>{",
+          "after": "    pub fn observe(&mut self,s:&BranchPrediction,child:usize)->Result<()>{\n        let profile_parent=timing::mark();"
+        },
+        {
+          "before": "        let update=integer_pool::observe(&s.pool,child)?;",
+          "after": "        let profile_child=timing::mark();\n        let update=integer_pool::observe(&s.pool,child)?;\n        timing::end(timing::OBSERVE_POOL,profile_child);"
+        },
+        {
+          "before": "        self.cts.observe(&s.cts,child)?;",
+          "after": "        let profile_child=timing::mark();\n        self.cts.observe(&s.cts,child)?;\n        timing::end(timing::OBSERVE_CTS,profile_child);"
+        },
+        {
+          "before": "self.serial=serial;self.audit=audit;Ok(())",
+          "after": "self.serial=serial;self.audit=audit;\n        timing::end(timing::OBSERVE,profile_parent);Ok(())"
+        }
+      ]
+    },
+    {
+      "reference": "../lookup-float-cts/codec.rs",
+      "profile": "codec.rs",
+      "replacements": [
+        {
+          "before": "#[path=\"e2e.rs\"]",
+          "after": "#[path=\"../lookup-float-cts/e2e.rs\"]"
+        },
+        {
+          "before": "use model::{Model,exponent,digest};",
+          "after": "use model::{Model,exponent,digest};\nuse crate::timing;"
+        },
+        {
+          "before": "fn new(coder:Coder<'a>,depth:usize)->Result<Self>{Ok(Self{coder,model:Model::new(depth)?,",
+          "after": "fn new(coder:Coder<'a>,depth:usize)->Result<Self>{let profile_new=std::time::Instant::now();let model=Model::new(depth)?;timing::constructor(profile_new.elapsed().as_nanos());Ok(Self{coder,model,"
+        },
+        {
+          "before": "            let prediction=self.model.predict",
+          "after": "            timing::begin_branch(component,prefix);\n            let prediction=self.model.predict"
+        },
+        {
+          "before": "            let child=match &mut self.coder {",
+          "after": "            let profile_coder=timing::mark();\n            let child=match &mut self.coder {"
+        },
+        {
+          "before": "            let edge=self.model.trees[component].edge(node,child,prefix)?;",
+          "after": "            timing::end(timing::CODER,profile_coder);\n            let edge=self.model.trees[component].edge(node,child,prefix)?;"
+        },
+        {
+          "before": "            self.model.observe(&prediction,child)?;",
+          "after": "            self.model.observe(&prediction,child)?;\n            timing::complete_branch();"
+        },
+        {
+          "before": "fn finish_audit(&mut self)->TokenAudit{self.audit.state_digest",
+          "after": "fn finish_audit(&mut self)->TokenAudit{timing::audit(self.model.audit.prefixes);self.audit.state_digest"
+        },
+        {
+          "before": "impl Proof {\n",
+          "after": "impl Proof {\n    pub(crate) fn projection(&self)->crate::proof::Proof14 {\n        crate::proof::Proof14 {runs:self.runs,primary:self.primary,alphabet:self.alphabet,payload:self.payload,plain_crc:self.plain_crc,payload_crc:self.payload_crc,rank:self.rank,length:self.length,escape:self.escape,grammar:self.grammar,base_pool:self.base_pool,branches:self.branches,classes:self.classes,cdf_bits:self.cdf_bits}\n    }\n"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+# 等カウントKT短絡codecの性能比較条件
+
+## 実装前の失敗条件
+
+- 入力・EXE・source・契約・proofの不存在、長さ/SHA不一致、readlock中の変更、reparse point、既存workへの上書き。
+- 正式numeric132checks/137CLI/105identities、直接KT65536/helper65536/Model11267の成功証拠又は全rawが欠落。superseded numeric2rootsを正式証拠へ含めない。
+- 新build/full証拠、旧79checksを包含する新87checks/178CLI、全cross frame/復号/公開安全性又は全current provenanceが欠落。
+- 旧mixture compareのsource/proof/readlocks又は旧LUT cleanup adapterを省く。旧LUT12件の欠落は既存exact receipt/current retained copyの限定例外だけを維持する。
+- 元compareの計測7helper、quiet15/preflight5/全child前後、warm1+9/circular3codec、native options、120秒deadline、full CLI wall、memory/thread pollingを変える。
+- group2811006B SHA18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76、11件metadata/body又は全frame483469B SHA7584AF15ED4A70F6AD16E278F29DBB1C4D63EACD1DD58D5164198D03D3B5D95Cが変わる。
+- 固定size<=483599B/strict encode<574.5624msを緩和する、quiet違反/途中失敗を成功にする、部分samplesの採用、自動再試行、CPU設定変更や他process停止。
+- 数値一致、静的除算削減又は異なるsessionの速度から採用/総合7-Zip勝利を主張する。
+
+## 凍結対象と実行境界
+
+旧mixture compare SHA CF6333706D8D1A4A175F24A42B560460CB26CAF1EF85A0E1061223717A364223を全文cloneし、新source/契約/proofとDFS/readlocks、candidate/control pins・ラベルだけ更新する。計測7helperと既存proof検証を保持し、Parserとhelper AST完全一致を静的検証する。準備担当はcompiler/codec/benchmarkを起動しない。独立codec監査・比較script静的監査・freeze後、未使用 `build/khc-bwt-causal-bayes-q32-balanced-kt-20261001-schema-fix/performance` へ親が1sessionだけ試行する。
+
+候補EXE SHA7E149D682025E4E03EDC32B6999A91C139991DBC834017EF9A15F88EA9290BF0、control旧mixture EXE SHA4B39B65E931479E151322E92E69198F3ED6A6A6A5E3F1DBFB389BC02DEF19446。同model/precision/grammar/SAIS/全frameで、変数は既存overflow/cap検査後のzero==oneでQ/2を返す短絡だけである。数値用audit cfgを通常codecに入れない。
+
+正式numeric proof SHA63ACB1BBF1A2EFE811B76E761C6AA4CFDF2F4C443F75E24AD18FD97D312F5DAF、build FA92C276E742BD1A48038A7C11FD56CF47016E6FF5F67235964633A13060A1A2、full AB486DC5C8CE3DAE36B1A91EACCE1BE77F7084F52122B26C3EC6A629C59A06F4を既存proofへ追加する。全identities/input/oracle/rawを同一readlockへ含める。数値invocationsはrequired6fieldsとexit==expected_exitを検査し、不存在のtimeoutを読まない。codec/compileのtimeout検査は保持する。
+
+observer SHAE66D39AE8BCDAD63BC7D3FC467D4C85E950261749D457D33C4BFA9D3ED13FFBF、native7za SHAEDBEE35370E14030E4C785CF88200F42DC651C1EB4217C1E3963C38A12F099B0、mx9/LZMA2:d=64m/mmt1/solid/時刻metadataなしを維持する。全9測定、全pins、最終decode/nativeSLTを完了したsessionだけを局所比較へ使う。busyはfailedで止め、自動再試行しない。
+
+候補/controlの全CLI wallとtotal archive bytesで判断する。固定歴史gateと同session paired ratioは別々に報告する。decodeは出力境界が異なる診断値。Windows x64/Canterbury開発corpusの局所結果と4native/holdout/製品統合/総合7-Zip超過を区別する。製品/x86/外部書込み/Git stage・commit・push/シークレット/CPU設定を扱わない。

@@ -1,0 +1,33 @@
+{
+  "purpose": "今回の実験で生成したPDBのみ。実行検証の証拠ではなく、両reportのidentitiesに未参照。削除直前に範囲/reparse/使用中/追跡有無/SHAを再確認する。必要時は保存sourceとcompilerから再生成可能。",
+  "roots": [
+    "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric",
+    "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec"
+  ],
+  "planned_files": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric\\audit-opt2.pdb",
+      "bytes": 1306624,
+      "sha256": "810CE57A309B7250209AAAA0BA428F7685B8C544957DD0B4F81188B5620D0F04",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-numeric\\audit-opt3.pdb",
+      "bytes": 1306624,
+      "sha256": "E733D15A455AFCFBC9BF857FF093234847B537388F3B78CB45A5B42AEC9642F2",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec\\codec-checked.pdb",
+      "bytes": 1363968,
+      "sha256": "ED8EDD08139E055F37222D26C5D6F81573D2ADD8D44F5E9904760521F0E6A968",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-bayes-dominant-q15-20261002-codec\\codec-native.pdb",
+      "bytes": 1363968,
+      "sha256": "A8FD6649BE25DE7DC937EA4213B85A3E512476334133B7931FB029BD36ABCA9C",
+      "referenced": 0
+    }
+  ]
+}

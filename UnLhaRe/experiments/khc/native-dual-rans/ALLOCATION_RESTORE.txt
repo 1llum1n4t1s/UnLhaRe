@@ -1,0 +1,2 @@
+Combined cap remains98304B. dual.rs final format allocation24KiB uses parent slack; no total expansion.
+Restore pre-cardinality-fix controller using controller-before-coverage.json, then replace oracle_checks -lt 66 with oracle_checks -ne 36 and grammar_checks -lt 1 with grammar_checks -ne 66370. Only those replacements were made before the fix. Correct grammar count=257*258/2+256*257/2+64=66113.

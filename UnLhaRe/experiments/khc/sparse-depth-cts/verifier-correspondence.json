@@ -1,0 +1,66 @@
+{
+  "base_sha256": "99CB9966342207F8B4DFC8AE02B6D1F32459343C4216F02A4EA09BE179CAD4C0",
+  "normalization": "CRLF to LF; terminal newline",
+  "changes": [
+    {
+      "from": "khc-causal-expert-scheduling-20261001",
+      "to": "khc-sparse-depth-cts-20261001",
+      "count": 1
+    },
+    {
+      "from": "causal-expert-scheduling",
+      "to": "sparse-depth-cts",
+      "count": 5
+    },
+    {
+      "from": "CAUSAL_EXPERT_SCHEDULING_CONTRACT_20261001.md",
+      "to": "SPARSE_DEPTH_CTS_CONTRACT_20261001.md",
+      "count": 1
+    },
+    {
+      "from": "3599F4C04C3EA6985A1A470B44C94980117B4DF3088C9A9AF79DCC674CD776E6",
+      "to": "9BF4D51256A929EFFED842E5157D211D48466EA74BD9E411B64735B6B1C2738C",
+      "count": 1
+    },
+    {
+      "from": "0AD79D2C15CFFA96CDBED33421C20418C146BA223C872CFDCF5FD3F263ED0B64",
+      "to": "ED8E141086DD637277476C31D138603F64EF43E3E1553D5EC3D29FC27C74D7CA",
+      "count": 1
+    },
+    {
+      "from": "7207E2467E7C0FCDA699D62DBB8D906770A4EB3AB6EED16EC6801DAB5918000D",
+      "to": "7246DDCF19668DF1D2E8BF41E765950C1591F929FF43B1EAAB41432362FA0DB4",
+      "count": 1
+    },
+    {
+      "from": "CABE510C4566B63C7AAB7F5EA0507BC3DA1EB2FA0E146E2FE568C134E3CFB9B8",
+      "to": "881CFFC59A8DEEDB0F57563AAF195539E6C3626CBDC3246EE396AF32B5B5F15F",
+      "count": 1
+    },
+    {
+      "from": "378DD52D48E9DF987062194F0BF1835680946FBA77ABDF6A01417AB4C12F4F1E",
+      "to": "54EBFF315AD1CB985AFE653EB3B8A6F494F443B2D63444AC04DD0CCB0B158709",
+      "count": 1
+    },
+    {
+      "from": " foreach($pin in $pins.GetEnumerator())",
+      "to": " $pins['experiments/khc/sparse-depth-cts/cts_model.rs']='2F568F743456E36DA50A30BD922E839BA9478A5E11FD77CD8BFC1B69988A8A30'\n $pins['experiments/khc/sparse-depth-cts/context_audit.rs']='78E2F8943E6260695DD7B4A80C48A6C9666A9A5C62A12CD2E00FDF5DAB178123'\n $pins['experiments/khc/causal-expert-scheduling/scheduler.rs']='7207E2467E7C0FCDA699D62DBB8D906770A4EB3AB6EED16EC6801DAB5918000D'\n $pins['experiments/khc/causal-expert-scheduling/verify.ps1']='99CB9966342207F8B4DFC8AE02B6D1F32459343C4216F02A4EA09BE179CAD4C0'\n $pins['build/khc-causal-expert-scheduling-20261001/report.json']='370534F32A979FE2768CD60C29DFBD8342CD7B358C15C4D510945B8F8DD35E7A'\n $pins['build/khc-causal-expert-scheduling-20261001/codec-native.exe']='0737E2FFD936ECD89EA2FD4F8907AC0CD6C0766072BCE56CBB65AABDA7C981EA'\n $pins['build/khc-causal-expert-scheduling-20261001/fixed-native.frame']='CF62CD2324B4CF889CDDDB25C9508C28E4BD4D24217B93BB7D4FF9318C3EAD12'\n foreach($pin in $pins.GetEnumerator())",
+      "count": 1
+    },
+    {
+      "from": " Check 'wrapper-and-bayes-full-source-correspondence'",
+      "to": " Check 'wrapper-and-bayes-full-source-correspondence'\n $oldHeavy=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '../causal-bayes-q32-kt-reciprocal/cts_model.rs')).Replace(\"`r`n\",\"`n\")\n foreach($change in $mapping.heavy_changes){if($oldHeavy.Split([string[]]@($change.from),[StringSplitOptions]::None).Length-1 -ne $change.count){throw 'Heavy marker count differs'};$oldHeavy=$oldHeavy.Replace($change.from,$change.to)}\n $newHeavy=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'cts_model.rs')).Replace(\"`r`n\",\"`n\")\n if($oldHeavy.TrimEnd([char]10) -cne $newHeavy.TrimEnd([char]10)){throw 'Sparse heavy full source correspondence differs'};Check 'sparse-heavy-full-source-correspondence'\n $oldScheduler=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '../causal-expert-scheduling/scheduler.rs')).Replace(\"`r`n\",\"`n\")\n $change=$mapping.scheduler_change\n if($oldScheduler.Split([string[]]@($change.from),[StringSplitOptions]::None).Length-1 -ne $change.count){throw 'Scheduler marker count differs'}\n $expectedScheduler=$oldScheduler.Replace($change.from,$change.to)\n $actualScheduler=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'scheduler.rs')).Replace(\"`r`n\",\"`n\")\n if($expectedScheduler.TrimEnd([char]10) -cne $actualScheduler.TrimEnd([char]10)){throw 'Scheduler routing/source correspondence differs'};Check 'scheduler-model-route-only-correspondence'",
+      "count": 1
+    },
+    {
+      "from": " $executables=@()",
+      "to": " $contextExe=Join-Path $work 'context-audit.exe';$contextRecords=Join-Path $work 'context-records.bin'\n $null=Invoke-Child $compiler @('--edition=2024','-C','panic=abort','-C','opt-level=3','--cfg','khc_sparse_context_audit',(Join-Path $PSScriptRoot 'context_audit.rs'),'-o',$contextExe)\n $owned.Add($contextExe);$null=Hold $contextExe 'compiled-context-audit'\n $contextRow=Invoke-Child $contextExe @($contextRecords);$context=$contextRow.stdout|ConvertFrom-Json\n if($context.histories -ne 65536 -or $context.records -ne 393216 -or $context.record_bytes -ne 12 -or $context.nodes -ne 65815 -or $context.levels -ne 6 -or $context.node_bytes -ne 16 -or $context.prediction_bytes -ne 192 -or $context.invalid_levels_rejected -ne 2 -or (Get-Item -LiteralPath $contextRecords).Length -ne 4718592){throw 'Sparse context mapping/layout evidence differs'}\n $owned.Add($contextRecords);$contextIdentity=Hold $contextRecords 'context-mapping-records';$report['context_mapping']=[ordered]@{summary=$context;records=Identity $contextRecords}\n Check 'all-16bit-histories-six-depth-context-mapping'\n $null=Invoke-Child $contextExe @($contextRecords) 1\n if((Identity $contextRecords).sha256 -cne $contextIdentity.before_sha256){throw 'Mapping no-clobber failed'};Check 'context-audit-create-new-no-clobber'\n $null=Invoke-Child $contextExe @() 1;Check 'context-audit-invalid-arguments'\n $executables=@()",
+      "count": 1
+    },
+    {
+      "from": " $raw=[IO.File]::ReadAllBytes($fixed);$bad=[ordered]@{}",
+      "to": " $scheduledExe=Join-Path $root 'build/khc-causal-expert-scheduling-20261001/codec-native.exe'\n $scheduledFrame=Join-Path $root 'build/khc-causal-expert-scheduling-20261001/fixed-native.frame'\n foreach($cross in @(@{exe=$exe;frame=$scheduledFrame;label='scheduled-by-sparse'},@{exe=$scheduledExe;frame=$fixed;label='sparse-by-scheduled'})){\n  $out=Join-Path $work \"$($cross.label).rejected\";$row=Invoke-Child $cross.exe @('decode',$cross.frame,$out) 1\n  if($row.stderr -notmatch 'magic' -or (Test-Path -LiteralPath $out)){throw 'Scheduled/sparse magic refusal differs'};Check \"$($cross.label)-format-refusal\"\n }\n $raw=[IO.File]::ReadAllBytes($fixed);$bad=[ordered]@{}",
+      "count": 1
+    }
+  ]
+}

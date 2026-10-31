@@ -1,0 +1,7 @@
+# 跨file結合の異種混合を分離する有限診断
+
+2026-10-06。前size診断D8B805197395B7550F8168670F379CC38C7C574D856D04EC3279D8A5BAA518BEは完全復元したが、全連結MDL513252B/Adaptive577698Bで現frame465951Bを上回った。特に第二混在blockのMDL237208Bに対しAdaptive289395B。閾値・並び・block長のsweepではなく、具体的な異種混合を切り分ける第二構成を一つだけ実装する。
+
+分類はsrc/khc/block/mod.rs:194の既存ASCII+tab/LF/CR90%規則をfile全体で適用。全11fileを一度ずつ分類し、text/binary各群の内部順は既存manifest順を維持。各群末尾でblockをflushして混合しない。raw chunkとsource読込bufferを共用し、新input disk0、第三の分類/並替/閾値調整なし。4blockを各Mdl/BinaryAdaptiveで1回ずつself byte復元し、空/1B/all256の6正常契約を先に確認する。新group file順対応の実containerは未実装。classifier費用はspeed不測定だから隠した速度改善にしない。
+
+前SOLID_SIZE_PLANの全失敗先行・資源・pin・機能条件を維持。raw合計2810784B、files11/classified11/text+binary11、4block/全byte復元を要求。費用下限は現444B−44B+16B=416B、将来solid記述予約256Bを加え672B。実native archiveではない。5%ゲート457415Bを超えればこの一構成も不採用。率通過だけで採用/速度/未見/総合完了とはしない。親所有/new Cargo0/新work8MiB/child80MiB/60s/compiler512MiB/60s/suite180s/free5GiB、凍結前source/報告への書込0。性能のquiet15%/9paired等は変更せず、今回はfinite bytesのみ。

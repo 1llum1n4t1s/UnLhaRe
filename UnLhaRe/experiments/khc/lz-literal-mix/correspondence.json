@@ -1,0 +1,126 @@
+{
+  "lz": [
+    {
+      "old": "const MODEL_MEMORY: usize = 128 * 1024;",
+      "new": "#[cfg(not(khc_literal_mix))]\nconst MODEL_MEMORY: usize = 128 * 1024;\n#[cfg(khc_literal_mix)]\nconst MODEL_MEMORY: usize = 128 * 1024 + 524288;\n#[cfg(khc_literal_mix)]\nconst LITERAL_ORDER2_ENTRIES: usize = 512 * 256;",
+      "count": 1
+    },
+    {
+      "old": "    literal: Vec<u16>,",
+      "new": "    literal: Vec<u16>,\n    #[cfg(khc_literal_mix)]\n    literal_order2: Vec<u16>,\n    #[cfg(khc_literal_mix)]\n    literal_weights: Vec<u16>,",
+      "count": 1
+    },
+    {
+      "old": "            literal: buffer(LITERAL_CONTEXTS, 16384)?,",
+      "new": "            literal: buffer(LITERAL_CONTEXTS, 16384)?,\n            #[cfg(khc_literal_mix)]\n            literal_order2: buffer(LITERAL_ORDER2_ENTRIES, 16384)?,\n            #[cfg(khc_literal_mix)]\n            literal_weights: buffer(LITERAL_ORDER2_ENTRIES, 16384)?,",
+      "count": 1
+    },
+    {
+      "old": "            literal: clone_slice(&self.literal)?,",
+      "new": "            literal: clone_slice(&self.literal)?,\n            #[cfg(khc_literal_mix)]\n            literal_order2: clone_slice(&self.literal_order2)?,\n            #[cfg(khc_literal_mix)]\n            literal_weights: clone_slice(&self.literal_weights)?,",
+      "count": 1
+    },
+    {
+      "old": "        blend(&mut self.literal, &initial.literal);",
+      "new": "        blend(&mut self.literal, &initial.literal);\n        #[cfg(khc_literal_mix)]\n        {\n            blend(&mut self.literal_order2, &initial.literal_order2);\n            blend(&mut self.literal_weights, &initial.literal_weights);\n        }",
+      "count": 1
+    },
+    {
+      "old": "fn put_literal(\n",
+      "new": "// 新しいliteral expertだけを研究cloneへ接続する。過去raw bytesからのみ予測。\n#[cfg(khc_literal_mix)]\n#[inline(always)]\nfn order2_literal_index(bytes: &[u8], pos: usize, symbol: usize) -> usize {\n    let previous1 = pos.checked_sub(1).map_or(0, |at| bytes[at]);\n    let previous2 = pos.checked_sub(2).map_or(0, |at| bytes[at]);\n    let context = (usize::from(previous2) * 257 + usize::from(previous1)) & 511;\n    context * 256 + symbol\n}\n#[inline(always)]\nfn literal_probability(models: &Models, bytes: &[u8], pos: usize, old_index: usize, symbol: usize) -> u16 {\n    #[cfg(khc_literal_mix)]\n    {\n        let index = order2_literal_index(bytes, pos, symbol);\n        let weight = u64::from(models.literal_weights[index]);\n        let old = u64::from(models.literal[old_index]);\n        let new = u64::from(models.literal_order2[index]);\n        return ((weight * old + (32768 - weight) * new + 16384) >> 15).clamp(1, 32767) as u16;\n    }\n    #[cfg(not(khc_literal_mix))]\n    {\n        let _ = (bytes, pos, symbol);\n        models.literal[old_index]\n    }\n}\n#[cfg(khc_literal_mix)]\n#[inline(always)]\nfn update_literal_experts(models: &mut Models, bytes: &[u8], pos: usize, old_index: usize, symbol: usize, bit: bool) {\n    let index = order2_literal_index(bytes, pos, symbol);\n    let old = u64::from(models.literal[old_index]);\n    let new = u64::from(models.literal_order2[index]);\n    let weight = u64::from(models.literal_weights[index]);\n    let observed_old = if bit { 32768 - old } else { old };\n    let observed_new = if bit { 32768 - new } else { new };\n    let denominator = weight * observed_old + (32768 - weight) * observed_new;\n    // 全probabilityは1..32768内。分母正、numerator<2^45なのでu64へ収まる。\n    let posterior = (32768 * weight * observed_old) / denominator;\n    let next = 256 + ((32256 * posterior) >> 15);\n    update(&mut models.literal[old_index], bit);\n    update(&mut models.literal_order2[index], bit);\n    models.literal_weights[index] = next as u16;\n}\nfn put_literal_model(sink: &mut impl BitSink, models: &mut Models, bytes: &[u8], pos: usize, index: usize, symbol: usize, bit: bool) -> Result<(), Error> {\n    #[cfg(khc_literal_mix)]\n    {\n        sink.bit(literal_probability(models, bytes, pos, index, symbol), bit)?;\n        update_literal_experts(models, bytes, pos, index, symbol, bit);\n        Ok(())\n    }\n    #[cfg(not(khc_literal_mix))]\n    {\n        let _ = (bytes, pos, symbol);\n        put(sink, &mut models.literal[index], bit)\n    }\n}\nfn get_literal_model(coder: &mut impl BitSource, models: &mut Models, bytes: &[u8], pos: usize, index: usize, symbol: usize) -> Result<bool, Error> {\n    #[cfg(khc_literal_mix)]\n    {\n        let bit = coder.bit(literal_probability(models, bytes, pos, index, symbol))?;\n        update_literal_experts(models, bytes, pos, index, symbol, bit);\n        Ok(bit)\n    }\n    #[cfg(not(khc_literal_mix))]\n    {\n        let _ = (bytes, pos, symbol);\n        get(coder, &mut models.literal[index])\n    }\n}\n\nfn put_literal(\n",
+      "count": 1
+    },
+    {
+      "old": "        put(sink, &mut models.literal[index], bit)?;",
+      "new": "        put_literal_model(sink, models, input, pos, index, symbol, bit)?;",
+      "count": 1
+    },
+    {
+      "old": "        let bit = get(coder, &mut models.literal[index])?;",
+      "new": "        let bit = get_literal_model(coder, models, output, pos, index, symbol)?;",
+      "count": 1
+    },
+    {
+      "old": "        price += bit_price(models.literal[index], bit);",
+      "new": "        price += bit_price(literal_probability(models, input, pos, index, symbol), bit);",
+      "count": 2
+    },
+    {
+      "old": "fn get_literal_defer(\n    coder: &mut range::Decoder<'_>,\n    models: &mut Models,\n    output: &[u8],\n    pos: usize,\n    reps: [usize; 4],\n) -> Result<u8, Error> {\n    let previous = pos.checked_sub(1).map_or(0, |at| output[at]);\n    let base = usize::from(previous >> 5) * LITERAL_STRIDE;\n    let mut matched = reps[0] <= pos;\n    let prediction = if matched { output[pos - reps[0]] } else { 0 };\n    let mut symbol = 1usize;\n    let mut remaining = 8usize;\n    while remaining != 0 {\n        let shift = 7 - symbol.ilog2() as usize;\n        let predicted_bit = prediction & (1 << shift) != 0;\n        let index = if matched {\n            base + 256 * (1 + usize::from(predicted_bit)) + symbol\n        } else {\n            base + symbol\n        };\n        let bit = get_defer(coder, &mut models.literal[index])?;\n        symbol = symbol * 2 + usize::from(bit);\n        matched &= bit == predicted_bit;\n        remaining -= 1;\n    }\n    Ok((symbol - 256) as u8)\n}\n",
+      "new": "fn get_literal_defer(\n    coder: &mut range::Decoder<'_>,\n    models: &mut Models,\n    output: &[u8],\n    pos: usize,\n    reps: [usize; 4],\n) -> Result<u8, Error> {\n    #[cfg(khc_literal_mix)]\n    {\n        let _ = (coder, models, output, pos, reps);\n        return Err(Error::Format(\"literal mix does not support deferred adaptation\"));\n    }\n    #[cfg(not(khc_literal_mix))]\n    {\n    let previous = pos.checked_sub(1).map_or(0, |at| output[at]);\n    let base = usize::from(previous >> 5) * LITERAL_STRIDE;\n    let mut matched = reps[0] <= pos;\n    let prediction = if matched { output[pos - reps[0]] } else { 0 };\n    let mut symbol = 1usize;\n    let mut remaining = 8usize;\n    while remaining != 0 {\n        let shift = 7 - symbol.ilog2() as usize;\n        let predicted_bit = prediction & (1 << shift) != 0;\n        let index = if matched {\n            base + 256 * (1 + usize::from(predicted_bit)) + symbol\n        } else {\n            base + symbol\n        };\n        let bit = get_defer(coder, &mut models.literal[index])?;\n        symbol = symbol * 2 + usize::from(bit);\n        matched &= bit == predicted_bit;\n        remaining -= 1;\n    }\n    Ok((symbol - 256) as u8)\n    }\n}\n",
+      "count": 1
+    }
+  ],
+  "mod": [
+    {
+      "old": "mod bt;",
+      "new": "#[path = \"../bt.rs\"]\nmod bt;",
+      "count": 1
+    },
+    {
+      "old": "mod context;",
+      "new": "#[path = \"../context.rs\"]\nmod context;",
+      "count": 1
+    },
+    {
+      "old": "mod frontier_dp;",
+      "new": "#[path = \"../frontier_dp.rs\"]\nmod frontier_dp;",
+      "count": 1
+    },
+    {
+      "old": "mod hybrid;",
+      "new": "#[path = \"../hybrid.rs\"]\nmod hybrid;",
+      "count": 1
+    },
+    {
+      "old": "mod prices;",
+      "new": "#[path = \"../prices.rs\"]\nmod prices;",
+      "count": 1
+    },
+    {
+      "old": "pub(crate) mod profile;",
+      "new": "#[path = \"../profile.rs\"]\npub(crate) mod profile;",
+      "count": 1
+    },
+    {
+      "old": "mod range;",
+      "new": "#[path = \"../range.rs\"]\nmod range;",
+      "count": 1
+    },
+    {
+      "old": "mod rans;",
+      "new": "#[path = \"../rans.rs\"]\nmod rans;",
+      "count": 1
+    },
+    {
+      "old": "mod rep_frontier_dp;",
+      "new": "#[path = \"../rep_frontier_dp.rs\"]\nmod rep_frontier_dp;",
+      "count": 1
+    },
+    {
+      "old": "mod row;",
+      "new": "#[path = \"../row.rs\"]\nmod row;",
+      "count": 1
+    },
+    {
+      "old": "pub(crate) mod suffix_probe;",
+      "new": "#[path = \"../suffix_probe.rs\"]\npub(crate) mod suffix_probe;",
+      "count": 1
+    },
+    {
+      "old": "mod reference_lz;",
+      "new": "#[path = \"../reference_lz.rs\"]\nmod reference_lz;",
+      "count": 1
+    },
+    {
+      "old": "const MAGIC: &[u8; 8] = b\"KHC0LAB\\0\";",
+      "new": "#[cfg(not(khc_literal_mix))]\nconst MAGIC: &[u8; 8] = b\"KHC0LAB\\0\";\n#[cfg(khc_literal_mix)]\nconst MAGIC: &[u8; 8] = b\"KLC2LAB\\0\";",
+      "count": 1
+    },
+    {
+      "old": "    let _profile = profile::Scope::new(profile::Phase::Encode);",
+      "new": "    #[cfg(khc_literal_mix)]\n    if !matches!(options.algorithm, Algorithm::Lz) || !matches!(options.entropy_backend, EntropyBackend::Range) {\n        return Err(Error::Format(\"literal mix supports only lazy LZ and Range\"));\n    }\n    let _profile = profile::Scope::new(profile::Phase::Encode);",
+      "count": 1
+    }
+  ]
+}

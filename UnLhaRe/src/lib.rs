@@ -13,6 +13,7 @@ compile_error!("UnLhaRe supports only Windows/macOS on x86_64 or aarch64 (64-bit
 mod directory;
 mod error;
 pub mod ffi;
+pub mod khc;
 mod operation;
 mod pathname;
 mod reader;
@@ -42,6 +43,7 @@ use std::{
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Method {
     Stored,
+    Lh4,
     #[default]
     Lh5,
     Lh6,
@@ -70,6 +72,17 @@ impl Default for Limits {
 pub struct CreateOptions {
     pub method: Method,
     pub limits: Limits,
+    pub effort: CompressionEffort,
+}
+
+/// High effort compares standard and two-pass parsing output; Stored ignores it.
+/// High effort uses additional memory proportional to the entry size and CPU time.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompressionEffort {
+    #[default]
+    Standard,
+    High,
 }
 
 /// Optional policy for creation APIs which report skipped source entries.
@@ -141,6 +154,14 @@ pub fn create_from_directory(
     destination: &Path,
     options: &CreateOptions,
 ) -> Result<()> {
+    let (root, entries) = collect_source_directory(source, &options.limits)?;
+    writer::create_archive_beneath(destination, &root, &entries, options)
+}
+
+pub(crate) fn collect_source_directory(
+    source: &Path,
+    limits: &Limits,
+) -> Result<(Dir, Vec<SourceEntry>)> {
     let directory = open_source_directory_nofollow(source).map_err(|error| {
         if crate::directory::is_nofollow_rejection(&error) {
             Error::Unsupported(format!(
@@ -215,8 +236,8 @@ pub fn create_from_directory(
         Ok(())
     }
     let mut entries = Vec::new();
-    visit(&root, Path::new(""), &mut entries, &options.limits, 0)?;
-    writer::create_archive_beneath(destination, &root, &entries, options)
+    visit(&root, Path::new(""), &mut entries, limits, 0)?;
+    Ok((root, entries))
 }
 
 fn open_source_directory_nofollow(source: &Path) -> io::Result<File> {

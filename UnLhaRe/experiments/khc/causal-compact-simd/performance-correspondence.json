@@ -1,0 +1,55 @@
+{
+  "original": "experiments/khc/causal-simd-quotient/compare.ps1",
+  "changes": [
+    {
+      "old": "'C54FADC9A17F584EBF6267A337107EB1149F0B3B954EA9F30B409A9AB3BFD948'",
+      "new": "'362282160B038EF495927DE2F855E8EF651D4611101BA8D8D0F842AA8D61DDB9'",
+      "count": 1
+    },
+    {
+      "old": "build/khc-causal-simd-quotient-20261002-warning-fix/performance",
+      "new": "build/khc-causal-compact-simd-20261002/performance",
+      "count": 1
+    },
+    {
+      "old": "frozen SIMD posterior codec performance directory.",
+      "new": "frozen compact posterior codec performance directory.",
+      "count": 1
+    },
+    {
+      "old": "Q32 SIMD-posterior dominant-shortcut scheduled candidate",
+      "new": "Q32 compact-posterior dominant-shortcut scheduled candidate",
+      "count": 1
+    },
+    {
+      "old": "q32-simd-posterior-group",
+      "new": "q32-compact-posterior-group",
+      "count": 5
+    },
+    {
+      "old": "$_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 247296",
+      "new": "$_.path -ceq (Join-Path $root 'build/khc-causal-simd-quotient-20261002-warning-fix/codec-native.exe') -and $_.before_sha256 -ceq 'C54FADC9A17F584EBF6267A337107EB1149F0B3B954EA9F30B409A9AB3BFD948' -and $_.bytes -eq 247296",
+      "count": 1
+    },
+    {
+      "old": "(Join-Path $PSScriptRoot '../bayes-dominant-q15/compare.ps1') 'old-performance-harness'",
+      "new": "(Join-Path $PSScriptRoot '../causal-simd-quotient/compare.ps1') 'old-performance-harness'",
+      "count": 1
+    },
+    {
+      "old": "3E5E745572D8F6AEEB5026E481AF329D8FD00ED000F85BA673F143EC8E81F232",
+      "new": "D31CF484DB4078D733DB70CD7DF9271241B079366144C1C54BCCF078ED280165",
+      "count": 1
+    },
+    {
+      "old": "    $report['historical_budget_guard_repairs']=",
+      "new": "\n    $compactProof=Track-File (Join-Path $root 'build/khc-causal-compact-simd-20261002/report.json') 'compact-codec-proof'\n    if($compactProof.before_sha256 -cne 'A98CA8C5B4ABA79F03D91171909755887DEC528AE50325F191EEA3BF63DC43CD'){throw 'Compact codec proof SHA'}\n    $compactJson=Get-Content -LiteralPath $compactProof.path -Raw|ConvertFrom-Json\n    if($compactJson.status -cne 'correctness_and_size_passed_not_timed' -or $compactJson.failure -or $compactJson.timing_used -or $compactJson.checks.Count -ne 48 -or $compactJson.invocations.Count -ne 86 -or $compactJson.identities.Count -ne 269 -or $compactJson.owned_tmp_or_reparse -ne 0 -or $compactJson.owned_pdb -ne 0 -or $compactJson.frame_bytes -ne 483496){throw 'Compact codec proof incomplete'}\n    if(($compactJson.variants -join ',') -cne 'native,checked,scalar,scalar-checked'){throw 'Compact codec variant matrix'}\n    $compactOrdinary=@($compactJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 243712})\n    if($compactOrdinary.Count -ne 1){throw 'Candidate not the compact ordinary codec'}\n    $compactRefusals=@($compactJson.invocations|Where-Object exit -ne 0)\n    if($compactRefusals.Count -ne 8 -or @($compactRefusals|Where-Object {$_.exit -ne 1 -or !$_.stderr -or $_.stdout}).Count -or @($compactJson.invocations|Where-Object {$_.exit -eq 0 -and $_.stderr}).Count){throw 'Compact codec invocation mismatch'}\n    $compactDiagnostic=$compactJson.compact_diagnostic\n    if($compactDiagnostic.heavy_events -ne 3223156 -or ($compactDiagnostic.encode|ConvertTo-Json -Compress) -cne ($compactDiagnostic.decode|ConvertTo-Json -Compress)){throw 'Compact actual kernel diagnostic mismatch'}\n    if($compactDiagnostic.encode.compact_groups -ne 12892624 -or $compactDiagnostic.encode.fallback_groups -ne 0 -or $compactDiagnostic.encode.compact_option_bytes -ne 40 -or $compactDiagnostic.encode.plain_array_bytes -ne 32 -or $compactDiagnostic.encode.legacy_array_bytes -ne 96){throw 'Compact actual kernel coverage/layout'}\n    $compactNumericProof=Track-File (Join-Path $root 'build/khc-compact-simd-20261002-coverage-repair/report.json') 'compact-numeric-proof'\n    if($compactNumericProof.before_sha256 -cne 'C8B6DAA9DEFA6C97D6DD062682AA87139B0CC6C5F6782B642EA977783FCE4935'){throw 'Compact numeric proof SHA'}\n    $compactNumericJson=Get-Content -LiteralPath $compactNumericProof.path -Raw|ConvertFrom-Json\n    if($compactNumericJson.status -cne 'compact_batch_numeric_verified_not_codec_or_timing' -or $compactNumericJson.failure -or $compactNumericJson.timing_used -or $compactNumericJson.checks.Count -ne 32 -or $compactNumericJson.invocations.Count -ne 87 -or $compactNumericJson.identities.Count -ne 13 -or $compactNumericJson.owned_tmp_or_reparse -ne 0 -or !$compactNumericJson.features.avx2_available -or $compactNumericJson.summaries.Count -ne 4){throw 'Compact numeric proof incomplete'}\n    foreach($call in $compactNumericJson.invocations){\n        $expectedExit=if($call.argv.Count -eq 0 -or ($call.argv.Count -gt 2 -and $call.argv[0] -ceq 'query' -and $call.argv[2] -ceq '-1')){2}else{0}\n        if($call.exit -ne $expectedExit -or ($expectedExit -eq 0 -and $call.stderr) -or ($expectedExit -ne 0 -and (!$call.stderr -or $call.stdout))){throw 'Compact numeric invocation failure'}\n    }\n    $compactMatrix=@($compactNumericJson.summaries|ForEach-Object {\"$($_.opt)/$($_.backend)\"}|Sort-Object)\n    if(($compactMatrix -join ',') -cne '2/avx2,2/scalar,3/avx2,3/scalar'){throw 'Compact numeric matrix'}\n    foreach($summary in $compactNumericJson.summaries){\n        $counts=$summary.summary\n        if($counts.records -ne 9293629 -or $counts.matched -ne 9293629 -or $counts.batches -ne 2323408 -or $counts.compact -ne 8398832 -or $counts.certificate_fallback -ne 0 -or $counts.fingerprint_u64 -cne 'f02dbdcb00adbe1d'){throw 'Compact numeric coverage mismatch'}\n        if(($counts|ConvertTo-Json -Compress) -cne ($compactNumericJson.summaries[0].summary|ConvertTo-Json -Compress)){throw 'Compact numeric summary mismatch'}\n    }\n    $report['compact_proofs']=[ordered]@{codec=$compactProof;numeric=$compactNumericProof}\n\n    $report['historical_budget_guard_repairs']=",
+      "count": 1
+    },
+    {
+      "old": "$simdJson,$simdNumericJson))",
+      "new": "$simdJson,$simdNumericJson,$compactJson,$compactNumericJson))",
+      "count": 1
+    }
+  ]
+}

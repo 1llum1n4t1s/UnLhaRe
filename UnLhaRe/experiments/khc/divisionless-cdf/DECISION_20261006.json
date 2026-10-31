@@ -1,0 +1,89 @@
+{
+  "report_sha": "EDFF11A02891B854E57CE1BCCAB70E467CFD99C71E2BF40FB18D74D2B9D665E2",
+  "status": "completed",
+  "encode": {
+    "old": {
+      "sum_file_medians_ns": 415652000,
+      "median_pair_sums_ns": 411776700
+    },
+    "new": {
+      "sum_file_medians_ns": 429688200,
+      "median_pair_sums_ns": 425800100
+    },
+    "file_sum_ratio": 1.0337691145477468,
+    "pair_sum_ratio": 1.0340558365735604
+  },
+  "decode": {
+    "old": {
+      "sum_file_medians_ns": 106135500,
+      "median_pair_sums_ns": 109305800
+    },
+    "new": {
+      "sum_file_medians_ns": 107095800,
+      "median_pair_sums_ns": 108150600
+    },
+    "file_sum_ratio": 1.0090478680554573,
+    "pair_sum_ratio": 0.9894314848800339
+  },
+  "files": [
+    {
+      "name": "alice29.txt",
+      "old_ns": 10353900,
+      "new_ns": 9969200,
+      "ratio": 0.9628449183399492
+    },
+    {
+      "name": "asyoulik.txt",
+      "old_ns": 9131700,
+      "new_ns": 9055600,
+      "ratio": 0.9916663928950797
+    },
+    {
+      "name": "cp.html",
+      "old_ns": 1460000,
+      "new_ns": 1431600,
+      "ratio": 0.9805479452054795
+    },
+    {
+      "name": "fields.c",
+      "old_ns": 767000,
+      "new_ns": 748300,
+      "ratio": 0.975619295958279
+    },
+    {
+      "name": "grammar.lsp",
+      "old_ns": 483600,
+      "new_ns": 484500,
+      "ratio": 1.001861042183623
+    },
+    {
+      "name": "lcet10.txt",
+      "old_ns": 31602400,
+      "new_ns": 36526800,
+      "ratio": 1.1558236083335443
+    },
+    {
+      "name": "plrabn12.txt",
+      "old_ns": 51818300,
+      "new_ns": 48377100,
+      "ratio": 0.9335910286520399
+    },
+    {
+      "name": "xargs.1",
+      "old_ns": 518600,
+      "new_ns": 502700,
+      "ratio": 0.9693405322020825
+    }
+  ],
+  "passed": false,
+  "decision": "rejected",
+  "reverse_run": false,
+  "third_run": false,
+  "product_changed": false,
+  "thresholds": {
+    "decode_ratio_max": 0.85,
+    "encode_ratio_max": 1.05,
+    "per_file_decode_ratio_exclusive_max": 1.1
+  },
+  "not_goal_completion": true
+}

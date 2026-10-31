@@ -1,0 +1,65 @@
+{
+  "original": "experiments/khc/simd-quotient/verify.ps1",
+  "changes": [
+    {
+      "old": "../SIMD_QUOTIENT_CONTRACT_20261002.md",
+      "new": "../COMPACT_SIMD_CONTRACT_20261002.md",
+      "count": 2
+    },
+    {
+      "old": "build/khc-simd-quotient-20261002",
+      "new": "build/khc-compact-simd-20261002-coverage-repair",
+      "count": 1
+    },
+    {
+      "old": "2587739B4CF5C4AB8FF3980782D9B16AEA57A47F45FE9012841BC41C3DAC6D4D",
+      "new": "BE0918A76FC9438FF2C947B93B2F5275825B2F10DA40216C8C6171C24190688A",
+      "count": 1
+    },
+    {
+      "old": "../integer-refinement-narrow/audit_cli.rs",
+      "new": "../simd-quotient/audit_cli.rs",
+      "count": 2
+    },
+    {
+      "old": "60495ACFC85E6DC32ECAA2AB28BD31DB37F8E5904331617F0F1BAEAB1A7E7A6D",
+      "new": "767A234AF874BA615809039ACE8C6BBE6FF6BDE1C2CC1E38E9ADFA2068941856",
+      "count": 1
+    },
+    {
+      "old": "@('exact_div.rs','audit_cli.rs','audit-correspondence.json','verify.ps1')",
+      "new": "@('exact_div.rs','audit_cli.rs','audit-correspondence.json','helper-correspondence.json','verify.ps1')",
+      "count": 1
+    },
+    {
+      "old": "    $expected=[IO.File]::ReadAllText",
+      "new": "    Hold (Join-Path $PSScriptRoot '../simd-quotient/exact_div.rs') 'frozen-old-helper' '9A135D48AD9C80B02B5BF916301EBBA0F95ED3EA578B6E0B0563A4E6E38645C7'\n    Hold (Join-Path $root 'build/khc-simd-quotient-20261002/report.json') 'frozen-old-numeric-proof' 'FE390BBE820107F32570BFC6E416E5FA947743848131F8EB8513BFC4E02E1EDE'\n    $helper=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '../simd-quotient/exact_div.rs')).Replace(\"`r`n\",\"`n\")\n    foreach($change in (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'helper-correspondence.json') -Raw|ConvertFrom-Json)){\n        if(([regex]::Matches($helper,[regex]::Escape($change.old))).Count -ne $change.count){throw 'helper source occurrence'}\n        $helper=$helper.Replace([string]$change.old,[string]$change.new)\n    }\n    if([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'exact_div.rs')).Replace(\"`r`n\",\"`n\") -cne $helper){throw 'full helper source correspondence'}\n    $expected=[IO.File]::ReadAllText",
+      "count": 1
+    },
+    {
+      "old": "full-audit-correspondence-and-old-u128-oracle",
+      "new": "full-helper-and-audit-correspondence-and-old-u128-oracle",
+      "count": 1
+    },
+    {
+      "old": "'-C','overflow-checks=yes','-o',$exe",
+      "new": "'-C','overflow-checks=yes','-C','link-arg=/DEBUG:NONE','-o',$exe",
+      "count": 1
+    },
+    {
+      "old": "$summary.estimated -le 0 -or $summary.down -le 0",
+      "new": "$summary.compact -le 0 -or ($summary.shifted + $summary.estimated + $summary.native) -le 0",
+      "count": 1
+    },
+    {
+      "old": "batch_numeric_verified_not_codec_or_timing",
+      "new": "compact_batch_numeric_verified_not_codec_or_timing",
+      "count": 1
+    },
+    {
+      "old": "$temporary=@(Get-ChildItem -LiteralPath $work -Recurse -Force|Where-Object {$_.Name.EndsWith('.tmp') -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)})",
+      "new": "$temporary=@(Get-ChildItem -LiteralPath $work -Recurse -Force|Where-Object {$_.Name.EndsWith('.tmp') -or $_.Extension -ceq '.pdb' -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)})",
+      "count": 1
+    }
+  ]
+}

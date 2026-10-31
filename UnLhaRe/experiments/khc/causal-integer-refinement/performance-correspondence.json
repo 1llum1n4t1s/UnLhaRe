@@ -1,0 +1,107 @@
+[
+  {
+    "old": "'0737E2FFD936ECD89EA2FD4F8907AC0CD6C0766072BCE56CBB65AABDA7C981EA'",
+    "new": "'AD2D1D930F27FA73B70F1E096BBEDC35301244B0A2FA3130F689680430184A26'",
+    "count": 1
+  },
+  {
+    "old": "'build/khc-causal-expert-scheduling-20261001/performance'",
+    "new": "'build/khc-causal-integer-refinement-20261002-comparison-repair/performance'",
+    "count": 1
+  },
+  {
+    "old": "'WorkDirectory must be the frozen causal scheduling codec performance directory.'",
+    "new": "'WorkDirectory must be the frozen integer refinement codec performance directory.'",
+    "count": 1
+  },
+  {
+    "old": "$sourcePins['codec.rs']",
+    "new": "$sourcePins['../causal-expert-scheduling/codec.rs']",
+    "count": 1
+  },
+  {
+    "old": "$sourcePins['scheduler.rs']",
+    "new": "$sourcePins['../causal-expert-scheduling/scheduler.rs']",
+    "count": 1
+  },
+  {
+    "old": "$sourcePins['bayes_model.rs']",
+    "new": "$sourcePins['../causal-expert-scheduling/bayes_model.rs']",
+    "count": 1
+  },
+  {
+    "old": "$sourcePins['correspondence.json']",
+    "new": "$sourcePins['../causal-expert-scheduling/correspondence.json']",
+    "count": 1
+  },
+  {
+    "old": "$sourcePins['verify.ps1']",
+    "new": "$sourcePins['../causal-expert-scheduling/verify.ps1']",
+    "count": 1
+  },
+  {
+    "old": "'causal-scheduled-group'",
+    "new": "'q32-integer-refined-group'",
+    "count": 5
+  },
+  {
+    "old": "'The 524296-byte Model-owned KT reciprocal table and initialization are included in full process wall time and memory.'",
+    "new": "'The 524296-byte KT table and 262144-byte integer seed table, initialization and refinement are included in full process wall time and memory.'",
+    "count": 1
+  },
+  {
+    "old": "'Causal scheduled candidate and frozen balanced KT Q32 control use identical KHSGRP0 input but different magic/predictions/frames. Their independently E2E-verified exact frames are mandatory. Native 11-file 7z solid archive has different container and output boundaries.'",
+    "new": "'Integer refined scheduled candidate and frozen balanced KT Q32 control use identical KHSGRP0 input but different magic/predictions/frames. Their independently E2E-verified exact frames are mandatory. Native 11-file 7z solid archive has different container and output boundaries.'",
+    "count": 1
+  },
+  {
+    "old": "if (Test-Path -LiteralPath $work) { throw 'WorkDirectory exists; no data will be overwritten.' }",
+    "new": "if (Test-Path -LiteralPath $work) { throw 'WorkDirectory exists; no data will be overwritten.' }\n$report['disk_budget_before'] = & (Join-Path $PSScriptRoot '../disk-budget.ps1') -WorkDirectory $work",
+    "count": 1
+  },
+  {
+    "old": "$report.environment.cpu = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors)",
+    "new": "$report.environment.cpu = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors)\n    $report.environment['resolved_cwd'] = [IO.Path]::GetFullPath((Get-Location).Path)\n    $report.environment['powershell_executable'] = (Get-Process -Id $PID).Path\n    $report.environment['script_path'] = $PSCommandPath\n    $report.environment['script_last_write_utc'] = (Get-Item -LiteralPath $PSCommandPath).LastWriteTimeUtc.ToString('o')",
+    "count": 1
+  },
+  {
+    "old": "    $sourcePins['../adaptive-suffix-kt/cts_model.rs']",
+    "new": "    $newPins=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'performance-support-pins.json') -Raw|ConvertFrom-Json\n    foreach($pin in $newPins){$sourcePins[[string]$pin.path]=[string]$pin.sha256}\n    $null=Track-File (Join-Path $PSScriptRoot 'performance-support-pins.json') 'new-source-pins'\n    $null=Track-File (Join-Path $PSScriptRoot 'performance-correspondence.json') 'performance-correspondence'\n    $oldHarness=Track-File (Join-Path $PSScriptRoot '../causal-expert-scheduling/compare.ps1') 'old-performance-harness'\n    if($oldHarness.before_sha256 -cne '785727BDEA01C90788707E352B215048D9934DA1848FFC5982BFBD4402EC69C2'){throw 'Old harness pin mismatch'}\n    $expected=[IO.File]::ReadAllText($oldHarness.path).Replace(\"`r`n\",\"`n\")\n    foreach($replacement in (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'performance-correspondence.json') -Raw|ConvertFrom-Json)){\n        if(([regex]::Matches($expected,[regex]::Escape($replacement.old))).Count -ne $replacement.count){throw 'Unique performance replacement mismatch'}\n        $expected=$expected.Replace([string]$replacement.old,[string]$replacement.new)\n    }\n    if($expected -cne [IO.File]::ReadAllText($PSCommandPath).Replace(\"`r`n\",\"`n\")){throw 'Complete performance source correspondence mismatch'}\n    foreach($path in @($oldHarness.path,$PSCommandPath)){\n        $tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)\n        if($errors.Count){throw 'Performance PowerShell parser failure'}\n        $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst]},$true))\n        if($functions.Count -ne 8){throw 'Expected eight measurement helpers'}\n        if($path -ceq $oldHarness.path){$oldFunctions=$functions}else{$newFunctions=$functions}\n    }\n    foreach($oldFunction in $oldFunctions){\n        $matches=@($newFunctions|Where-Object Name -ceq $oldFunction.Name)\n        if($matches.Count -ne 1 -or $matches[0].Body.Extent.Text -cne $oldFunction.Body.Extent.Text){throw 'Measurement helper AST changed'}\n    }\n    $report['measurement_helper_AST_equal']=8\n    $sourcePins['../adaptive-suffix-kt/cts_model.rs']",
+    "count": 1
+  },
+  {
+    "old": "    if(@($schedulerJson.identities|Where-Object {$_.role -ceq 'compiled-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.before_bytes -eq 236544}).Count -ne 1){throw 'Candidate not bound to scheduler codec E2E proof.'}",
+    "new": "    $oldSchedulerBinary=Join-Path $root 'build/khc-causal-expert-scheduling-20261001/codec-native.exe'\n    if(@($schedulerJson.identities|Where-Object {$_.role -ceq 'compiled-codec' -and $_.path -ceq $oldSchedulerBinary -and $_.before_sha256 -ceq '0737E2FFD936ECD89EA2FD4F8907AC0CD6C0766072BCE56CBB65AABDA7C981EA' -and $_.before_bytes -eq 236544}).Count -ne 1){throw 'Old scheduler binary not bound to old E2E proof.'}",
+    "count": 1
+  },
+  {
+    "old": "    $proofFiles=@{}",
+    "new": "    $integerProof=Track-File (Join-Path $root 'build/khc-causal-integer-refinement-20261002-comparison-repair/report.json') 'integer-codec-proof'\n    if($integerProof.before_sha256 -cne 'B7BE539DB0DA5786EAAA1BC7F4E43DC983A4495F21E6B2E80BADD999407D459D'){throw 'Integer codec proof SHA'}\n    $integerJson=Get-Content -LiteralPath $integerProof.path -Raw|ConvertFrom-Json\n    if($integerJson.status -cne 'correctness_and_size_passed_not_timed' -or $integerJson.failure -or $integerJson.timing_used -or $integerJson.checks.Count -ne 32 -or $integerJson.invocations.Count -ne 53 -or $integerJson.identities.Count -ne 141 -or $integerJson.owned_tmp_or_reparse -ne 0 -or $integerJson.frame_bytes -ne 483496){throw 'Integer codec proof incomplete'}\n    $ordinary=@($integerJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 238080})\n    if($ordinary.Count -ne 1){throw 'Candidate not the integer ordinary codec'}\n    $failedCalls=@($integerJson.invocations|Where-Object exit -ne 0)\n    if($failedCalls.Count -ne 8 -or @($failedCalls|Where-Object {$_.exit -ne 1 -or !$_.stderr -or $_.stdout}).Count){throw 'Integer expected refusal records mismatch'}\n    $integerNumericProof=Track-File (Join-Path $root 'build/khc-integer-refinement-narrow-20261002/report.json') 'integer-narrow-numeric-proof'\n    $integerWideProof=Track-File (Join-Path $root 'build/khc-integer-refinement-20261002/report.json') 'integer-wide-numeric-proof'\n    if($integerNumericProof.before_sha256 -cne 'AB03ECAD9DC5BD8109792C85B6D4F94433064AC375A38A0975E4FD567B6DB68C' -or $integerWideProof.before_sha256 -cne 'A956525D2234A000353B8E33E54BEB6B48C366A8CD64FF6F23E7B439B96EEFE2'){throw 'Integer numeric proof SHA'}\n    $integerNumericJson=Get-Content -LiteralPath $integerNumericProof.path -Raw|ConvertFrom-Json\n    $integerWideJson=Get-Content -LiteralPath $integerWideProof.path -Raw|ConvertFrom-Json\n    foreach($numericDocument in @($integerNumericJson,$integerWideJson)){\n        if($numericDocument.status -cne 'numeric_verified_not_codec_or_timing' -or $numericDocument.failure -or $numericDocument.numeric.records -ne 9293629 -or $numericDocument.numeric.certificate_fallback -ne 0 -or $numericDocument.numeric.table_bytes -ne 262144 -or $numericDocument.numeric.fingerprint_u64 -cne '51b49b146351fbd2' -or $numericDocument.invocations.Count -ne 23){throw 'Integer numeric coverage mismatch'}\n        foreach($call in $numericDocument.invocations){\n            $expectedExit=if($call.argv.Count -eq 0 -or ($call.argv.Count -gt 1 -and $call.argv[0] -ceq 'query' -and $call.argv[1] -ceq '-1')){2}else{0}\n            if($call.exit -ne $expectedExit -or ($expectedExit -eq 0 -and $call.stderr) -or ($expectedExit -ne 0 -and $call.stdout)){throw 'Integer numeric invocation failure'}\n        }\n    }\n    if(($integerNumericJson.numeric|ConvertTo-Json -Compress) -cne ($integerWideJson.numeric|ConvertTo-Json -Compress)){throw 'Wide/narrow summary mismatch'}\n    $report['integer_proofs']=[ordered]@{codec=$integerProof;narrow=$integerNumericProof;wide=$integerWideProof}\n    $report['historical_budget_guard_repairs']=[Collections.Generic.List[object]]::new()\n    $proofFiles=@{}",
+    "count": 1
+  },
+  {
+    "old": "$reciprocalNumericJson,$reciprocalModelJson,$reciprocalCodecJson,$schedulerJson))",
+    "new": "$reciprocalNumericJson,$reciprocalModelJson,$reciprocalCodecJson,$schedulerJson,$integerJson,$integerNumericJson,$integerWideJson))",
+    "count": 1
+  },
+  {
+    "old": "                    if($propertyNames -contains 'before_sha256') {\n                        if($current.before_sha256 -cne $proofNode.before_sha256 -or $proofNode.before_sha256 -cne $proofNode.after_sha256){throw \"Proof provenance SHA mismatch: $proofPath\"}\n                        if($propertyNames -contains 'before_bytes' -and ($current.before_bytes -ne $proofNode.before_bytes -or $proofNode.before_bytes -ne $proofNode.after_bytes)){throw \"Proof provenance length mismatch: $proofPath\"}\n                    } else {",
+    "new": "                    if($propertyNames -contains 'before_sha256') {\n                        $historicalGuard=([object]::ReferenceEquals($proofDocument,$integerNumericJson) -or [object]::ReferenceEquals($proofDocument,$integerWideJson)) -and $proofPath.Equals([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../disk-budget.ps1')),[StringComparison]::OrdinalIgnoreCase)\n                        if($historicalGuard){\n                            if($proofNode.role -cne 'budget-guard' -or $proofNode.before_sha256 -cne '379BFC1CCE693FCADD75AD6D8C375FEA2F10151EBA4B63D8462ADA91C2051BBF' -or $proofNode.after_sha256 -cne $proofNode.before_sha256 -or $proofNode.bytes -ne 1997 -or $current.before_sha256 -cne 'F0B0260F4F7F21C851F5A2D62E4232996BBF259D6782A3F9A49689D4B03FFCC7' -or $current.before_bytes -ne 2054){throw 'Historical guard repair identity mismatch'}\n                            $report.historical_budget_guard_repairs.Add([pscustomobject]@{owner=$(if([object]::ReferenceEquals($proofDocument,$integerNumericJson)){'narrow'}else{'wide'});path=$proofPath;historical_sha256=$proofNode.before_sha256;current_sha256=$current.before_sha256;reason='StrictMode empty-directory fix; math and gates unchanged'})\n                        } else {\n                            if($current.before_sha256 -cne $proofNode.before_sha256 -or $proofNode.before_sha256 -cne $proofNode.after_sha256){throw \"Proof provenance SHA mismatch: $proofPath\"}\n                            if($propertyNames -contains 'before_bytes' -and ($current.before_bytes -ne $proofNode.before_bytes -or $proofNode.before_bytes -ne $proofNode.after_bytes)){throw \"Proof provenance length mismatch: $proofPath\"}\n                            if($propertyNames -contains 'bytes' -and $current.before_bytes -ne $proofNode.bytes){throw \"Proof identity byte length mismatch: $proofPath\"}\n                        }\n                    } else {",
+    "count": 1
+  },
+  {
+    "old": "    $report['proof_evidence_file_count']=$proofFiles.Count",
+    "new": "    $report['proof_evidence_file_count']=$proofFiles.Count\n    if($report.historical_budget_guard_repairs.Count -ne 2){throw 'Expected exactly two repaired historical guard references'}",
+    "count": 1
+  },
+  {
+    "old": "    $report.status = 'success'",
+    "new": "    $report.status = 'success'\n    $report['disk_budget_after'] = & (Join-Path $PSScriptRoot '../disk-budget.ps1') -WorkDirectory $work",
+    "count": 1
+  },
+  {
+    "old": "    $report['completed_utc'] = [DateTime]::UtcNow.ToString('o')",
+    "new": "    $report['completed_utc'] = [DateTime]::UtcNow.ToString('o')\n    try { $report['disk_budget_final'] = & (Join-Path $PSScriptRoot '../disk-budget.ps1') -WorkDirectory $work } catch { $report.status='failed'; $report.error=(@($report.error,$_.Exception.Message)|Where-Object {$_}) -join '; '; if($null -eq $failure){$failure=$_} }",
+    "count": 1
+  }
+]

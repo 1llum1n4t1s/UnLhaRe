@@ -1,0 +1,88 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/causal-compact-simd/codec.rs",
+    "changes": []
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/causal-compact-simd/scheduler.rs",
+    "changes": []
+  },
+  {
+    "name": "exact_kt.rs",
+    "original": "experiments/khc/causal-compact-simd/exact_kt.rs",
+    "changes": []
+  },
+  {
+    "name": "cts_model.rs",
+    "original": "experiments/khc/causal-compact-simd/cts_model.rs",
+    "changes": [
+      {
+        "old": "struct Node {\n    zero: u32,\n    one: u32,\n    weight: u64,\n}",
+        "new": "struct Node {\n    zero: u32,\n    one: u32,\n    weight: u32,\n}",
+        "count": 1
+      },
+      {
+        "old": "weight: Q / 2",
+        "new": "weight: 1_u32 << 31",
+        "count": 2
+      },
+      {
+        "old": "    fn kt(&self, table:",
+        "new": "    #[inline(always)]\n    fn weight(&self) -> u64 { u64::from(self.weight) }\n\n    #[inline(always)]\n    fn set_weight(&mut self, weight: u64) -> Result<()> {\n        // 合法なCTS更新はQ-alpha以下。拒否時は保存状態を変えない。\n        self.weight = u32::try_from(weight).map_err(|_| \"CTS compact weight overflow\")?;\n        Ok(())\n    }\n\n    fn kt(&self, table:",
+        "count": 1
+      },
+      {
+        "old": "self.nodes[prediction.indexes[level]].weight;",
+        "new": "self.nodes[prediction.indexes[level]].weight();",
+        "count": 1
+      },
+      {
+        "old": "            if node.weight > Q { return None; }",
+        "new": "            if node.weight() > Q { return None; }",
+        "count": 1
+      },
+      {
+        "old": "                node.weight, *prediction.weights.get(level)?",
+        "new": "                node.weight(), *prediction.weights.get(level)?",
+        "count": 1
+      },
+      {
+        "old": "n[lane] = node.weight.checked_mul(pk)?;",
+        "new": "n[lane] = node.weight().checked_mul(pk)?;",
+        "count": 1
+      },
+      {
+        "old": "            if node.weight > Q {",
+        "new": "            if node.weight() > Q {",
+        "count": 1
+      },
+      {
+        "old": "                        node.weight,",
+        "new": "                        node.weight(),",
+        "count": 1
+      },
+      {
+        "old": "posterior_ratio(table, node.weight, pk, ceiling)?",
+        "new": "posterior_ratio(table, node.weight(), pk, ceiling)?",
+        "count": 1
+      },
+      {
+        "old": "node.weight = next_weight(table, alpha, retained, posterior)?;",
+        "new": "node.set_weight(next_weight(table, alpha, retained, posterior)?)?;",
+        "count": 1
+      },
+      {
+        "old": "                node.weight,",
+        "new": "                node.weight(),",
+        "count": 1
+      },
+      {
+        "old": "pub(super) fn compact_counts_json() -> String { exact_kt::compact_counts_json() }",
+        "new": "pub(super) fn compact_counts_json() -> String {\n    let counts = exact_kt::compact_counts_json();\n    let prefix = counts.strip_suffix('}').expect(\"compact diagnostic JSON suffix\");\n    format!(\"{},\\\"node_bytes\\\":{},\\\"node_count\\\":{},\\\"logical_node_storage_bytes\\\":{}}}\",\n        prefix, std::mem::size_of::<Node>(), CLASSES * NODES,\n        CLASSES * NODES * std::mem::size_of::<Node>())\n}\n\n#[cfg(khc_mixture_reuse_audit)]\npub(super) fn audit_compact_storage(weight: u64) -> Result<[u64; 3]> {\n    let mut node = Node::fresh();\n    let before = node.weight();\n    let rejected = match node.set_weight(weight) {\n        Ok(()) => 0,\n        Err(e) if e == \"CTS compact weight overflow\" => 1,\n        Err(e) => return Err(e),\n    };\n    Ok([rejected, before, node.weight()])\n}",
+        "count": 1
+      }
+    ]
+  }
+]

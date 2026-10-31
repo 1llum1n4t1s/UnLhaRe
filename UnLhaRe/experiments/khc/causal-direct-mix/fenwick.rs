@@ -1,0 +1,26 @@
+pub const A:usize=257;
+pub const STRIDE:usize=258;
+#[derive(Default,Clone,Copy)]
+pub struct Ops {pub queries:u64,pub query_visits:u64,pub updates:u64,pub update_visits:u64,pub rescales:u64,pub rebuild_leaves:u64,pub rebuild_visits:u64}
+pub fn bump(value:&mut u64,delta:u64)->Result<(),String>{*value=value.checked_add(delta).ok_or("operation count overflow")?;Ok(())}
+fn fill<T:Clone>(len:usize,value:T)->Result<Vec<T>,String>{let mut data=Vec::new();data.try_reserve_exact(len).map_err(|_|"table allocation")?;data.resize(len,value);Ok(data)}
+pub struct Table {pub rows:usize,pub leaf:Vec<u16>,pub tree:Vec<u32>,pub total:Vec<u32>,pub ops:Ops}
+impl Table {
+    pub fn new(rows:usize)->Result<Self,String>{if rows==0 || rows>16384{return Err("table row count".into());}let leaf=fill(rows.checked_mul(A).ok_or("leaf extent overflow")?,1u16)?;let mut tree=fill(rows.checked_mul(STRIDE).ok_or("tree extent overflow")?,0u32)?;let total=fill(rows,A as u32)?;for row in 0..rows{for i in 1..STRIDE{tree[row*STRIDE+i]=(i&i.wrapping_neg()) as u32;}}Ok(Self{rows,leaf,tree,total,ops:Ops::default()})}
+    fn check(&self,row:usize)->Result<(),String>{if row>=self.rows{return Err("Fenwick row range".into());}Ok(())}
+    pub fn count(&self,row:usize,token:usize)->Result<u32,String>{self.check(row)?;if token>=A{return Err("leaf token range".into());}let value=self.leaf[row*A+token] as u32;if value==0{return Err("zero leaf".into());}Ok(value)}
+    pub fn prefix(&mut self,row:usize,k:usize)->Result<u32,String>{self.check(row)?;if k>A{return Err("prefix range".into());}bump(&mut self.ops.queries,1)?;let mut i=k;let mut sum=0u32;while i!=0{sum=sum.checked_add(self.tree[row*STRIDE+i]).ok_or("prefix overflow")?;bump(&mut self.ops.query_visits,1)?;i-=i&i.wrapping_neg();}Ok(sum)}
+    fn rebuild(&mut self,row:usize)->Result<(),String>{let start=row*STRIDE;self.tree[start..start+STRIDE].fill(0);let mut total=0u32;for token in 0..A{let value=self.leaf[row*A+token] as u32;if value==0{return Err("rebuild zero leaf".into());}total=total.checked_add(value).ok_or("rebuild total overflow")?;let mut i=token+1;while i<=A{self.tree[start+i]=self.tree[start+i].checked_add(value).ok_or("rebuild tree overflow")?;bump(&mut self.ops.rebuild_visits,1)?;i+=i&i.wrapping_neg();}}self.total[row]=total;bump(&mut self.ops.rebuild_leaves,A as u64)?;Ok(())}
+    pub fn observe(&mut self,row:usize,token:usize)->Result<(),String>{self.check(row)?;if token>=A{return Err("observe token range".into());}if self.total[row].checked_add(2).ok_or("observe total overflow")?>=32768{for leaf in &mut self.leaf[row*A..(row+1)*A]{*leaf=leaf.checked_add(1).ok_or("rescale leaf overflow")?/2;if *leaf==0{return Err("rescale zero leaf".into());}}bump(&mut self.ops.rescales,1)?;self.rebuild(row)?;}
+        let leaf=&mut self.leaf[row*A+token];*leaf=leaf.checked_add(2).ok_or("observe leaf overflow")?;self.total[row]=self.total[row].checked_add(2).ok_or("observe sum overflow")?;if self.total[row]>=32768{return Err("observe threshold invariant".into());}let mut i=token+1;while i<=A{self.tree[row*STRIDE+i]=self.tree[row*STRIDE+i].checked_add(2).ok_or("observe tree overflow")?;bump(&mut self.ops.update_visits,1)?;i+=i&i.wrapping_neg();}bump(&mut self.ops.updates,1)?;Ok(())}
+    pub fn verify_all(&self)->Result<usize,String>{let mut cells=0;for row in 0..self.rows{let mut sum=0u32;if self.tree[row*STRIDE]!=0{return Err("Fenwick slot zero".into());}for i in 1..STRIDE{let leaf=self.leaf[row*A+i-1] as u32;if leaf==0{return Err("terminal leaf zero".into());}sum=sum.checked_add(leaf).ok_or("terminal leaf sum")?;let lo=i-(i&i.wrapping_neg());let direct=self.leaf[row*A+lo..row*A+i].iter().try_fold(0u32,|s,&x|s.checked_add(x as u32).ok_or("terminal node sum"))?;if direct!=self.tree[row*STRIDE+i]{return Err("terminal Fenwick node direct sum".into());}cells+=1;}if sum!=self.total[row] || sum>=32768{return Err("terminal total invariant".into());}}Ok(cells)}
+    pub fn allocation_bytes(&self)->usize{self.leaf.capacity()*2+self.tree.capacity()*4+self.total.capacity()*4}
+}
+pub fn e2e()->Result<(usize,usize),String>{
+    fn check(table:&mut Table,dense:&[u16;A],checks:&mut usize)->Result<(),String>{let mut sum=0u32;for k in 0..=A{if k>0{sum+=dense[k-1] as u32;}if table.prefix(0,k)?!=sum{return Err("dense Fenwick prefix E2E".into());}*checks+=1;}if sum!=table.total[0]{return Err("dense total E2E".into());}Ok(())}
+    let mut table=Table::new(1)?;let mut dense=[1u16;A];let mut checks=0;check(&mut table,&dense,&mut checks)?;
+    for n in 0..16256usize{let token=if n<A{n}else{2};let sum:u32=dense.iter().map(|&x|x as u32).sum();if sum+2>=32768{for d in &mut dense{*d=((*d as u32+1)/2) as u16;}}dense[token]+=2;table.observe(0,token)?;check(&mut table,&dense,&mut checks)?;}
+    if table.ops.rescales!=1 || table.ops.updates!=16256 || table.total[0]>=32768{return Err("threshold causal rescale E2E".into());}table.verify_all()?;
+    let mut rejected=0;for (row,k) in [(1,0),(0,258)]{if table.prefix(row,k).is_ok(){return Err("invalid Fenwick prefix accepted".into());}rejected+=1;}for(row,t)in[(1,0),(0,257)]{if table.observe(row,t).is_ok(){return Err("invalid Fenwick update accepted".into());}rejected+=1;}
+    Ok((checks,rejected))
+}

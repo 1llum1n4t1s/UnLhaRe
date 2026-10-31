@@ -20,7 +20,8 @@ internal sealed record CreateRequest(
     SourceRequest[] Entries,
     int Method,
     LimitsRequest? Limits,
-    bool? FailIfAllSkipped);
+    bool? FailIfAllSkipped,
+    string? Effort);
 
 internal sealed record ExtractRequest(
     string Operation,

@@ -1,0 +1,38 @@
+{
+  "status": "two_owned_unreferenced_pdbs_removed",
+  "ended_utc": "2026-10-01T17:29:55.1825800Z",
+  "removed_files": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002\\codec-checked.pdb",
+      "bytes": 1380352,
+      "sha256": "95D91C227434A451C87166605ADD9CA5076548E772D5B637E85E483C996EBD2C",
+      "referenced": 0
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002\\codec-native.pdb",
+      "bytes": 1363968,
+      "sha256": "570C05DC14F59FAC8405CB40CB77C0ED8F3B649EC06D9B027219FDF52FDF9BAB",
+      "referenced": 0
+    }
+  ],
+  "removed_bytes": 2744320,
+  "recovery": "not in trash; reproducible from retained sources/compiler; no backup created",
+  "checked_retained_identity_records": 299,
+  "unchanged_reports": [
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002\\report.json",
+      "sha": "93A456E60EE7941A5721136FF14766B221E479F7CEA2FA796DAB55747A431B70"
+    }
+  ],
+  "budgets": [
+    {
+      "work_directory": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-operation-counts-20261002",
+      "used_bytes": 14870035,
+      "max_bytes": 33554432,
+      "free_bytes": 68731219968,
+      "minimum_free_bytes": 5368709120
+    }
+  ],
+  "related_processes": 0,
+  "remaining_planned_files": 0
+}

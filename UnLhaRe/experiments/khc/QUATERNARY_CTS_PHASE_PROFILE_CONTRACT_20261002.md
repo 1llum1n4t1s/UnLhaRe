@@ -1,0 +1,47 @@
+# 同一process ABBA・整数CTS実encode phase profile
+
+前段はprogress。pow2 proofD5F40FA03A3987605432D3E430F5BAAEA7C47AB628E046CC27723085B7D8D777 passed、局所mixture中央値23.609%短縮、旧frame474730B/全復元/canonical一致。ただし候補codec一回診断14.006sは旧12.009sより短くなく、別時点単発比較では統合改善を立証できない。候補通常採用は保留、全goal未達。今回は同一processの固定ABBA encodeと処理段のサンプリングだけを行い、次の最適化先を根拠で選ぶ。正式574.5624ms/CPU15%/holdout/categories/4native/product、observer確認待ち/過去terminal条件は変えず、full_benchmark_allowed=false。
+
+## 所有権・スコープ
+
+新source quaternary-cts-phase-profile/ の profile.rs、timing.rs、model.rs、old_wire.rs、pow2_wire.rs、verify-profile.ps1、FAILURE_PLAN.mdは一実装担当が排他所有。親は契約/採否/結果/全観点を所有。前段担当の編集停止を回収済み。旧source/proof/root/frameはimmutable、製品API/wire/version/公開、Git stage/commit/push、x86/sharedcacheは対象外。コード前失敗計画を保存。親の最終reviewまでcompile/候補run禁止、parser/nonExecute preflightのみ可。
+
+opopの基本6観点とAsync/Startupを同じprivate codecに限定して親が調査。Intelは凍結ローカル算術で非該当。既存依存/言語/初期化/単一thread/資源寿命/失敗意味を維持し、旧証拠を削除しない。今回採用するのは計測のみで、投機的cache/並列化や数値意味の変更はしない。追加行動質問は全goal継続が既に明示されているので行わない。
+
+## 仮説と反証
+
+仮説H1: mixture単体の改善がCTS予測/再検証の実経路にも現れる。同じ入力・ABBA old/pow2/pow2/oldのphase sampleでold/pow2差が現れなければ、この統合仮説は支持しない。
+仮説H2: CTSが支配的で、pool/符号化/初期化が主因ではない。sampleのCTS predict/observe合計がmodel predict/observeの大半を占めない場合、CTSだけへの追加最適化は優先しない。
+仮説は診断であり、4encodeの平均/median/最速値を正式gateに使わない。phase sampleは観測範囲だけを報告し、sampling bias/clock/配置変更/CPU schedulingの影響を明示する。
+
+## 同値構造
+
+rootは旧fixed_math A599C6FA10DA8A1E7D72210CA559F02873F1EDAB5564FC84745CAAC9C0E4BACD、integer_pool7135CC9E6F5CF57191DC6EE409D8C32C8EF9FEB9C1B6B2D7B18C7B436F56C625、reference CTS5AE361CF9544AA75A86FECD852DBBCE6DA7EDF08AB169690B3C8A69973BEEED7、pow2 CTSDCFD5CF8F9D408174840194CA3D0AF38F90EB938172C5A51EA2B85BA90427B28、BWT810662D4168EE8AC00C81A446D1F3B17056DBBEAFAD1724C43AB0C74A546132F、packed alphabet4934593F891296B72F91F8FB2CC27D26262514B3B153319A8EC1CDCA64B2734D、rangeCAEEA3C1CD6BCD26A45BFEDC4EAF1A825C4A6860E0958E2FEA1C9EAA403F8129をimport。rootのcrate::integer_ctsは一般helper用reference aliasとする。
+
+old_wire/pow2_wireは旧frame codec673E3759DDCB2EC17C2FB6376AB8A95F06EFE4238242CB2DD1E677E1576C3327を機械的に接続。各wireのinteger_cts aliasだけreference/pow2に分け、共通新model.rsを同じsourceから各wireにcompileし静的具体typeで実装する。runtime enum/仮想dispatchをhot CTS経路へ追加しない。新modelは旧BB7DAFC75AF4763C553A15EC8619E9641FDBC6C53CC206B7DAB01B02D97547B9をコピーしてcrate依存をsuper aliasへ接続し、計時だけを追加。numeric helpers、tree/count/hash/update/snapshot拒否/CRC/range/CAP/quota/entropy/digest意味を変更しない。
+
+計測rootのみのCLI profile INPUT PRIOR_FRAMEを持ち、input/baselineを一度bounded readする。wireの不要なmain/CLI/selfcheck importはこのprofile entryには接続しない（旧sourceから削除する意味ではない）。encode/payload/token/metadata計算は同じ。rootが両wireの公開private run_profileを呼び、RAM frameとnamed metricを受け取る。元inputを変えず、各runのmodel/stateをdrop後に次runへ進む。
+
+予定source graph unique12source、12import edge: rootからtiming/old_wire/pow2_wire/math/pool/referenceCTS/pow2CTS/BWT/packed/rangeの10edge、各wireから共通modelへ2edge。共通model sourceは2具体wireでcompileされる。未知include/module/extern crateを拒否し、graphとaliasをpin/static確認する。
+
+## コード前固定profile/E2E
+
+一CLI process、入力all.group2811006B/SHA18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76、prior frame474730B/SHA9867AB88CD27AE48174C9C1E9FAC65BEEE6D95C95BDE8C53DB2F0E988653BFAD。順序old,pow2,pow2,oldを固定し各一回、warmup/repeat/未知失敗retry無し。各encode frameをbaselineへ全byte比較し、matched bytes474730を増分記録。1runずつframeをdropする。圧縮結果をdiskへpublishしない。今回decodeを重複せず、既に両frozen codecでpassedした復元E2Eと、今回の全frame一致を区別して報告。
+
+runごとframe/header/payload474730/281/474449B、plain/payload/header CRC433441561/3589341169/1741345118、runs889227、primary1762795、alphabet257、rank/length tokens各889227、escape742、枝2725772/1099568、grammar58735a2b7383d755、base-pool9128444225deabce、class[889227,620240,1216305,889227,64372,145969]、CDF3788636.714502990±1e-4を照合する。固定各値をJSONへ保存してvalidatorへ進む。4runの全frame比較数4を固定。sampler/計時で数値経路が変わった場合は失敗とし採用しない。
+
+全時間phaseはfull_encode、bwt、payload_setup（run作成/next/alphabet等、model初期化は別）、model_initialization、payload_loop、final_digest、metadata_crc_frame。境界と重複有無をplanに固定し、full_encodeはencode呼出全体を囲む。phase和の一致を恣意的に要求せず非包含/包含を明記する。
+
+branch serial0,1024,2048,…のみsample。成功全branch3825340なので1run samples3736を固定。sampled phase7名: model_predict(呼出外側でreturn copyを含む)、cts_predict、pool_predict、range_interval、model_observe(呼出外側)、pool_update、cts_observe。inner phaseは外側内に包含、同じ選択serialの同じbranchを測る。各名count3736/elapsed_nsを増分計測し、prefix1..4/component0..1 sample件数も記録して偏りを確認。escape byteはrange_interval sampleへ含めず、通常forced1は含める。CTS.observeの再predict等を省略しない。計時のためにモデル予測結果を追加再計算しない。
+
+time starts/endsとaggregationだけで状態を変えず、threadlocalの計時stateはrunごとreset。Timer integer/record overflow、serial選択ずれ、samplephase漏れ/過剰、前run残り、time順逆転をコード前に失敗計画へ列挙する。fixture追加/数値module変更/new unit testは無し。standalone encode全frame E2E＋固定観測JSONを残す。subset sampleを全入力の確定CPU時間へ外挿しない。
+
+## runner・環境・容量
+
+fresh output build/khc-quaternary-cts-phase-profile-20261002、8MiB。生成前EXE1MiB+report512KiBのpeak1572864Bをscalar計算しguard。保持2fileだけ、予測1.25MiB以内、frame/restore/input copy/Cargo/PDB/cache/asm/rawtrace/table無し。RAM frame/サンプルはaggregatesだけJSON。source/contract/旧2proof/results/frame/compiler/runtime/input/guardをpin/readlock/hash前後。旧basis36identityは保存proofで再hashし基礎検証とし、旧Executeは重複しない。
+
+one opt2/overflowyes/panicabort/debuginfo0/DEBUG:NONE/edition2024/frame_audit/primitive_audit、rustc1.98.1/bundledpwsh7.6.5。runtime/compilerの絶対path/SHA/version、source path/hash/mtime、CWD、Windows x64、CPU model/logical count/OS情報を計測前に保存。新CLIは指定4encodeだけで、child120秒/UTF8 stdoutstderr各65536B。時間不足ならtimeoutのminimal recordを残し、4run数変更/再試行をしない。
+
+child TotalProcessorTimeは終了後に診断として保存してよいが、machine CPU15%の測定にはしない。正式protocolは起動しない。EXE_beforeをbuild後validator前、child/parsed全run/比較/metricをvalidator前に永続化。timeout/outputcap/startfailureもbounded partial record。各runが失敗した場合はCLI内JSONでbounded completed/partial recordsを返せる構造を優先する。
+
+一時物は作らない。異常生成物は絶対path/用途/清掃条件を確認し、新root以外を削除せず、必要な再現証拠を保持する。終了時rootのlinks/混在/所有EXEprocess0/2files/容量と旧proof/source不変を検証。採否・opop全観点・正式未達は親が結果へ記す。goal active、未達。

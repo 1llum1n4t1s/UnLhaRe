@@ -1,0 +1,88 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/bayes-dominant-q15/codec.rs",
+    "changes": [
+      {
+        "append": "\n"
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/bayes-dominant-q15/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"bayes_model.rs\"]",
+        "new": "#[path = \"../bayes-dominant-q15/bayes_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"../causal-integer-refinement/cts_model.rs\"]",
+        "new": "#[path = \"cts_model.rs\"]",
+        "count": 1
+      },
+      {
+        "append": "\n"
+      }
+    ]
+  },
+  {
+    "name": "exact_kt.rs",
+    "original": "experiments/khc/causal-integer-refinement/exact_kt.rs",
+    "changes": [
+      {
+        "old": "mod exact_div;",
+        "new": "mod exact_div;\n#[allow(dead_code)]\n#[path = \"../simd-quotient/exact_div.rs\"]\nmod batch_div;",
+        "count": 1
+      },
+      {
+        "old": "    ratios: exact_div::RatioTable,",
+        "new": "    ratios: exact_div::RatioTable,\n    batches: batch_div::BatchEngine,",
+        "count": 1
+      },
+      {
+        "old": "Ok(Self { reciprocals, ratios: exact_div::RatioTable::new()? })",
+        "new": "Ok(Self { reciprocals, ratios: exact_div::RatioTable::new()?, batches: batch_div::BatchEngine::auto() })",
+        "count": 1
+      },
+      {
+        "old": "    // domain検査を同関数へ局所化し、unchecked helperを公開しない。",
+        "new": "    pub fn ratio4(&self, a: [u64; 4], b: [u64; 4], d: [u64; 4]) -> [Result<(u64, u8)>; 4] {\n        self.batches.ratio4(a, b, d)\n    }\n\n    // domain検査を同関数へ局所化し、unchecked helperを公開しない。",
+        "count": 1
+      },
+      {
+        "append": "\n"
+      }
+    ]
+  },
+  {
+    "name": "cts_model.rs",
+    "original": "experiments/khc/causal-integer-refinement/cts_model.rs",
+    "changes": [
+      {
+        "old": "    fn update(&mut self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable) -> Result<()> {",
+        "new": "    // 生成済みPredictionの深さ別nodeは一意。拒否は旧更新順まで遅延する。\n    fn posterior_batch(\n        &self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable, upper: usize,\n    ) -> [Result<u64>; 4] {\n        let inputs: [Result<(u64, u64, u64)>; 4] = std::array::from_fn(|lane| {\n            let level = upper - lane;\n            let node = self.nodes.get(prediction.indexes[level])\n                .ok_or(\"CTS update node outside bounds\")?;\n            if node.weight > Q {\n                return Err(\"CTS update weight outside bounds\".into());\n            }\n            let pk = if bit {\n                Q.checked_sub(prediction.kt[level]).ok_or(\"CTS KT complement underflow\")?\n            } else { prediction.kt[level] };\n            let child = if bit {\n                Q.checked_sub(prediction.zero[level + 1]).ok_or(\"CTS child complement underflow\")?\n            } else { prediction.zero[level + 1] };\n            let ceiling = cached_ceiling(\n                node.weight, prediction.weights[level], pk, child, prediction.zero[level],\n                (prediction.remainder >> level) & 1 != 0, bit,\n            )?;\n            probability(pk)?;\n            if ceiling == 0 { return Err(\"CTS zero denominator\".into()); }\n            Ok((node.weight, pk, ceiling))\n        });\n        // 無効laneを0/1へ置換し、正常laneの浮動小数除算へ影響させない。\n        let a = std::array::from_fn(|lane| inputs[lane].as_ref().map_or(0, |v| v.0));\n        let b = std::array::from_fn(|lane| inputs[lane].as_ref().map_or(1, |v| v.1));\n        let d = std::array::from_fn(|lane| inputs[lane].as_ref().map_or(1, |v| v.2));\n        let quotients = table.ratio4(a, b, d);\n        std::array::from_fn(|lane| match &inputs[lane] {\n            Err(error) => Err(error.clone()),\n            Ok(_) => {\n                let (posterior, _) = quotients[lane]\n                    .map_err(|_| \"CTS ratio product overflow\".to_string())?;\n                if posterior > Q { return Err(\"CTS posterior outside bounds\".into()); }\n                Ok(posterior)\n            }\n        })\n    }\n    fn update(&mut self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable) -> Result<()> {",
+        "count": 1
+      },
+      {
+        "old": "        // childの予測は更新前に保存済み。posterior/countはleafからrootの順。\n        for level in (0..LEVELS).rev() {\n            let node = self",
+        "new": "        // leaf→rootの更新順を保持。各4laneの計算はそのgroupの変更前に行う。\n        let mut posteriors: [Result<u64>; 4] = std::array::from_fn(|_| Ok(0));\n        for level in (0..LEVELS).rev() {\n            if level != DEPTH && level % 4 == 3 {\n                posteriors = self.posterior_batch(prediction, bit, table, level);\n            }\n            let node = self",
+        "count": 1
+      },
+      {
+        "old": "                let pk = if bit {\n                    Q.checked_sub(prediction.kt[level])\n                        .ok_or(\"CTS KT complement underflow\")?\n                } else {\n                    prediction.kt[level]\n                };\n                let child = if bit {\n                    Q.checked_sub(prediction.zero[level + 1])\n                        .ok_or(\"CTS child complement underflow\")?\n                } else {\n                    prediction.zero[level + 1]\n                };\n                // 観測側の上側丸めはzero予測floorとは別のcanonical仕様。\n                let ceiling = cached_ceiling(\n                    node.weight,\n                    prediction.weights[level],\n                    pk,\n                    child,\n                    prediction.zero[level],\n                    (prediction.remainder >> level) & 1 != 0,\n                    bit,\n                )?;\n                let posterior = posterior_ratio(table, node.weight, pk, ceiling)?;\n",
+        "new": "                let posterior = std::mem::replace(&mut posteriors[(DEPTH - 1 - level) % 4], Ok(0))?;\n",
+        "count": 1
+      },
+      {
+        "old": "pub(super) fn posterior_ratio(table: &exact_kt::KtTable, weight: u64, pk: u64, ceiling: u64) -> Result<u64> {\n    let posterior = ratio(table, weight, probability(pk)?, ceiling)?;\n    if posterior > Q {\n        return Err(\"CTS posterior outside bounds\".into());\n    }\n    Ok(posterior)\n}\n\n",
+        "new": "",
+        "count": 1
+      },
+      {
+        "append": "\n"
+      }
+    ]
+  }
+]

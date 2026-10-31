@@ -1,0 +1,46 @@
+[
+  {
+    "id": "MAGIC",
+    "old": "pub(crate) const MAGIC: &[u8; 8] = b\"KHC1BLK\\0\";"
+  },
+  {
+    "id": "ENCODER_INIT",
+    "old": "    s.range_capacity_bound = limit;\n    let mut enc = multi_range::Encoder::with_limit(limit).map_err(str::to_owned)?;"
+  },
+  {
+    "id": "INTERVAL",
+    "old": "            encode_interval(&mut enc, forest.lookup(c, n, k, h)?, k, ch)?;"
+  },
+  {
+    "id": "ESCAPE",
+    "old": "                escape_write(&mut enc, r.length as usize - 256, &mut s)?;"
+  },
+  {
+    "id": "FINISH",
+    "old": "    let payload = match enc.finish() {"
+  },
+  {
+    "id": "CANONICAL",
+    "old": "                || payload_len < 5))"
+  },
+  {
+    "id": "DECODER_INIT",
+    "old": "    let mut dec =\n        multi_range::Decoder::new(&bytes[model_start + model_len..]).map_err(str::to_owned)?;"
+  },
+  {
+    "id": "TOKEN",
+    "old": "fn token(\n    dec: &mut multi_range::Decoder<'_>,\n    forest: &packet::Forest,\n    tree: &grammar::CompactTree,\n    c: usize,\n    limit: usize,\n    histories: &mut [u16; 6],\n    s: &mut Stats,\n) -> Result<usize> {\n    let mut n = 0;\n    let mut depth = 0;\n    loop {\n        depth += 1;\n        if depth > 16 || s.branches > 16 * (s.raw + 1) * 2 {\n            return Err(\"branch limit\".into());\n        }\n        let (node, k) = tree.node(n, limit)?;\n        let class = c * 3 + node.class as usize;\n        let ch = if k == 1 {\n            s.implicit += 1;\n            0\n        } else {\n            decode_interval(dec, forest.lookup(c, n, k, histories[class])?, k)?\n        };\n        histories[class] = ((histories[class] << 2) | ch as u16) & 1023;\n        s.branches += 1;\n        let (lo, next) = node.edge(ch, k)?;\n        if let Some(next) = next {\n            n = next;\n        } else {\n            if lo >= limit {\n                return Err(\"decoded token limit\".into());\n            }\n            return Ok(lo);\n        }\n    }\n}"
+  },
+  {
+    "id": "DECODE_TOKENS",
+    "old": "        let rank = token(\n            &mut dec,\n            &forest,\n            &trees[0],\n            0,\n            active_len,\n            &mut histories,\n            &mut s,\n        )?;\n        let length_token = token(\n            &mut dec,\n            &forest,\n            &trees[1],\n            1,\n            remaining.min(256),\n            &mut histories,\n            &mut s,\n        )?;"
+  },
+  {
+    "id": "DECODE_ESCAPE",
+    "old": "            escape_read(&mut dec, remaining, &mut s)?"
+  },
+  {
+    "id": "DECODER_FINISH",
+    "old": "    dec.finish().map_err(str::to_owned)?;"
+  }
+]

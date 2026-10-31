@@ -81,6 +81,9 @@ public enum CompressionMethod
     /// <summary>Store without compression.</summary>
     Stored = 0,
 
+    /// <summary>Use LH4 compression (requires native support for method 4).</summary>
+    Lh4 = 4,
+
     /// <summary>Use LH5 compression.</summary>
     Lh5 = 5,
 
@@ -89,6 +92,16 @@ public enum CompressionMethod
 
     /// <summary>Use LH7 compression.</summary>
     Lh7 = 7,
+}
+
+/// <summary>Compression work budget. High requires native API level 6.</summary>
+public enum CompressionEffort
+{
+    /// <summary>Use standard compression.</summary>
+    Standard,
+    /// <summary>Compare standard and two-pass parsing output. Slower and uses more memory.
+    /// Stored remains uncompressed.</summary>
+    High,
 }
 
 /// <summary>The current stage of an archive operation.</summary>

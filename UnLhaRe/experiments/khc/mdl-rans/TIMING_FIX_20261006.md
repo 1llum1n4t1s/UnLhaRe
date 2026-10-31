@@ -1,0 +1,7 @@
+# tiny時計分解能の測定guard是正
+
+2026-10-06。screen-b/session74849 exit1はfinite E2Eと全11development完了後、空入力のold/new decodeの0nsでrunnerのstrict-positive guardが失敗。固定EXEの--empty再実行でもnew_decode_ns[1]=0を観測した（他100〜200ns）。0nsを実処理時間ゼロ/速度勝利とはしない。bytes<=1かつold/new method0の合成入力だけ非負timeを認め、MDL/method3/通常入力のstrict-positiveは維持する。評価する8MDLの時間条件やGOALゲートは変更しない。
+
+失敗report24202B SHA855F5B07E8601B0128E4E17FE047EB730F16E15154E9800D1894A24050A756CD、EXE053874273BA1E6A13C7D473A83C7F5DEB30234517E0B152F34E051A97898C6B6、source全pinを保持する。compare_v3.ps1は明示的な-ReusePartialReportSHA256でfailed/timing coverage/11case/finite合格/全pin再一致だけを受理し、11sampleは書換え/再計測せずsource reportごと引継ぐ。未完のtiny2件のみ再測定して13case reportを保存。その後別順は全13を同EXEで独立再実行する。
+
+候補source/EXE/式/資源上限に変更なし。new warmup/候補選択をやり直さず、失敗と回復・再利用由来をreportに明記する。時間の都合のよいsampleへの置換はしない。

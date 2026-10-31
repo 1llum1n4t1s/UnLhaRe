@@ -1,0 +1,359 @@
+{
+  "checked_utc": "2026-10-06T02:45:41.1232575Z",
+  "status": "identical",
+  "screen_SHA256": "FB582327FD4E6B4A237A9976C21982F276E167D7A25854B57EEDD72315481235",
+  "speed_SHA256": "1A6D89B3BB94952FB9B017966CA784609E666F9B12793B7F62D87FF4F2975DD8",
+  "same_source_compiler_dependencies_corpus": true,
+  "common_count": 58,
+  "common_pins": [
+    {
+      "path": "C:\\Users\\IMT\\.rustup\\toolchains\\1.98.1-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+      "SHA256": "CA9988AF88B1463F6857FDFE909299FEE50A63260B3E5F7DBCB5B4D3318B27BC",
+      "bytes": 110592,
+      "mtime": "2026-09-17T09:01:57.2048853Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\x86_64-pc-windows-msvc\\release\\deps\\libcrc_fast-a207a6446f4a1f16.rlib",
+      "SHA256": "55457337A3D05ED2B2286381B39760C46AF4CEA9834EFE89B07AA1AB487444C9",
+      "bytes": 4423206,
+      "mtime": "2026-09-17T15:29:23.5180915Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe",
+      "SHA256": "362A356CE7F0940EC74F73A8FC2C990A2CC24A38A11C90BBD8ECA947110AD139",
+      "bytes": 301368,
+      "mtime": "2026-10-05T02:23:37.7385563Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\causal-record-codec\\codec.rs",
+      "SHA256": "6D1018A46BEB663C4D7121853CE63516AEF5837EC276412BE3B9CC9789ECFE2D",
+      "bytes": 11819,
+      "mtime": "2026-10-06T02:26:26.4933867Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\causal-record-codec\\baseline_block.rs",
+      "SHA256": "3FFC8998F383297B5A95F17AA9307D130F02D3D0DA4674B8456BDCF2CB37B4A5",
+      "bytes": 25727,
+      "mtime": "2026-10-06T02:25:37.1663006Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\causal-record-codec\\PLAN_20261006.md",
+      "SHA256": "1D047D3E7BF389D2D4A2A64E9CCC01A9FBD3511DD0C8CAF391BABBE88B8384A2",
+      "bytes": 2170,
+      "mtime": "2026-10-06T02:26:25.2731909Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\causal-record-vote\\voter.rs",
+      "SHA256": "081FB1EF8D42E90710E0E37A01F9F1744EA52133D707D954A4AC4619D322203E",
+      "bytes": 2851,
+      "mtime": "2026-10-06T02:12:32.6161465Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\record-bit\\codec.rs",
+      "SHA256": "FE06F81A21964D01950337DCF635ABF891F87B24DEDA5EA5FA3F197EE7440B4A",
+      "bytes": 11732,
+      "mtime": "2026-10-06T01:58:14.5736245Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\causal-record-vote\\CODEC_PLAN_20261006.md",
+      "SHA256": "CC4A4AF4E232B8FC68F90196D45FC3652F1F2B35E2CDFE0046D7AA13DB0144EA",
+      "bytes": 2688,
+      "mtime": "2026-10-06T02:20:14.2303941Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\Cargo.toml",
+      "SHA256": "D6493E185DAF2C3A3031D3D9F6F9533493A77A4EE8631B51DEA60BF1DB46BCF8",
+      "bytes": 1335,
+      "mtime": "2026-09-26T04:32:47.6069842Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\Cargo.lock",
+      "SHA256": "0E1E33CC2AE1BF9BB2ABFC870F0A6A6E0D20A99536BBFA7D398FA99BC9F64865",
+      "bytes": 30555,
+      "mtime": "2026-09-30T04:36:01.9535824Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\lib.rs",
+      "SHA256": "414AFC311681882B1C05A5CE3AC39F289650EACAA87C2CE9178724B34A6E95D1",
+      "bytes": 10417,
+      "mtime": "2026-10-04T19:20:51.6217486Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\experiments\\khc\\CORPUS_MANIFEST.json",
+      "SHA256": "77F2A728B33AE54655B67DCC3BCAA85D0912B98BA0F44343C64F903707BD5036",
+      "bytes": 4172,
+      "mtime": "2026-09-18T12:41:49.2807283Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\x86_64-pc-windows-msvc\\release\\deps\\libunlhare.rlib",
+      "SHA256": "9D3BAEC4C907A80B043E7CE2DFDA2CC8AC0C483FE18DD82070E7DF7E085659BF",
+      "bytes": 4267774,
+      "mtime": "2026-10-05T21:38:56.8365719Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\bytemuck_derive-df421d141b8d5224.dll",
+      "SHA256": "381029E5DEE615ED7170E11B2BC575C91CD690C5B639A81A99C187B406642595",
+      "bytes": 2075648,
+      "mtime": "2026-09-17T09:35:04.0360459Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\bytemuck_derive-ea772c464757d7f7.dll",
+      "SHA256": "4BBE3EFE56216EF96559BA7B0EFC7F5FA620E6935AD2E36E773593BCB272611D",
+      "bytes": 2075136,
+      "mtime": "2026-09-17T09:34:06.1675137Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\clap_derive-79d61620ede1d38d.dll",
+      "SHA256": "18920465DD520D8AC5730956FB8388B14761B60B8344663E69DB556ECAD6E772",
+      "bytes": 2280960,
+      "mtime": "2026-09-17T09:35:04.2727395Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\clap_derive-86733085cdaada34.dll",
+      "SHA256": "87A3D3C37439DFA125EF0B8463502FF1560B4010890EFE3DEDF5479DD7E2AC14",
+      "bytes": 2280448,
+      "mtime": "2026-09-17T09:34:06.8349781Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\crc_fast-7333d3e293afe8c1.dll",
+      "SHA256": "D2C122E1F9F84CDFB5DB7C250431356EDF1F47C39A2369BABBB5799869CAFAFF",
+      "bytes": 9728,
+      "mtime": "2026-09-17T15:13:48.4265144Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\multiversion_macros-cc43cffdca732e22.dll",
+      "SHA256": "E940DA155324F5FD9D336F44DD9CE51EC8CB3D4FC5CBE1B2C5007143C7BC048A",
+      "bytes": 2047488,
+      "mtime": "2026-09-17T09:34:06.0513941Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\multiversion_no_op-5a51396ba50686d6.dll",
+      "SHA256": "10A6540D2E46DA844467BBA59873A53623A033FE256990E82021765FD575453D",
+      "bytes": 146432,
+      "mtime": "2026-09-17T09:34:03.3415841Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\rustversion-b0f244ff82641bce.dll",
+      "SHA256": "B277A29CD0A3A17145D74CB2B991CAC6039DA6E3D3980C135D001F44E84073FE",
+      "bytes": 344064,
+      "mtime": "2026-09-17T09:34:01.2802456Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\serde_derive-c270c04a0511d41a.dll",
+      "SHA256": "E1747B7DE73C015BABC7D4C1CED59893F1D21D0B3EF6AB821BD7B8438A434876",
+      "bytes": 2755584,
+      "mtime": "2026-09-17T09:35:05.3582820Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\serde_derive-f1e41984742a80d4.dll",
+      "SHA256": "C07484D93E1630F8A7E8512BE2266CAEA810C898FC9F81F251D1F637DE60DEC4",
+      "bytes": 2755584,
+      "mtime": "2026-09-17T09:34:07.6748099Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\thiserror_impl-8d1862a9b2d7406e.dll",
+      "SHA256": "82DD1B131AE53D0182E60CFB3FE17E3A72DB38A571230E4D9346D98406F0D65D",
+      "bytes": 2104320,
+      "mtime": "2026-09-30T04:47:42.5363124Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\thiserror_impl-c1556e6406f11da0.dll",
+      "SHA256": "83C723591E4EEB9C7F5F4BB57338CDD6808AA4EA9907A7E0322B5F731D4EBE19",
+      "bytes": 2103296,
+      "mtime": "2026-09-17T09:35:03.8806815Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\thiserror_impl-cbbc8f4cc22203d4.dll",
+      "SHA256": "3086E479869C48F3F4F75B7CC13596671EC8D6842E9BABC31A349EF5EF3684B9",
+      "bytes": 2116608,
+      "mtime": "2026-09-17T09:34:06.1790324Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\cargo\\release\\deps\\unlhare.dll",
+      "SHA256": "30141D229602D09B6961678C1168A46FAD21699E495B207552E6DE9955CBF2C2",
+      "bytes": 1651200,
+      "mtime": "2026-10-01T12:20:28.8428100Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\windows_x86_64_msvc-0.52.6\\lib\\windows.0.52.0.lib",
+      "SHA256": "24D8CBC445955B0D48041948A3C71CE2CDDB948C089B25EC7106FADD9F3EFDE0",
+      "bytes": 5210890,
+      "mtime": "2006-07-24T01:21:28.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\windows_x86_64_msvc-0.53.1\\lib\\windows.0.53.0.lib",
+      "SHA256": "34B8A86432177DC82C1FE0D34A941502E27A3B3F36BD7E54D6B96A70530BB285",
+      "bytes": 5221340,
+      "mtime": "2006-07-24T01:21:28.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\mod.rs",
+      "SHA256": "C222BCD1038AE4D44E8106FE6F54687F10B409877B0AB41C71EC227885FDB3D4",
+      "bytes": 26149,
+      "mtime": "2026-10-05T02:23:19.0742075Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\bundle.rs",
+      "SHA256": "F6226A52DDACD84B8DDA6180C38FE0413E0A29A8EA4A9EDC875EF2386426DFB3",
+      "bytes": 1464,
+      "mtime": "2026-10-04T19:18:37.8329577Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\bwt.rs",
+      "SHA256": "854F378BBC2E1960509723F3AA53E345913B10A1FAEE51F0D99564C2CAE859AD",
+      "bytes": 8517,
+      "mtime": "2026-10-04T19:23:44.6832613Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\codebook.rs",
+      "SHA256": "427DEE875E076D55C0B910F88AF5D5DF4964AEF18F54DE54D65A00F9D2920E74",
+      "bytes": 8943,
+      "mtime": "2026-10-04T19:23:44.6842589Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\counts.rs",
+      "SHA256": "9A4EB6DEAC31016CB3E9EDF2F9DFB18DD58C2A0E33CE43ADC84D81DA002FBFF8",
+      "bytes": 2415,
+      "mtime": "2026-10-04T23:48:14.9156694Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\frontend.rs",
+      "SHA256": "5BB001C1C79FF9528B65ED077D37E8A004ABDB7BE646D9EAC35FD65E15EE753F",
+      "bytes": 4861,
+      "mtime": "2026-10-05T02:58:01.6329105Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\grammar.rs",
+      "SHA256": "D71AD1C0F41D6A1335763D16E87480E17D6C761C9F35ADBBA9A22DE6A4241F5E",
+      "bytes": 8745,
+      "mtime": "2026-10-05T21:30:15.2623721Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\histogram.rs",
+      "SHA256": "F54B90AF23B0221A7C3E1ED79EC6A21B21A41FD439478A22EBD810A581E01B36",
+      "bytes": 300,
+      "mtime": "2026-10-04T19:18:37.8339569Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\lz.rs",
+      "SHA256": "3BF6AFA79A8C2408C90F30308AE23DF11D26796741B29F818820E3A20AF25002",
+      "bytes": 9195,
+      "mtime": "2026-10-05T02:23:18.9855044Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\mod.rs",
+      "SHA256": "B050BBF7EBF988A50514146C39501F3EB6DB758051DA601968ACD70A65793984",
+      "bytes": 25087,
+      "mtime": "2026-10-05T21:32:07.6772556Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\model.rs",
+      "SHA256": "A1E21F8FF6F83FECF6406E8EB1BA84A198BB567776BF5AFF2CB60A16C9720305",
+      "bytes": 5044,
+      "mtime": "2026-10-04T19:23:44.6842589Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\multi_range.rs",
+      "SHA256": "8ACE90BB370D8F443A908328C4F87558EBE5E5CDA16E002FB3A49AD9FC3C6CB3",
+      "bytes": 5974,
+      "mtime": "2026-10-05T03:38:38.6762110Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\packed.rs",
+      "SHA256": "320ED55F1BBEBAE98FF633161E41909F5AF8A8C721DC81FFF82E76CA8EC5A6A3",
+      "bytes": 3776,
+      "mtime": "2026-10-05T05:26:19.5198907Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\packet.rs",
+      "SHA256": "2EF1CC41154B25F491D268E1FC365829D6EFE9EEC71A78F69C4AC112A3502C79",
+      "bytes": 12484,
+      "mtime": "2026-10-05T21:30:16.4869509Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\paid_model.rs",
+      "SHA256": "B965512A4DAB0D920C9BEA14DA3FFD176CE289E4EB22BDC92DF93CAC3BF32072",
+      "bytes": 16950,
+      "mtime": "2026-10-05T01:44:57.9495138Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\src\\khc\\block\\program.rs",
+      "SHA256": "451BCCCC3678204291CEDA591DF6CD4829A26A5B6EE6BB018F18E2914FB6857A",
+      "bytes": 5185,
+      "mtime": "2026-10-05T21:36:31.9579459Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-native-archive-native-a-20261006\\current.khc",
+      "SHA256": "C29B63905569B44A6D4AF6F19D80AEF345D68B3572BBB0A0AA82AF08D882B7DE",
+      "bytes": 466395,
+      "mtime": "2026-10-05T18:34:01.3175068Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\alice29.txt",
+      "SHA256": "7467306EE0FEED4971260F3C87421154A05BE571D944E9CB021A5713700C38F0",
+      "bytes": 152089,
+      "mtime": "1996-09-26T07:51:32.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\asyoulik.txt",
+      "SHA256": "EAA3526FE53859F34ECDF255712F9ECF0B2C903451D4755B2EDAA2E2599CB0FC",
+      "bytes": 125179,
+      "mtime": "1996-09-26T05:33:38.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\cp.html",
+      "SHA256": "E0CD21CEF5B6C4069461E949BE100080C3CE887DE6F1DD8626C480528EFAAF61",
+      "bytes": 24603,
+      "mtime": "1996-06-12T07:44:50.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\fields.c",
+      "SHA256": "85D73E354CC50CEC76CB5A50537CF8DC035F8CBB8480F9E1CBE2F7D6C23393C7",
+      "bytes": 11150,
+      "mtime": "1996-09-26T06:02:30.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\grammar.lsp",
+      "SHA256": "1B0805DFC0AE706B35AAC2BB4E15F02485EFD24DDA5DBD29DE7B2F84D1A88C15",
+      "bytes": 3721,
+      "mtime": "1996-09-26T08:16:14.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\kennedy.xls",
+      "SHA256": "9AF47239CA29DFE20E633F80BBBB9A4CC9783D0803D7B2B5626F42E4C3790420",
+      "bytes": 1029744,
+      "mtime": "1996-11-12T08:16:28.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\lcet10.txt",
+      "SHA256": "5314BA1DBB03F471DF88BEC6CD120A938EF60D0FD3511C5C1DCE61BF7463245F",
+      "bytes": 426754,
+      "mtime": "1996-09-26T05:51:56.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\plrabn12.txt",
+      "SHA256": "07E2E0B461AF78C7C647CB53DAB39DE560198E16F799B4516ECCF0FBD69F764C",
+      "bytes": 481861,
+      "mtime": "1996-09-26T05:39:16.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\ptt5",
+      "SHA256": "0EC3A75089BB52342813496B17E51377BC9EBA3CB519A444D67025354841D650",
+      "bytes": 513216,
+      "mtime": "1996-11-06T05:13:26.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\sum",
+      "SHA256": "EE5733CD76ECC2F9D8FF156ADC3C02A7A851051DCF43A2D56FF4EE4FF606BDB3",
+      "bytes": 38240,
+      "mtime": "1996-11-12T08:12:48.0000000Z"
+    },
+    {
+      "path": "C:\\Users\\IMT\\dev\\UnLhaRe\\UnLhaRe\\build\\khc-corpus\\canterbury-development\\xargs.1",
+      "SHA256": "C58AEB5D2D1E12751D47E7412B45784405FC30A5671B03D480FA05776E183619",
+      "bytes": 4227,
+      "mtime": "1996-11-06T04:15:20.0000000Z"
+    }
+  ],
+  "interpretation": "post-run identity audit, not a new benchmark"
+}

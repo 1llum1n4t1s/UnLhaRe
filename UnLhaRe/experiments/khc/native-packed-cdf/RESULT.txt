@@ -1,0 +1,2 @@
+REJECTED: normal 63.0079->63.6251ms; reverse 64.4038->63.4321ms (warm1/pairs9). <=0.85 unmet.
+Proof: build/khc-native-packed-cdf-speed-a-20261008/report.json

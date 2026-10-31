@@ -140,6 +140,7 @@ fn limits_apply_to_creation_and_all_reader_operations() {
     let create_options = CreateOptions {
         method: Method::Stored,
         limits: create_limits,
+        ..CreateOptions::default()
     };
     let rejected_archive = temporary.path().join("rejected.lzh");
     assert!(matches!(
@@ -151,6 +152,7 @@ fn limits_apply_to_creation_and_all_reader_operations() {
     let options = CreateOptions {
         method: Method::Stored,
         limits: Limits::default(),
+        ..CreateOptions::default()
     };
     create_from_directory(&source, &archive, &options).expect("source should archive");
     let strict_limits = Limits {
@@ -193,6 +195,7 @@ fn public_operations_are_independent_when_called_in_parallel() {
                 let options = CreateOptions {
                     method: Method::Stored,
                     limits: Limits::default(),
+                    ..CreateOptions::default()
                 };
 
                 barrier.wait();

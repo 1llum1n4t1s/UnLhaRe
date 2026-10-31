@@ -42,6 +42,22 @@ size. `Verify`, `Extract`, and `Create` accept synchronous progress and a
 operation and must complete quickly. The methods are synchronous so callers that
 need asynchronous UI behavior should schedule them away from the UI thread.
 
+Unreleased API level 6 adds `CompressionMethod.Lh4` and opt-in high compression:
+
+```csharp
+ArchiveClient.Create("small.lzh", sources, CompressionMethod.Lh7, CompressionEffort.High);
+var report = ArchiveClient.CreateWithResults("report.lzh", sources,
+    CompressionMethod.Lh4, CompressionEffort.High,
+    new ArchiveCreateReportOptions(FailIfAllSkipped: true));
+```
+
+Existing overloads retain standard effort. High compares standard and two-pass
+parsing output and keeps the smaller result; Stored remains uncompressed.
+It costs additional CPU time and memory proportional to input size (potentially
+tens of bytes of working memory per input byte). Limit `MaxEntryBytes` accordingly;
+it is an input limit, not a process memory limit. LH4 and high effort require
+native API level 6; older native libraries are rejected before creation.
+
 The library calls `IProgress<ArchiveProgress>.Report` synchronously. A caller's
 `Progress<T>` implementation may dispatch its handler asynchronously, so callers
 own UI dispatch and notification throttling. Callers also own settings storage,

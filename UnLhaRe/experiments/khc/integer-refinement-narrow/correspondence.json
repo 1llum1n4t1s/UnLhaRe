@@ -1,0 +1,22 @@
+[
+  {
+    "old": "const B: u128 = 1 << 64;\n",
+    "new": "",
+    "count": 1
+  },
+  {
+    "old": "let mut reciprocal = u128::from(self.seeds[index]);",
+    "new": "let mut reciprocal = self.seeds[index];",
+    "count": 1
+  },
+  {
+    "old": "// lower bound r<=B/Dより差は非負。積は2^97未満。\n            let residual = B - u128::from(normalized) * reciprocal;\n            reciprocal += (reciprocal * residual) >> 64;",
+    "new": "// 非power-of-two Dでは整数r<=floor(B/D)よりD*r<Bでu64内。\n            // wrapping差はこのdomain内だけで厳密なB-D*rになる。\n            let residual = 0_u64.wrapping_sub(normalized * reciprocal);\n            reciprocal += ((u128::from(reciprocal) * u128::from(residual)) >> 64) as u64;",
+    "count": 1
+  },
+  {
+    "old": "((u128::from(n) * reciprocal) >> (64 - s)) as u64",
+    "new": "((u128::from(n) * u128::from(reciprocal)) >> (64 - s)) as u64",
+    "count": 1
+  }
+]

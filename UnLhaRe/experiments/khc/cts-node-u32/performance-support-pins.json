@@ -1,0 +1,262 @@
+[
+  {
+    "path": "../causal-integer-refinement/codec.rs",
+    "sha256": "0AD79D2C15CFFA96CDBED33421C20418C146BA223C872CFDCF5FD3F263ED0B64"
+  },
+  {
+    "path": "../causal-integer-refinement/cts_model.rs",
+    "sha256": "00D546612907EAA420D4D292358D288349D00BB906B9A1B4AC9A4F4E7B2BF2AF"
+  },
+  {
+    "path": "../causal-integer-refinement/exact_kt.rs",
+    "sha256": "5C42A1076967540ED4EA32194D52B2A0A12A8D8190D80AC77C73A0EF632C6D3D"
+  },
+  {
+    "path": "../causal-integer-refinement/scheduler.rs",
+    "sha256": "3278B3D7FA0FEAF79DE3EAE9455A6CF10702A992B70BF79E63562A21235BA184"
+  },
+  {
+    "path": "../causal-integer-refinement/verify.ps1",
+    "sha256": "01D0D6BC9B141747E91EE9E99BFF1B40F611CE81E6411BD0B88654E83553402F"
+  },
+  {
+    "path": "../causal-integer-refinement/correspondence.json",
+    "sha256": "55CB5E72354474408D963BF61C91F03FD11442CCF2E6C90DD31C206B7E99538C"
+  },
+  {
+    "path": "../integer-refinement-narrow/exact_div.rs",
+    "sha256": "01EA52E84D8725AB3F4A0B85999DC21598C18A330FA4101E0ACE7720D06674A3"
+  },
+  {
+    "path": "../disk-budget.ps1",
+    "sha256": "F0B0260F4F7F21C851F5A2D62E4232996BBF259D6782A3F9A49689D4B03FFCC7"
+  },
+  {
+    "path": "../Q32_INTEGER_PERFORMANCE_CONTRACT_20261002.md",
+    "sha256": "26F360492AF767EBADD14D05C401C467D9F560D12A745A91B5A0253E10017E47"
+  },
+  {
+    "path": "../bayes-dominant-q15/codec.rs",
+    "sha256": "0AD79D2C15CFFA96CDBED33421C20418C146BA223C872CFDCF5FD3F263ED0B64"
+  },
+  {
+    "path": "../bayes-dominant-q15/scheduler.rs",
+    "sha256": "C286EC6D84894A889B5BD2153E0817BDA4FD22A2A684B8E2554F47BB21475656"
+  },
+  {
+    "path": "../bayes-dominant-q15/bayes_model.rs",
+    "sha256": "DC0852C55C5CDA8B97D445C231B92ACF446FCBC17959B6ABC58244E7D0E6797B"
+  },
+  {
+    "path": "../bayes-dominant-q15/bayes_old.rs",
+    "sha256": "34E32F4F45E0D20BE0EE12595C8E2296838DDFBC50C5BDBC3D6D2E6EF80DFF3F"
+  },
+  {
+    "path": "../bayes-dominant-q15/audit_cli.rs",
+    "sha256": "1A4D481753AB6348D1F29BB8A3CD47ED8901D2D3616D58AAFABB26D8217E8D12"
+  },
+  {
+    "path": "../bayes-dominant-q15/verify-codec.ps1",
+    "sha256": "6D87E77A4E20135222F46118F1AEEE877B620178B359EE67E4E748A7EABAD566"
+  },
+  {
+    "path": "../bayes-dominant-q15/verify-numeric.ps1",
+    "sha256": "4024D454234A2D318833F37C0F51C07BCFB6D1DF0055B8EBFB0E1BA00B846A58"
+  },
+  {
+    "path": "../bayes-dominant-q15/correspondence.json",
+    "sha256": "4BFF5873CB2402D69F5C2D4FA59447F08E3F2A9E5C586161ACE07C71CD0D74AC"
+  },
+  {
+    "path": "../bayes-dominant-q15/verifier-correspondence.json",
+    "sha256": "1CD028592FACF328D674D19DAF51ADE2D357DA1D8255F96B86ABA109693595B4"
+  },
+  {
+    "path": "../bayes-dominant-q15/pdb-cleanup-result.json",
+    "sha256": "DF1263EA955388DA2BD56776FBC3DA63257887B7E13B7E5578A6FA90B671412B"
+  },
+  {
+    "path": "../BAYES_DOMINANT_Q15_CONTRACT_20261002.md",
+    "sha256": "9BC66305D8C01DEFD56CF33A643BA0963F49CB351EB3DCE84C4ED3F3E56EEFE5"
+  },
+  {
+    "path": "../BAYES_DOMINANT_Q15_PERFORMANCE_CONTRACT_20261002.md",
+    "sha256": "2659DBEBB57CF171721200502956AF704E234D6D7CE51CF38EA980E3AFB55331"
+  },
+  {
+    "path": "../causal-simd-quotient/codec.rs",
+    "sha256": "6ED1F8E576F20B369028033371118A97FF605059AD2CED1A6C086278AB20247A"
+  },
+  {
+    "path": "../causal-simd-quotient/cts_model.rs",
+    "sha256": "F266B5C6E6DA81DE3EA6ED3CB5134B578F06BC4440F8D4626FF678E13A6A775E"
+  },
+  {
+    "path": "../causal-simd-quotient/exact_kt.rs",
+    "sha256": "DB4E5713B18F0183019B18F8BEDFF50AF00209B2BE2642FEC32D6E74D5C5BE7C"
+  },
+  {
+    "path": "../causal-simd-quotient/scheduler.rs",
+    "sha256": "F810A5215D9C8E4D71502F3BB07FC230DD3FDA65E343BC057AFE79A4F3253C46"
+  },
+  {
+    "path": "../causal-simd-quotient/verify.ps1",
+    "sha256": "5D1D777FCA677A077F1F16BFBF01B9356E53C762F3C8F0DDFD9A777F8C420852"
+  },
+  {
+    "path": "../causal-simd-quotient/correspondence.json",
+    "sha256": "254785F0828994707767A99ACE0ED2E1021F1DBE0C6C2247968320CB9A6B4784"
+  },
+  {
+    "path": "../causal-simd-quotient/verifier-correspondence.json",
+    "sha256": "B1E3FE3FFB5D5A584FC19A6BC9D0E40DF7B4C36400B43B1FDB64AE3C3408536D"
+  },
+  {
+    "path": "../causal-simd-quotient/performance-correspondence.json",
+    "sha256": "280E418A1304AEBF3C512727ECCD0DA9EAD9B8BFE2E4EF71A97A9CEEC92A250B"
+  },
+  {
+    "path": "../simd-quotient/exact_div.rs",
+    "sha256": "9A135D48AD9C80B02B5BF916301EBBA0F95ED3EA578B6E0B0563A4E6E38645C7"
+  },
+  {
+    "path": "../simd-quotient/audit_cli.rs",
+    "sha256": "767A234AF874BA615809039ACE8C6BBE6FF6BDE1C2CC1E38E9ADFA2068941856"
+  },
+  {
+    "path": "../simd-quotient/verify.ps1",
+    "sha256": "0FA93E18C5EFA049BB3F6C2E4B85608B9E3760DAC6DDA5781241E2DC95D9672B"
+  },
+  {
+    "path": "../simd-quotient/audit-correspondence.json",
+    "sha256": "EFA4C3C9C19560F90EFC45520D810549D2D215C00DB6937589C00DF223C58D23"
+  },
+  {
+    "path": "../simd-quotient/pdb-cleanup-result.json",
+    "sha256": "6D63359AF7115723C2C92501B13E5516D5977156BCAEAC4DCEA2753B847B7297"
+  },
+  {
+    "path": "../SIMD_QUOTIENT_CONTRACT_20261002.md",
+    "sha256": "2587739B4CF5C4AB8FF3980782D9B16AEA57A47F45FE9012841BC41C3DAC6D4D"
+  },
+  {
+    "path": "../SIMD_CODEC_CONTRACT_20261002.md",
+    "sha256": "B9F62327BB9209C796B53AAADB3F4385DDEE5DE42A9219966AC75A9AC8BD6062"
+  },
+  {
+    "path": "../SIMD_QUOTIENT_PERFORMANCE_CONTRACT_20261002.md",
+    "sha256": "43F7D8FBF3468E86D6F26738D1FF5976105AEAEC2E011B8165E476B5162DB345"
+  },
+  {
+    "path": "../causal-compact-simd/codec.rs",
+    "sha256": "1E32F2AEAD5ACC93D10F04A2FA04E3380CB9BEC6F4D98E1A842E7A24663EF5EE"
+  },
+  {
+    "path": "../causal-compact-simd/cts_model.rs",
+    "sha256": "857A5A870159BB516138FB1B9D28978B317FBFD61D91953D896831B5D64FF7E3"
+  },
+  {
+    "path": "../causal-compact-simd/exact_kt.rs",
+    "sha256": "A208D7BE5E9519FA636ABD94B0BDD9306F5CFDE3AAC03E24C2144A391EAB06E5"
+  },
+  {
+    "path": "../causal-compact-simd/scheduler.rs",
+    "sha256": "DA48F8E69E72D3C455BF86718D38B39FF6C6BD1E24FC9D834A343CF1A36DA5B2"
+  },
+  {
+    "path": "../causal-compact-simd/verify.ps1",
+    "sha256": "27BCE6AF9C53E8103CF2F54763952C6493E840547655F6982352B12BF69E37BB"
+  },
+  {
+    "path": "../causal-compact-simd/correspondence.json",
+    "sha256": "D23BF8AFDD5587B3AD3EAB3282FA134D3D30773B35DD935783A015A6A0DD413D"
+  },
+  {
+    "path": "../causal-compact-simd/verifier-correspondence.json",
+    "sha256": "FE3FC2494458B560B823E5A9DA28E15F91CC3C6534F9148135400D96B29FE2B4"
+  },
+  {
+    "path": "../causal-compact-simd/performance-correspondence.json",
+    "sha256": "DA7929E932FA99626A0AE07756734F9D554A85929F4783F0E541B793606C07C2"
+  },
+  {
+    "path": "../compact-simd-quotient/exact_div.rs",
+    "sha256": "978B932A7D0CFAA7C8090DB75C6928E7746798F91213CA7AE89231810A9C222D"
+  },
+  {
+    "path": "../compact-simd-quotient/audit_cli.rs",
+    "sha256": "AB7222684CD2AC565CA48B18D58FDA22A821F50D8C58BC60DE027E77A14643C3"
+  },
+  {
+    "path": "../compact-simd-quotient/verify.ps1",
+    "sha256": "7EF4DF0E46BFDBDF8C3F8509CC37FF46B2FAEE6179F84B5F7858DBDCDEA19284"
+  },
+  {
+    "path": "../compact-simd-quotient/helper-correspondence.json",
+    "sha256": "29D9EBEB0B7791BC56AE7D665D82CD8243C541BB7FEA7ED43C2CC99164B4E922"
+  },
+  {
+    "path": "../compact-simd-quotient/audit-correspondence.json",
+    "sha256": "C4A6B6684CC3D5900FC274370E2D5D98882FFAE912F944D25E8AD79BAC27E438"
+  },
+  {
+    "path": "../compact-simd-quotient/verifier-correspondence.json",
+    "sha256": "E37C330DA2FB5E2521B27F508AF32B6CCA42D10FB52C5E58D5F89DF477E60FCB"
+  },
+  {
+    "path": "../COMPACT_SIMD_CONTRACT_20261002.md",
+    "sha256": "BE0918A76FC9438FF2C947B93B2F5275825B2F10DA40216C8C6171C24190688A"
+  },
+  {
+    "path": "../COMPACT_CODEC_CONTRACT_20261002.md",
+    "sha256": "D7A25F74B7B1CC4AF888449009052AE124F6A81B94A41A3BFBE66670FAF7C396"
+  },
+  {
+    "path": "../COMPACT_CODEC_PERFORMANCE_CONTRACT_20261002.md",
+    "sha256": "2EE54292F7BC636A57574E69A8231D4189F65BB3D7A0B4821E8A61374CB9B01F"
+  },
+  {
+    "path": "codec.rs",
+    "sha256": "1E32F2AEAD5ACC93D10F04A2FA04E3380CB9BEC6F4D98E1A842E7A24663EF5EE"
+  },
+  {
+    "path": "correspondence.json",
+    "sha256": "199CDF39CEF78909592283E4313EB8644CCB389F01DA0FA610B80F1E93A3FE1E"
+  },
+  {
+    "path": "cts_model.rs",
+    "sha256": "310DDC66487310D13C7D358D9233DB6C601268A40A03833550807E805E9B304A"
+  },
+  {
+    "path": "exact_kt.rs",
+    "sha256": "A208D7BE5E9519FA636ABD94B0BDD9306F5CFDE3AAC03E24C2144A391EAB06E5"
+  },
+  {
+    "path": "scheduler.rs",
+    "sha256": "DA48F8E69E72D3C455BF86718D38B39FF6C6BD1E24FC9D834A343CF1A36DA5B2"
+  },
+  {
+    "path": "state_audit.rs",
+    "sha256": "50262D5661D15BC2FC9F0A804F2A98428D7CC688E0727160D549925C7CAEC41C"
+  },
+  {
+    "path": "verifier-correspondence.json",
+    "sha256": "D37EF6272963CE5678EC4CAFB6AA697D958C2B876FB0BB755AD14B07538F1A7E"
+  },
+  {
+    "path": "verify.ps1",
+    "sha256": "414DC1BF9F40E0BB991A55F5F7D0DF3C9207651B0B5E6A15A86789C8C7A1008C"
+  },
+  {
+    "path": "../CTS_NODE_U32_CONTRACT_20261002.md",
+    "sha256": "808411BA225B917A0E534F61CC6C46E93C7ECFC0E98D0CB13CE491EB49025340"
+  },
+  {
+    "path": "../CTS_NODE_U32_PERFORMANCE_CONTRACT_20261002.md",
+    "sha256": "74FD6B0B4D6622FC553270714208FB35FE2BBB8DC0B6FE4495205853AED1C6AE"
+  },
+  {
+    "path": "../causal-compact-simd/compare.ps1",
+    "sha256": "1BE81D1A34C8CDACDA75550C68F49ED3A2CA86AF3E1DFA8D256F8D0C5BF53C80"
+  }
+]

@@ -1,0 +1,9 @@
+# 初回stack overflowと有界heap修正
+
+初回compile1/native1、native exit -1073741571、stderr stack overflow、stdout0。保存report D2D7CF244C55738A1F466C5CAC60C5EC40DF4C3E2539D7AC322AC4D8695A6064（35625B）/EXE FD0E3CD0C76CE7878B44ACF30CA7175B90C2C355FF4302F731682AB3211C820E（270336B）。失敗時のbefore/after source/pinsは一致して保存された。旧失敗出力は上書き・削除しない。実行の再観測timeoutではなく、nativeがterminalの実不具合である。
+
+有力原因はAccumulator内14 Summaryのinline固定配列と構築・返却のstack temporary。正確なfault instruction/関数は未特定。全Summaryを14件固定のVecへ移し、try_reserve_exact＋resize_withでheap初期化する。stack予約を増やさず、モデル・history・quantize・列・E2E fixtureを変えない。plain/input/traceのディスクcopy0。容量式へsummary Vec実capacity×sizeof(Summary)を加算し、24/48/160MiBゲートを維持する。
+
+親がtiles.rsとprobe.rsの保持方法・寿命・容量表示だけを編集し、runnerのSHAと未使用output先を更新する。元tilesへはVec→[Summary;14]、newでVec生成削除、capacity式のheap項削除の3siteを逆置換可能、元probeへはsummary移動/capacity記録とreport容量表示の2siteを逆置換可能。原grammar/e2e/counts/modelは不変。変更前SHAはtiles EA4692623D74DC23A0ECBFF8FD77228418AE1685EB9F36B003F575100A15D72F、probe 71FE4052BEA2CA9C8B2819CD60B73A7EDFDDDCD836CBCD3ADAC701ADCB84E2CC。
+
+修正後はbuild/khc-temporal-node-information-heap-20261004で追加compile1/native1。同じ先行24拒否/全row oracle/3Front fixture/固定Meta・loss集計を維持する。失敗条件と検証を小さくして通過させない。実行累計は初回＋修正後2compile/2nativeとして報告する。成功ならallocationを変えた同実行経路での修正効果まで確認、一般OOMやstack全境界の保証ではない。GOAL active/固定全gate維持。

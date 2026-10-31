@@ -1,0 +1,45 @@
+{
+  "original": "experiments/khc/causal-compact-simd/verify.ps1",
+  "changes": [
+    {
+      "old": "COMPACT_CODEC_CONTRACT_20261002.md",
+      "new": "LIGHT_COMPACT_CODEC_CONTRACT_20261002.md",
+      "count": 2
+    },
+    {
+      "old": "build/khc-causal-compact-simd-20261002",
+      "new": "build/khc-light-compact-codec-20261002",
+      "count": 1
+    },
+    {
+      "old": "D7A25F74B7B1CC4AF888449009052AE124F6A81B94A41A3BFBE66670FAF7C396",
+      "new": "9FEEE81B2EA1CC8F6E48F49FB8BA68D3F5AC6A77DD4319C827E82B782D5E23D2",
+      "count": 1
+    },
+    {
+      "old": "    foreach($name in @('cts_model.rs','exact_kt.rs','scheduler.rs','codec.rs','correspondence.json','verify.ps1'))",
+      "new": "    $nodeProofPath=Join-Path $root 'build/khc-cts-node-u32-20261002/report.json'\n    Hold $nodeProofPath 'node-u32-full-proof' '9627A3391CDC5995ADF757D2432235F9078899F026B02239AAA829D88EA8DF04'\n    $nodeProof=Get-Content -LiteralPath $nodeProofPath -Raw|ConvertFrom-Json\n    if($nodeProof.status -cne 'correctness_and_size_passed_not_timed' -or $nodeProof.failure -or $nodeProof.timing_used -or $nodeProof.checks.Count -ne 55 -or $nodeProof.invocations.Count -ne 94 -or $nodeProof.identities.Count -ne 550 -or $nodeProof.frame_bytes -ne 483496 -or $nodeProof.owned_tmp_or_reparse -ne 0 -or $nodeProof.owned_pdb -ne 0){throw 'node-u32 source proof matrix'}\n    foreach($id in $nodeProof.identities){Hold $id.path 'node-u32-current-identity' $id.after_sha256}\n    $checks.Add('node-u32-source-proof-and-current-identities')\n    $lightProofPath=Join-Path $root 'build/khc-light-compact-path-20261002/report.json'\n    Hold $lightProofPath 'light-state-proof' '99330ECA76275BE5B4B55F1E663612764B4CB88E60A02A8E3FE843B32928109F'\n    $lightProof=Get-Content -LiteralPath $lightProofPath -Raw|ConvertFrom-Json\n    if($lightProof.status -cne 'light_compact_path_state_verified_not_codec_or_timing' -or $lightProof.failure -or $lightProof.timing_used -or $lightProof.full_codec_verified -or $lightProof.checks.Count -ne 7 -or $lightProof.invocations.Count -ne 9 -or $lightProof.identities.Count -ne 15 -or $lightProof.owned_tmp_pdb_reparse -ne 0){throw 'light numeric/state proof matrix'}\n    if(($lightProof.summaries.variant -join ',') -cne 'opt2-checkedFalse,opt2-checkedTrue,opt3-checkedFalse,opt3-checkedTrue'){throw 'light numeric/state variant matrix'}\n    foreach($item in $lightProof.summaries){\n        $s=$item.summary\n        if($s.status -cne 'light_compact_path_state_verified_not_codec_or_timing' -or $s.mapping_records -ne 1114112 -or $s.invalid_depth_cases -ne 2 -or $s.state_events -ne 131072 -or $s.values_per_event -ne 72 -or $s.invalid_class_cases -ne 2 -or $s.stale_cases -ne 1 -or $s.class_mismatch_cases -ne 1 -or $s.injected_cap_cases -ne 1 -or $s.rollback_checks -ne 3 -or $s.continuation_events -ne 2 -or $s.fingerprint_u64 -cne 'd47b3bd91aab06f7'){throw 'light mapping/state/refusal coverage'}\n        if($s.old_prediction_bytes -ne 160 -or $s.new_prediction_bytes -ne 24 -or $s.old_node_bytes -ne 8 -or $s.new_node_bytes -ne 8 -or $s.classes.Count -ne 7 -or $s.selected_depths.Count -ne 17 -or ($s.classes|Measure-Object -Sum).Sum -ne 131072 -or ($s.selected_depths|Measure-Object -Sum).Sum -ne 131072){throw 'light layout/class coverage'}\n        if($item.stdout -cne $lightProof.summaries[0].stdout){throw 'light state summary differs'}\n    }\n    foreach($call in $lightProof.invocations){if($call.exit -ne 0 -or $call.stderr){throw 'light state proof child failure'}}\n    foreach($id in $lightProof.identities){Hold $id.path 'light-state-current-identity' $id.after_sha256}\n    $checks.Add('light-streamed-numeric-state-proof-reused-not-rerun')\n    foreach($name in @('scheduler.rs','codec.rs','correspondence.json','verify.ps1','verifier-correspondence.json'))",
+      "count": 1
+    },
+    {
+      "old": "    Hold (Join-Path $PSScriptRoot '../disk-budget.ps1') 'budget-guard'",
+      "new": "    Hold (Join-Path $PSScriptRoot '../cts-node-u32/codec.rs') 'frozen-node-u32-codec.rs' '1E32F2AEAD5ACC93D10F04A2FA04E3380CB9BEC6F4D98E1A842E7A24663EF5EE'\n    Hold (Join-Path $PSScriptRoot '../cts-node-u32/cts_model.rs') 'frozen-node-u32-cts_model.rs' '310DDC66487310D13C7D358D9233DB6C601268A40A03833550807E805E9B304A'\n    Hold (Join-Path $PSScriptRoot '../cts-node-u32/exact_kt.rs') 'frozen-node-u32-exact_kt.rs' 'A208D7BE5E9519FA636ABD94B0BDD9306F5CFDE3AAC03E24C2144A391EAB06E5'\n    Hold (Join-Path $PSScriptRoot '../cts-node-u32/scheduler.rs') 'frozen-node-u32-scheduler.rs' 'DA48F8E69E72D3C455BF86718D38B39FF6C6BD1E24FC9D834A343CF1A36DA5B2'\n    Hold (Join-Path $PSScriptRoot '../causal-compact-simd/verify.ps1') 'original-full-verifier' '27BCE6AF9C53E8103CF2F54763952C6493E840547655F6982352B12BF69E37BB'\n    Hold (Join-Path $PSScriptRoot '../light-compact-path/light.rs') 'new-light-model' '42DAD8135AF86DF5AF0FDD6DCA6616C35346B5B127EF0B58751305B6B76BFDC4'\n    Hold (Join-Path $PSScriptRoot '../disk-budget.ps1') 'budget-guard'",
+      "count": 1
+    },
+    {
+      "old": "    $checks.Add('full-source-correspondence-four-files')",
+      "new": "    $verifierCorrespondence=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'verifier-correspondence.json') -Raw|ConvertFrom-Json\n    $expectedVerifier=[IO.File]::ReadAllText((Join-Path $root $verifierCorrespondence.original)).Replace(\"`r`n\",\"`n\")\n    foreach($change in $verifierCorrespondence.changes){if(([regex]::Matches($expectedVerifier,[regex]::Escape($change.old))).Count -ne $change.count){throw 'verifier replacement occurrence'};$expectedVerifier=$expectedVerifier.Replace([string]$change.old,[string]$change.new)}\n    if([IO.File]::ReadAllText($PSCommandPath).Replace(\"`r`n\",\"`n\") -cne $expectedVerifier){throw 'complete verifier correspondence'}\n    $checks.Add('full-source-correspondence-codec-and-scheduler')",
+      "count": 1
+    },
+    {
+      "old": "    if(($decodePrimary.scheduling|ConvertTo-Json -Compress)",
+      "new": "    if($encodeCounts.node_bytes -ne 12 -or $encodeCounts.node_count -ne 917497 -or $encodeCounts.logical_node_storage_bytes -ne 11009964 -or $encodeCounts.light_prediction_bytes -ne 24 -or $encodeCounts.scheduler_prediction_bytes -le 24){throw 'full actual node/light Prediction layout'}\n    $checks.Add('actual-full-node-and-light-prediction-layout')\n    if(($decodePrimary.scheduling|ConvertTo-Json -Compress)",
+      "count": 1
+    },
+    {
+      "old": "compact_diagnostic=$diagnostic}",
+      "new": "compact_diagnostic=$diagnostic;reused_light_state_proof_sha256='99330ECA76275BE5B4B55F1E663612764B4CB88E60A02A8E3FE843B32928109F';reused_node_u32_proof_sha256='9627A3391CDC5995ADF757D2432235F9078899F026B02239AAA829D88EA8DF04'}",
+      "count": 1
+    }
+  ]
+}

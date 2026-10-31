@@ -36,6 +36,7 @@ fn all_public_methods_round_trip_with_independent_reader() {
 
     for (method, method_id, label) in [
         (Method::Stored, b"-lh0-", "lh0"),
+        (Method::Lh4, b"-lh4-", "lh4"),
         (Method::Lh5, b"-lh5-", "lh5"),
         (Method::Lh6, b"-lh6-", "lh6"),
         (Method::Lh7, b"-lh7-", "lh7"),
@@ -70,6 +71,7 @@ fn incompressible_input_falls_back_to_stored_without_changing_the_payload() {
     fs::write(&input, &payload).expect("source file");
 
     for (method, label) in [
+        (Method::Lh4, "lh4"),
         (Method::Lh5, "lh5"),
         (Method::Lh6, "lh6"),
         (Method::Lh7, "lh7"),
@@ -110,6 +112,74 @@ fn empty_archive_and_empty_file_are_valid() {
     let (name, decoded) = decode_one(&archive, b"-lh0-");
     assert_eq!(name, "empty.txt");
     assert!(decoded.is_empty());
+}
+
+#[test]
+fn high_compression_preserves_payload_and_never_exceeds_standard_size() {
+    use oxiarc_lzhuf::{LzhEncoder, LzhMethod};
+    let temporary = tempdir().unwrap();
+    let input = temporary.path().join("input");
+    let mut seed = 0x1234_5678u32;
+    let random: Vec<u8> = (0..70_000)
+        .map(|_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            seed as u8
+        })
+        .collect();
+    let mut mixed = random[..12_000].to_vec();
+    mixed.extend_from_slice(&random[..12_000]);
+    mixed.extend_from_slice(&b"abcabcabcxyzabcxyz\n".repeat(512));
+    let corpora = [
+        Vec::new(),
+        vec![42],
+        random,
+        mixed,
+        b"aabaaaabaaabaaaaab".repeat(1000),
+    ];
+    let mut improvements = 0;
+    for (index, data) in corpora.iter().enumerate() {
+        fs::write(&input, data).unwrap();
+        for (method, codec) in [
+            (Method::Lh4, LzhMethod::Lh4),
+            (Method::Lh5, LzhMethod::Lh5),
+            (Method::Lh6, LzhMethod::Lh6),
+            (Method::Lh7, LzhMethod::Lh7),
+        ] {
+            let baseline = LzhEncoder::new(codec).compress_to_vec(data).unwrap();
+            let archive = temporary.path().join(format!("{index}-{method:?}.lzh"));
+            let start = std::time::Instant::now();
+            create_archive(
+                &archive,
+                &[source(&input, "input")],
+                &CreateOptions {
+                    method,
+                    effort: unlhare::CompressionEffort::High,
+                    ..CreateOptions::default()
+                },
+            )
+            .unwrap();
+            let mut reader = LhaDecodeReader::new(File::open(&archive).unwrap()).unwrap();
+            let packed = reader.header().compressed_size as usize;
+            assert!(packed <= baseline.len().min(data.len()));
+            if packed < baseline.len().min(data.len()) {
+                improvements += 1;
+            }
+            let mut actual = Vec::new();
+            reader.read_to_end(&mut actual).unwrap();
+            reader.crc_check().unwrap();
+            assert_eq!(&actual, data);
+            eprintln!(
+                "{method:?} corpus={index} input={} standard={} selected={} elapsed={:?}",
+                data.len(),
+                baseline.len(),
+                packed,
+                start.elapsed()
+            );
+        }
+    }
+    assert!(improvements > 0, "高圧縮経路で実サイズが改善する入力が必要");
 }
 
 #[test]

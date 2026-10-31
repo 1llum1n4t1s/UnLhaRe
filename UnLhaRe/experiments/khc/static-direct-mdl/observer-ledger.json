@@ -1,0 +1,33 @@
+{
+  "source": "../lookup-float-cts/codec.rs",
+  "destination": "observed_codec.rs",
+  "normalization": "CRLF to LF and exactly one terminal LF",
+  "operations": [
+    {
+      "from": "#[path=\"model.rs\"] mod model;",
+      "to": "#[path=\"../lookup-float-cts/model.rs\"] mod model;",
+      "count": 1
+    },
+    {
+      "from": "#[path=\"e2e.rs\"] mod e2e;",
+      "to": "#[path=\"../lookup-float-cts/e2e.rs\"] mod e2e;",
+      "count": 1
+    },
+    {
+      "from": "for value in [component,key,token,limit]{digest(&mut self.audit.grammar,value);}Ok(token)",
+      "to": "for value in [component,key,token,limit]{digest(&mut self.audit.grammar,value);}crate::observer::token(component,context,usize::from(symbol),token,limit);Ok(token)",
+      "count": 1
+    },
+    {
+      "from": "self.audit.escape_bytes+=1;Ok(byte)",
+      "to": "self.audit.escape_bytes+=1;crate::observer::byte();Ok(byte)",
+      "count": 1
+    },
+    {
+      "from": "self.recent=((self.recent<<4)|rank.min(3) as u32|class<<2)&0xffff;",
+      "to": "self.recent=((self.recent<<4)|rank.min(3) as u32|class<<2)&0xffff;crate::observer::run_done(usize::from(symbol),rank,length);",
+      "count": 1
+    }
+  ],
+  "numerical_changes": 0
+}

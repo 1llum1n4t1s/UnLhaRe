@@ -1,0 +1,148 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/bayes-dominant-q15/codec.rs",
+    "changes": [
+      {
+        "old": "#[path = \"scheduler.rs\"]\nmod scheduler;",
+        "new": "#[path = \"scheduler.rs\"]\nmod scheduler;\n#[cfg(khc_operation_counts)]\nmod counts;",
+        "count": 1
+      },
+      {
+        "old": "        s.scheduling.json()\n    );",
+        "new": "        s.scheduling.json()\n    );\n    #[cfg(khc_operation_counts)]\n    counts::dump();",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/bayes-dominant-q15/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../causal-integer-refinement/cts_model.rs\"]",
+        "new": "#[path = \"cts_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"../adaptive-suffix-kt/cts_model.rs\"]",
+        "new": "#[path = \"light_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "        for record in &records {",
+        "new": "        for record in &records {\n            #[cfg(khc_operation_counts)]\n            let _phase = crate::counts::scope(2, class);",
+        "count": 1
+      },
+      {
+        "old": "        self.validate(c)?;",
+        "new": "        #[cfg(khc_operation_counts)]\n        let _phase = crate::counts::scope(0, c);\n        self.validate(c)?;",
+        "count": 2
+      },
+      {
+        "old": "        let heavy = if self.active[c] {",
+        "new": "        let heavy = if self.active[c] {\n            #[cfg(khc_operation_counts)]\n            let _phase = crate::counts::scope(1, c);",
+        "count": 1
+      },
+      {
+        "old": "        if let Some((prediction, mixture)) = &p.heavy {",
+        "new": "        if let Some((prediction, mixture)) = &p.heavy {\n            #[cfg(khc_operation_counts)]\n            let _phase = crate::counts::scope(1, c);",
+        "count": 1
+      },
+      {
+        "old": "        let reference = {",
+        "new": "        let reference = {\n            #[cfg(khc_operation_counts)]\n            let _phase = crate::counts::scope(3, c);",
+        "count": 1
+      },
+      {
+        "old": "        {\n            self.reference_mix.update",
+        "new": "        {\n            #[cfg(khc_operation_counts)]\n            let _phase = crate::counts::scope(3, c);\n            self.reference_mix.update",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "bayes_model.rs",
+    "original": "experiments/khc/bayes-dominant-q15/bayes_model.rs",
+    "changes": [
+      {
+        "old": "                Some(primary_zero)\n            } else if difference >= 32.0 {",
+        "new": "                #[cfg(khc_operation_counts)]\n                crate::counts::bayes(0);\n                Some(primary_zero)\n            } else if difference >= 32.0 {",
+        "count": 1
+      },
+      {
+        "old": "            } else if difference >= 32.0 {\n                Some(cts_zero)",
+        "new": "            } else if difference >= 32.0 {\n                #[cfg(khc_operation_counts)]\n                crate::counts::bayes(1);\n                Some(cts_zero)",
+        "count": 1
+      },
+      {
+        "old": "            } else if difference <= -32.0 {\n                Some(primary_zero)",
+        "new": "            } else if difference <= -32.0 {\n                #[cfg(khc_operation_counts)]\n                crate::counts::bayes(2);\n                Some(primary_zero)",
+        "count": 1
+      },
+      {
+        "old": "        let weight = posterior(self.primary, self.cts);",
+        "new": "        #[cfg(khc_operation_counts)]\n        crate::counts::bayes(3);\n        let weight = posterior(self.primary, self.cts);",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "light_model.rs",
+    "original": "experiments/khc/adaptive-suffix-kt/cts_model.rs",
+    "changes": [
+      {
+        "old": "        Ok(Prediction {\n            indexes,",
+        "new": "        #[cfg(khc_operation_counts)]\n        crate::counts::light_predict(selected);\n        Ok(Prediction {\n            indexes,",
+        "count": 1
+      },
+      {
+        "old": "        self.history = (self.history << 1) | u16::from(bit);",
+        "new": "        self.history = (self.history << 1) | u16::from(bit);\n        #[cfg(khc_operation_counts)]\n        crate::counts::light_update();",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "cts_model.rs",
+    "original": "experiments/khc/causal-integer-refinement/cts_model.rs",
+    "changes": [
+      {
+        "old": ".map(|(probability, _, _)| probability)",
+        "new": ".map(|(probability, _method, _)| {\n                #[cfg(khc_operation_counts)]\n                crate::counts::heavy_kt(_method);\n                probability\n            })",
+        "count": 1
+      },
+      {
+        "old": "fn ratio(table: &exact_kt::KtTable, a: u64, b: u64, denominator: u64) -> Result<u64> {",
+        "new": "fn ratio(table: &exact_kt::KtTable, a: u64, b: u64, denominator: u64) -> Result<u64> {\n    #[cfg(khc_operation_counts)]\n    crate::counts::ratio_wrapper();",
+        "count": 1
+      },
+      {
+        "old": "        Ok(prediction)\n    }\n    fn update",
+        "new": "        #[cfg(khc_operation_counts)]\n        crate::counts::heavy_predict();\n        Ok(prediction)\n    }\n    fn update",
+        "count": 1
+      },
+      {
+        "old": "        self.history = (self.history << 1) | u16::from(bit);",
+        "new": "        self.history = (self.history << 1) | u16::from(bit);\n        #[cfg(khc_operation_counts)]\n        crate::counts::heavy_update();",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "exact_kt.rs",
+    "original": "experiments/khc/causal-integer-refinement/exact_kt.rs",
+    "changes": [
+      {
+        "old": "        self.ratios.ratio(a, b, d)",
+        "new": "        let result = self.ratios.ratio(a, b, d);\n        #[cfg(khc_operation_counts)]\n        if let Ok((_, flags)) = &result { crate::counts::ratio_flags(*flags); }\n        result",
+        "count": 1
+      },
+      {
+        "old": "let (quotient, _) = self.ratios.ratio(Q / 2,",
+        "new": "let (quotient, _) = self.ratio(Q / 2,",
+        "count": 1
+      }
+    ]
+  }
+]

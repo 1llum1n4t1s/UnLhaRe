@@ -1,0 +1,26 @@
+[
+  {
+    "id": "IMPORT",
+    "old": "#[path = \"../../../src/khc/block/packet.rs\"]\nmod packet;"
+  },
+  {
+    "id": "TOKEN",
+    "old": "fn token(\n    dec: &mut multi_range::Decoder<'_>,\n    forest: &packet::Forest,\n    tree: &grammar::CompactTree,\n    c: usize,\n    limit: usize,\n    histories: &mut [u16; 6],\n    s: &mut Stats,\n) -> Result<usize> {\n    let mut n = 0;\n    let mut depth = 0;\n    loop {\n        depth += 1;\n        if depth > 16 || s.branches > 16 * (s.raw + 1) * 2 {\n            return Err(\"branch limit\".into());\n        }\n        let (node, k) = tree.node(n, limit)?;\n        let class = c * 3 + node.class as usize;\n        let ch = if k == 1 {\n            s.implicit += 1;\n            0\n        } else {\n            decode_interval(dec, forest.lookup(c, n, k, histories[class])?, k)?\n        };\n        histories[class] = ((histories[class] << 2) | ch as u16) & 1023;\n        s.branches += 1;\n        let (lo, next) = node.edge(ch, k)?;\n        if let Some(next) = next {\n            n = next;\n        } else {\n            if lo >= limit {\n                return Err(\"decoded token limit\".into());\n            }\n            return Ok(lo);\n        }\n    }\n}"
+  },
+  {
+    "id": "DECODER_INIT",
+    "old": "    let forest = packet::Forest::parse(&bytes[model_start..model_start + model_len])?;\n    s.forest_capacity = forest.capacity_bytes();\n    s.parse_transient = forest.parse_dispatch_peak + forest.parse_reader_capacity;"
+  },
+  {
+    "id": "TREES",
+    "old": "    let trees = [\n        grammar::CompactTree::new(257)?,\n        grammar::CompactTree::new(256)?,\n    ];"
+  },
+  {
+    "id": "RANK_TREE",
+    "old": "            &trees[0],"
+  },
+  {
+    "id": "LENGTH_TREE",
+    "old": "            &trees[1],"
+  }
+]

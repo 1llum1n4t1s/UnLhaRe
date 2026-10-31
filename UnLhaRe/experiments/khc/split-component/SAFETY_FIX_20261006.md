@@ -1,0 +1,5 @@
+# 符号器内部拒否の直接証拠を補完
+
+独立analyst T1：v2の242変異・切断はwhole extent/CRCで先に拒否されるものがあり、normalize切断/rounding gapの直接証拠ではない。製品/候補coderの欠陥とは判定していない。通常速度report EAD24A3ECA8D4911D026386724615E4D493CB9087941BC98C7463AC832A4C7CBは不合格で凍結し、逆順/第三性能測定なし。
+
+probe_v3は同candidate_block_v2のまま、両componentの初期codeをFFFFFFFFへ変更・CRCを正してgap errorをassertする。成分を最低5Bで切り、split/payload length/CRCを全て正し、normalize切断errorを観測・件数化して拒否後同process正常復帰を確認する。finite_v3はタイミング処理を行わず安全性補完だけ。源実装・モデル・予算・採用基準は変更しない。v2の過去242件を内部経路成功へ書き換えない。

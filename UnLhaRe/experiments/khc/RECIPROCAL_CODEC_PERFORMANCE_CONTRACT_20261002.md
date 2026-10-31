@@ -1,0 +1,18 @@
+# 逆数補正full候補の正式比較: 実装前契約
+
+直前は数値32確認/87CLI/28レコードとfull51確認/86CLI/466 unique identitiesが成功しPROGRESS。新normal候補241152B/SHA7DCB3AC8CD16139D48483FEE8FB2078902EAB7DF3AE0912F33A843F40714944Bを、別のfresh performance rootで一度だけ正式評価する。旧terminal候補の再試行ではない。確認待ちのobserver初期化分離は行わない。
+
+- 入力2811006B/SHA18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76、11件Canterbury development、balanced control SHA7E149D682025E4E03EDC32B6999A91C139991DBC834017EF9A15F88EA9290BF0、native7za26.03 SHAEDBEE35370E14030E4C785CF88200F42DC651C1EB4217C1E3963C38A12F099B0と既存argvを維持。
+- サイズ483599B以下・encode中央値厳密574.5624ms未満、warmup1+測定9、3codec循環順、single-thread設定、child120秒、起動前～終了/drain後wall・子CPU別の境界を維持。新frame483496B/CF62CD2324B4CF889CDDDB25C9508C28E4BD4D24217B93BB7D4FF9318C3EAD12もbindする。
+- CPU総15%以下、preflight5×1秒と全CLI前後、quiet-host.ps1 SHA E66D39AE8BCDAD63BC7D3FC467D4C85E950261749D457D33C4BFA9D3ED13FFBF、初期化位置は不変。違反時terminal、同候補を自動再試行しない。priority/affinity/power/他processへ介入しない。
+- fresh出力build/khc-reciprocal-codec-20261002/performanceを48MiB、親を64MiB。full出力約1.915MiB、正式比較は入力/fixtureコピー・30archive・初回/最終の6decode・報告を含め約40MiB見込み。全argv/中間証拠/同時計測の境界を変える清掃は行わず、終了後に用途を終えた今回の一時出力だけ整理する。Cargo/cache/PDB/raw traceなし。事前/事後disk guard・空き5GiB+予算を要求、既存root/attemptへ上書きしない。
+
+失敗計画:
+
+1. source/計測手順の変更: compact-light comparer SHA485321A05E8FF30904F026E40573630563A3148B22ED64244F9FCC128F0C46E9から明示全文置換対応を保存し、8計測helperのAST・計測loop/thresholdを維持。変更は新candidate/path・新support pin・new proof validation・容量予算に限定。旧compact-light ordinaryを旧絶対path/SHA8BA849D4C3122D8F49DF8667D08A0DB497B575F2099EF37B73CD6A911FE04C3Eへ固定し、新ordinaryを別bindingする。
+2. 新数値/full証拠: 数値proof A58898BA7716CE836B921FA04E3152718BB5D96B53FA279EC5EB27FAD69D3DD4の32/87/28、4matrix9293629/compact8398832/fingerprint f02dbdcb00adbe1d・fallback0。full proof22C7D3364743D2FD962A330BCA5EC9BBE2DF4EC6E1603F8BB4ED655FE0D645BEの51/86/466、既存841/数値28の照合、8拒否、4条件7入力とkernel実使用/layoutを確認。sourceと候補SHAを前後照合し、counted診断EXEは正式計測しない。
+3. 過去closure: 旧全source pins・旧全proof validation/history closureを維持し、新数値とfull stable identitiesを追加。wide/narrowのbudget guard修正の厳密2例外のみを維持。新fullの比較済みoutput台帳72件は、1つの固定frameだけ保持し71件を削除したことを明示検証する。全件full_bytes_compared=true、hash/lengthが保持中の比較相手と一致、role一意、削除pathはexact owned scratch.frame/scratch.restoreだけ、保持1件はfixed-native.frameだけ、successful codec CLI出力のpath件数へbindする。この限定台帳だけをpersistent file closureから除外し、report自体とstable466 identitiesを照合する。削除済みscratchを存在する証拠とは扱わない。
+4. 不正・非決定性・計測失敗: 元の初回/最終6decode、native SLT、他archiveの初回SHA一致を維持。CPU/timeout/argv/CLI/復元/容量/identity違反はattempt/reportへ保存し、未完了warmupやroundを中央値へ読み替えない。事前確認、history closureが実行された証明、正式中央値の取得は区別する。
+5. 完了scope: 合格してもWindows x64 development encode/complete frameの証拠のみ。候補1groupとnative11fileの復号境界は異なる。holdout/カテゴリ・同境界decode・四native・製品/API組込み・安全性が未達なら7-Zip総合超えとは扱わずgoal activeを維持する。
+
+source対応/全pins・現在SHA・runtime/CPU/CWD/argv/各roundのwall/CPU/memory/thread標本・最終容量を保存する。固定条件を緩めず、メモリ量や数値同値から性能勝利を推論しない。

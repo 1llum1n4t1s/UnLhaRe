@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "task": "goal-restore-20261019",
+  "run": "mac-native-e2e-ps-free-20261026",
+  "root": "/Users/szk/Library/Caches/Kagayoi/UnLhaRe/goal-restore-20261019/tmp/native-e2e-ps-free",
+  "max_bytes": 8388608,
+  "max_entries": 96,
+  "outer_timeout_seconds": 300,
+  "child_timeout_seconds": 240,
+  "outer_log_reserved_bytes": 1048576,
+  "report_reserved_bytes": 65536,
+  "fixture_bytes": 513216,
+  "fixture_sha256": "0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650",
+  "oracle_sha256": "343e08f0e41295e736ffc94d2ab70340228e6e50bacd829a5e72c3b5a4b39d75"
+}

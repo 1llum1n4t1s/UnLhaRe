@@ -6,7 +6,45 @@
 
 `UnLhaRe/` はRust 1.98.1 / edition 2024による独立した近代化版。Windows/macOSのx64/ARM64を対象とし、旧x86 ABIを引き継がない。利用手順と機能境界は [新版README](UnLhaRe/README.md)。以下の互換版の設計とは実装と試験入口を分離する。
 
+開発版KHCのKCS1 encoderは、`src/khc/spatial.rs`で一度の因果Voter走査から有界Count/Literal記録を作り、CDF確定後に再生する。記録は1件2B、入力長以下で、最大2MiBをcodecの64MiB枠に課金する。長さ0のCountは直後Literalのbit14へ併合し、Count0・literal bitsの順で再生する。Countのvarintと保存したLiteral幅から位置・残差を復元し、frame確保・stored fallback前に記録を破棄する。SpatialMdlでは保持MDL frameの実capacityも合算する。記録はwireへ出さず、KCS1形式・復号規則とPortfolioの同長順位を維持する。2026-10-23の有限API/CLI E2Eで旧3完全frameと旧24書庫データ部分の一致を確認したが、速度・実ピークmemory改善は未評価である。task内限定Rust1.98.1/LLDでのbuild/lintは成功した。既定Rust1.99.1の検証と、以前のMSVC補助プロセス残存によるwrapper失敗は別途未解決。[形式とメモリ境界](UnLhaRe/KHC_FORMAT.md#メモリと有限製品e2e)、[実行記録](UnLhaRe/experiments/khc/STORAGE.md)を参照する。
+
+新版KHCの進捗なしverify/extractは、適格なG32入りrevision 4/5（revision 5はDelta16の子）に限り`src/khc/pipeline.rs`でblockを並列復号する。最大4worker（stack各2MiB）・未commit job4個・順序イベント32個で、producerとCRC/write/no-replace公開は呼出しthreadに閉じる。workerへはframe/expected長/job番号だけを渡し、復号結果・先読み失敗とも書庫順に消費する。停止時は全channelを閉じてjoinし、先行エラーを保持する。事前走査でG32または有界stored/copy/LZだけを確認し、4,096entry／名前合計512KiBを超える書庫や走査失敗は旧逐次経路へ戻す。進捗付きAPI・revision 1〜3・wire・既定圧縮戦略は不変。予約計算はVecの要求容量とcodec scratchの見積もりで、allocatorを含む全入力の実peakを証明したものではない。Windows x64の調整用11入力で完全一致とfileCRC失敗時の順序を検証し、21組で復号中央値を約44.5%短縮したが7-Zip比約1.08倍。未見Silesiaも207block／211,938,580Bの全byte一致を検証し、21組で旧逐次4.441sから1.287sへ約71%短縮したが、7-Zip1.145sより約12.4%遅く、55,065,757Bの書庫も7-Zip49,307,880Bより約11.7%大きい。64MiB runtime／512MiB compiler／512MiB task Temp上限内で測定したが、総合目標は未達。Silesiaの7-Zip作成はLZMA2 `-mx9 -mfb273 -md4m -mmt2 -ms=on`、復号は`-mmt=4`。
+
+並列復号の再現用E2Eは[実行例](UnLhaRe/examples/khc_pipeline_e2e.rs)。Canterburyのrevision 4書庫・元コーパス・新規の外部Tempディレクトリを3引数で渡す。正常復元、CRC破損時の先行ファイル保持・後続未公開、切断・unknown revision・既存出力の保護、逐次進捗キャンセル、empty/directory/1MiB境界、連続呼出しを実ファイルで検証する。Cargoを使う場合も`--target-dir`はリポジトリ外の作業別Tempへ指定する。Windows x64以外のnative検証とworker panic／spawn失敗の実注入は未実施。
+
 ## 近代化版の構成
+
+開発版KHCの明示的な`RecordAdaptiveTrial` / CLI `record-adaptive-trial`はarchive revision 8を作る。`src/khc/record.rs`のKRS3はKRS2と同じ幅変更scheduleを使い、保存済みfrequencyを初期countとしてclassごと1024 symbol後に半減・整数CDF再構築を行う。BinaryAdaptiveの完全frameを先に払い、厳密に短い候補だけKRS3、それ以外は元のKHC1 frameを保存する。archive readerはmanifest由来の期待raw長をKRS3専用validatorまたは既存KHC1 validatorへ渡し、他familyを拒否する。frame/header/file CRC、Limits、非追跡親解決、CRC後のno-replace公開は共通経路を使い、並列適格性はrevision 4/5限定のためrevision 8は逐次経路となる。既定revision 1とrevision 1〜7の経路を維持する。[形式仕様](UnLhaRe/KHC_FORMAT.md#archive-revision-8class適応cdf付きschedule-copy-frame実験候補)が正本。2026-10-16のWindows x64 Release buildと5MiB/64 entry registered E2Eが成功し、API/CLIのKRS3採用・fallback・破損拒否・復元・旧revision読込を確認した。性能screenは未実施で優位は未評価。
+
+開発版KHCの明示的な`Delta16Trial` / CLI `delta16-trial`はarchive revision 5を作る。`src/khc/delta16.rs`はLE u16のword間差分・zigzag・二つのbyte planeと40Bの外側frameを実装する。未変換のG32試行を完了後に変換し、MDL対象となる印字率90%以上の変換候補はworkspaceの重なりを避けて省く。完全frame長で未変換と候補を比較し、同値は未変換を選ぶ。outerとchildのextent/CRC/familyを子の復号用確保前に検査し、mode 2の子を非MDL KRSに限定する。新方式の再帰内包は拒否し、revision 5の進捗なしverify/extractは内側G32の有無と従来の非MDL child条件で適格な書庫を最大4workerへ渡す。G32なし・entry/name予算超過・走査失敗と進捗付きAPIは逐次経路を保つ。既定Mdlとrevision 1〜4の経路、LHA/C ABI/.NET、依存関係、package versionは維持する。[形式仕様](UnLhaRe/KHC_FORMAT.md#archive-revision-5delta16-frame)を正本とする。Windows x64の実API/CLI E2Eで完全復元・異常系・旧5戦略の書庫全byte一致を確認し、最新source再ビルド後の全32子再実行が成功し、観測最大commitは29,102,080Bだった。allocatorを含む全入力のメモリ保証ではない。全Silesiaの211,938,580Bは完全復元でき、完成書庫は旧方式55,065,757Bから54,187,747Bへ減ったが、同制限の7z 49,307,880Bを9.8967%上回りsize checkpointは不合格だった。新しい未見・公平な反復性能は未評価で、numericの局所改善を総合7-Zip優位に読み替えない。
+
+開発版KHCの明示的な`Gather32Trial` / CLI `gather32-trial`はarchive revision 4を作る。`src/khc/g32/`はSA-IS走査中のcheckpoint採取、31行のLSB-first bit packing、packed LFのAVX2 gather32と同wireのscalar fallbackを実装する。独立`KHCG32B\0`はMDL method 1だけ、非MDLは従来KRS stored/copy/旧frame内包を使い、旧MDL wrapperを拒否する。既定Mdl/revision 1とrevision 1〜3の読取を維持する。[形式仕様](UnLhaRe/KHC_FORMAT.md#archive-revision-4gather32-frame)を正本とする。BWT・SA-IS・複数chainは既知原理で、貢献は実装と組合せ。Windows x64の実Rust API/CLIで完全復元を確認したが、今回のnative 7-Zip比較は0 sampleで未実行、G32性能優位・強設定Zstd・未見評価・総合目標は未達、ARM64/macOS nativeは未検証。
+
+開発版KHCのMDLモデル表は、852rootの各1024履歴でCDFがすべて同じ場合に12B descriptorへまとめ、可変rootだけdense行を保持する。Readerの全モデル検査・high履歴反転・整数CDF・wire・CRCを維持する。全可変の保持6989848Bと構築追加4222622Bは別に計上する。旧新全CDF/最大分割/既存9E2E/公開API両順の同frame・相互復号、観測展開メモリ削減と小幅な時間短縮は[モデル表の評価](UnLhaRe/experiments/khc/forest-layout/PUBLIC_RESULT_20261006.md)へ記録する。全入力の高速化や全処理peak半減、7-Zip優位の証拠ではない。
+
+開発版KHCのMDL decoderは、256/257 alphabetの固定grammarを片側2000BのCompactTreeへ検査付きで変換し、同じnodeからdynamic prefix/class/childを参照する。padding除外、lo256、terminal/node識別、k1含む履歴更新とCDF/境界/CRC検査を維持する。構築時の旧Tree一時領域は別途必要。旧版との同frame・相互復号、既存9E2Eと両順で約6.9〜7.0%の展開時間短縮を[固定grammar表の評価](UnLhaRe/experiments/khc/compact-grammar/RESULT_20261005.md)へ記録する。形式不変の実装最適化であり、7-Zip優位の証拠ではない。
+
+開発版KHCのMDL grammarは、walk開始時に固定256/257 tokenのnode/class/child/terminal経路を最大8stepで構築する。動的limitによるprefixだけを各branchで計算し、全classの履歴更新（k1を含む）を維持する。encoderはterminal通知を利用し、形式・モデル・decoderのアルゴリズムを変更しない。追加scratch予約64KiB。旧版との出力一致と既存9E2E、圧縮時間短縮の再現と展開時間の計測上の増加は[固定経路の評価](UnLhaRe/experiments/khc/token-routes/RESULT_20261005.md)へ記録する。これは実装最適化であり、新しい圧縮原理や7-Zip優位を示すものではない。
+
+開発版KHCのMDL前段は、最大257symbolの次回使用順をu16固定配列で保持する。各runで変わるのはheadの次回位置だけなので、先頭検査・二分探索のrank・headの移動から旧rank/run文法と同じイベントを作る。追加scratch514B、形式/CDF/decoderは不変。凍結旧版との同frame・相互復号と測定範囲は[前段の検証](UnLhaRe/experiments/khc/ordered-front/RESULT_20261005.md)へ記録する。
+
+開発版KHCの既定MDLはrevision 1を維持し、明示指定の`BlockStrategy::HybridTrial` / `BinaryAdaptive`だけarchive/block revision 2を作る。`src/khc/block/lz.rs`は1MiB内の有界LZ探索と整数適応rangeを実装し、method2/3でliteral文脈を識別する。全候補試行または全入力特徴走査の費用を含めて選び、外部モデルを使わない。archive1へのblock2混入を拒否し、CRC後のentry単位no-replace公開を維持する。既存LZ原理の再実装・組合せであり、調整用データ上の改善を独自原理・未見優位・7-Zip総合達成と取り違えない。[形式](UnLhaRe/KHC_FORMAT.md)と[統合評価](UnLhaRe/experiments/khc/hybrid/RESULT_20261005.md)を参照。
+
+開発版KHCの`BlockStrategy::RecordTrial`だけarchive revision 3／独立`KRS1BLK`を作る。`src/khc/record.rs`は因果幅copy文法・4クラスbyte CDF・scalar rANS・安全な情報下界pruningを統合し、baselineは既存`block`を内部aliasで再利用する。量子処理や新依存は導入しない。revision 1/2と旧blockの意味は不変、archive3はKRSのみを受理する。listはheader/extent/wireCRC/CDF/内包legacy構造、verify/extractは復元CRCとfileCRCも検査し、共通nofollow/staging/no-replace経路で公開する。製品からexperimentsへのpath依存はない。既知11入力のframe一致・正常/逆順private gate・native E2Eと未達条件は[評価](UnLhaRe/experiments/khc/row-copy-pruned-rans/RESULT_20261007.md)を参照。開発opt-inであり総合優位や出荷承認ではない。
+
+研究用BT4の候補採取はBlock所有の固定配列を再利用し、今回書き込んだprefixだけをsnapshotへ保存する。毎位置の配列初期化を省き、古いsuffixを参照しない。通常のsnapshot参照は呼出し側が既に持つblock-local位置を直接受け取り、絶対位置からの再計算は境界試験だけに残す。Blockの固定サイズは既存の作業領域枠の検査へ含め、候補順・取消callback・符号化形式は維持する。
+
+研究用`khc_lab decode-bench`は固定frameの反復復号・照合・解放をbatch計測する。通常codecを変更せず、圧縮やI/Oを除いた復号比較を可能にする。warm-up出力は測定補助メモリで、codecの要求容量式とは別に保持する。製品APIや7-Zipとの起動込み比較へは読み替えない。
+
+研究用の単一solid groupは`experiments/khc/solid.rs`で名前・長さ表と連続本文を検証し、既存KHC frameの入力として圧縮する。全metadataを先に検証した借用viewだけを返し、名前をファイルパスとして使わない。`khc_lab group-bench`で複数ファイルの履歴共有・復元を検証し、`group-encode` / `group-list` / `group-decode`で圧縮・名前一覧・本文連結stdoutを扱う。`compare-solid.ps1`は7-Zipのnative複数ファイルsolidと名前・サイズ・本文hashを照合する開発用比較であり、製品用書庫・group索引・hard memory契約とは分離する。詳細は[研究仕様](UnLhaRe/experiments/khc/README.md#研究用solid-group)。
+
+独自形式の開発版はRust `src/khc/` に統合し、LHAのMethod/Entry/C ABIと独立させる。[KHC1形式仕様](UnLhaRe/KHC_FORMAT.md)は独立archive/block magic、version、整数decode、費用込み静的モデル、1MiB bounded block/stored、CRC、manifest制限を規定する。`src/khc/block/` は検証済み実験から必要部分だけを独立portし、製品からexperimentsへのpath依存はない。containerは既存directoryのroot/beneath nofollow、readerのstaging/no-replace、writerのsource identity helperを再利用する。directory収集はlibの共通helperを保持root付きで使う。新API/CLIの完全復元・実費一致はWindows x64で確認し、比較性能・4環境nativeは未完了。先行研究との関係と未採用の量子手法は[方式選定](UnLhaRe/experiments/khc/RESEARCH_SELECTION_20261005.md)を参照。
+
+研究用beamのBT4候補は増分二分探索木を単調に更新し、区間snapshotを暫定学習と本解析で共有する。長一致の即時確定を先に判定してから区間の残りを挿入する。採取位置の木探索は可視一致長が16訪問連続で改善しなければ打ち切る近似で、追いつき挿入には適用しない。通常Matchだけは位置ごとの累積費用最小の親1つへ展開元を絞り、LiteralとRep系は全親を維持する近似とする。将来の距離履歴を含む厳密な最適化ではなく、個別のサイズ悪化を比較記録へ残す。固定prefixによる有界近似・追加メモリ・比較結果は上記実験仕様を正本とし、既定chain・製品API・LHA形式は変更しない。
+
+研究用beamの長さ価格キャッシュは、最大区間長と確率精度から価格上限を検査したu16表とする。計算時はu64へ戻し、候補価格や飽和加算は狭めない。要求容量式も表の実型へ連動させ、空値と最大有効価格、全長さ・文脈の従来式一致を試験する。BT4の幅4だけは全Rep候補長を共有定数表から参照し、表自体の候補値・順序の従来式一致と容量を検査する。Blended幅4では暫定token境界±2以外の位置でRepを末尾2長だけに絞る近似を加える。他幅は旧生成処理を維持する。幅4のRep履歴距離は位置ごとに最大16件なので、先頭byte不一致の0長をcacheへ保存せず棄却し、結果と取消順を保ったまま照合を省く。固定mask等は既存作業枠へ算入し、復号形式と製品APIには影響しない。
+
+作成方式はLH0/LH4/LH5/LH6/LH7。圧縮の強さは方式と独立した`CompressionEffort`で指定し、既定は標準。高圧縮ではoxiarc-lzhufの標準候補と2パス最適化候補を順番に生成し、実本文が小さい方を採用する。LH0へのフォールバック、ヘッダー、CRC、公開契約は共通。高圧縮候補の作業メモリは単一入力全体に比例するため、入力上限とプロセスメモリ上限を同一視しない。API level 6でLH4とJSONの任意`effort`を公開し、既存C ABIと.NETオーバーロードの標準動作を維持する。
 
 | 場所 | 責務 |
 | --- | --- |
@@ -38,7 +76,7 @@ API level 4もABI 1の追加exportとJSONフィールドで提供する。スレ
 
 API level 5はABI 1の追加exportとして、一覧ヘッダーを1項目ずつ同期通知する。Rust visitorは所有権付き`Entry`、Cは1個のJSON object、.NETは`ArchiveEntry`を呼出し元スレッドで渡し、全件のEntry配列と集約JSONをnative側へ保持しない。従来の.NET `List`もlevel 5ではこの経路からmanaged結果だけを収集する。名前重複と上限検査の管理情報は全走査中保持し、後続ヘッダーの失敗やキャンセル以前に通知済みの項目は取り消さない。
 
-NuGetはGitHub Releaseの署名済みWindows DLLを収録し、任意のWindows .NET 10アプリから参照できる。利用アプリは版とlockfileを固定する。Lhamiel向けの公開後の参照同期はvava.config.jsonで設定するが、この設定や同期スクリプトはライブラリの実行時依存ではない。各製品本体の配信はそれぞれのリリース工程で行う。
+NuGetはGitHub Releaseの署名済みWindows DLLを収録し、任意のWindows .NET 10アプリから参照できる。利用アプリは版とlockfileを固定する。各製品本体の配信はそれぞれのリリース工程で行う。
 
 元のx86ソースやDLLを新ライブラリへリンクしない。Rust依存はCargo.lockで固定し、新版の第三者告知とライセンス原文をbundleに収録する。
 

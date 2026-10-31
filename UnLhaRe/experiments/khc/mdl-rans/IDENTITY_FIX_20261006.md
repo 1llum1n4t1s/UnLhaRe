@@ -1,0 +1,7 @@
+# 再利用レポートのEXE重複pin是正
+
+2026-10-06。compare_v3.ps1のscreen-reverse-aは測定開始前にcompiled identityでexit1。失敗report SHA F16C09719C6FF359CC6183649A4DAD28F406DB312CF85F3E4716847D6F8CDB63を保持する。
+
+元screen-cレポートのpinには、screen-bから再検査したcompare.exeと最後に直接検査した同EXEが2件含まれる。双方の絶対path、SHA256、bytes、mtimeは同じ。v3は件数1を要求して重複を別EXEと誤判定した。v4は少なくとも1記録を要求し、全記録が上記4項目で同一であることを検査する。1項目でも相違すればconflicting compiled identityで拒否する。各pinの再ハッシュ・read lock・終了時検査は残す。
+
+候補ソース、EXE、finite条件、9回測定、tiny時計分解能条件、MDL15%短縮条件、元GOAL全ゲートに変更なし。通常順11測定は引き継ぎのまま、逆順は全13入力を独立実行する。新コンパイル・再測定による良いサンプル選別は行わない。v3と失敗レポートは上書きしない。

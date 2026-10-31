@@ -1,0 +1,85 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/bayes-dominant-q15/codec.rs",
+    "changes": [
+      {
+        "old": "    Ok(())\n}\n\nfn main() {",
+        "new": "    #[cfg(khc_compact_counts)]\n    println!(\"{}\", scheduler::compact_counts_json());\n    Ok(())\n}\n\nfn main() {",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/bayes-dominant-q15/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"bayes_model.rs\"]",
+        "new": "#[path = \"../bayes-dominant-q15/bayes_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"../causal-integer-refinement/cts_model.rs\"]",
+        "new": "#[path = \"cts_model.rs\"]",
+        "count": 1
+      },
+      {
+        "append": "\n#[cfg(khc_compact_counts)]\npub(super) fn compact_counts_json() -> String { heavy::compact_counts_json() }\n"
+      }
+    ]
+  },
+  {
+    "name": "exact_kt.rs",
+    "original": "experiments/khc/causal-integer-refinement/exact_kt.rs",
+    "changes": [
+      {
+        "old": "mod exact_div;",
+        "new": "mod exact_div;\n#[allow(dead_code)]\n#[path = \"../compact-simd-quotient/exact_div.rs\"]\nmod batch_div;\n\n#[cfg(khc_compact_counts)]\nstd::thread_local! { static POSTERIOR_COUNTS: std::cell::Cell<[u64; 2]> = const { std::cell::Cell::new([0; 2]) }; }",
+        "count": 1
+      },
+      {
+        "old": "    ratios: exact_div::RatioTable,",
+        "new": "    ratios: exact_div::RatioTable,\n    batches: batch_div::BatchEngine,",
+        "count": 1
+      },
+      {
+        "old": "Ok(Self { reciprocals, ratios: exact_div::RatioTable::new()? })",
+        "new": "Ok(Self { reciprocals, ratios: exact_div::RatioTable::new()?, batches: batch_div::BatchEngine::auto() })",
+        "count": 1
+      },
+      {
+        "old": "    // domain検査を同関数へ局所化し、unchecked helperを公開しない。",
+        "new": "    #[inline(always)]\n    pub fn posterior4(&self, n: [u64; 4], d: [u64; 4]) -> Option<[u64; 4]> {\n        let result = self.batches.try_nonzero4(n, d);\n        #[cfg(khc_compact_counts)]\n        POSTERIOR_COUNTS.with(|counts| {\n            let mut current = counts.get();\n            let index = usize::from(result.is_none());\n            current[index] = current[index].checked_add(1).expect(\"posterior count overflow\");\n            counts.set(current);\n        });\n        result\n    }\n\n    // domain検査を同関数へ局所化し、unchecked helperを公開しない。",
+        "count": 1
+      },
+      {
+        "append": "\n#[cfg(khc_compact_counts)]\npub(super) fn compact_counts_json() -> String {\n    let counts = POSTERIOR_COUNTS.with(|counts| counts.get());\n    format!(\"{{\\\"compact_groups\\\":{},\\\"fallback_groups\\\":{},\\\"compact_option_bytes\\\":{},\\\"plain_array_bytes\\\":{},\\\"legacy_array_bytes\\\":{}}}\",\n        counts[0], counts[1], std::mem::size_of::<Option<[u64; 4]>>(),\n        std::mem::size_of::<[u64; 4]>(), std::mem::size_of::<[batch_div::Ratio; 4]>())\n}\n"
+      }
+    ]
+  },
+  {
+    "name": "cts_model.rs",
+    "original": "experiments/khc/causal-integer-refinement/cts_model.rs",
+    "changes": [
+      {
+        "old": "    fn update(&mut self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable) -> Result<()> {",
+        "new": "    // groupを変更する前に計算。None時の拒否/部分更新は元のlane順へ戻す。\n    #[inline(always)]\n    fn try_posterior_batch(\n        &self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable, upper: usize,\n    ) -> Option<[u64; 4]> {\n        let mut n = [0; 4];\n        let mut d = [0; 4];\n        for lane in 0..4 {\n            let level = upper.checked_sub(lane)?;\n            let node = self.nodes.get(*prediction.indexes.get(level)?)?;\n            if node.weight > Q { return None; }\n            let pk = if bit {\n                Q.checked_sub(*prediction.kt.get(level)?)?\n            } else { *prediction.kt.get(level)? };\n            let child = if bit {\n                Q.checked_sub(*prediction.zero.get(level + 1)?)?\n            } else { *prediction.zero.get(level + 1)? };\n            let ceiling = cached_ceiling(\n                node.weight, *prediction.weights.get(level)?, pk, child,\n                *prediction.zero.get(level)?, (prediction.remainder >> level) & 1 != 0, bit,\n            ).ok()?;\n            probability(pk).ok()?;\n            n[lane] = node.weight.checked_mul(pk)?;\n            d[lane] = ceiling;\n        }\n        table.posterior4(n, d)\n    }\n    fn update(&mut self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable) -> Result<()> {",
+        "count": 1
+      },
+      {
+        "old": "        // childの予測は更新前に保存済み。posterior/countはleafからrootの順。\n        for level in (0..LEVELS).rev() {\n            let node = self",
+        "new": "        // leaf→rootの旧更新順。通常のbatchは商配列だけを保持する。\n        let mut compact: Option<[u64; 4]> = None;\n        for level in (0..LEVELS).rev() {\n            if level != DEPTH && level % 4 == 3 {\n                compact = self.try_posterior_batch(prediction, bit, table, level);\n            }\n            let node = self",
+        "count": 1
+      },
+      {
+        "old": "                let pk = if bit {\n                    Q.checked_sub(prediction.kt[level])\n                        .ok_or(\"CTS KT complement underflow\")?\n                } else {\n                    prediction.kt[level]\n                };\n                let child = if bit {\n                    Q.checked_sub(prediction.zero[level + 1])\n                        .ok_or(\"CTS child complement underflow\")?\n                } else {\n                    prediction.zero[level + 1]\n                };\n                // 観測側の上側丸めはzero予測floorとは別のcanonical仕様。\n                let ceiling = cached_ceiling(\n                    node.weight,\n                    prediction.weights[level],\n                    pk,\n                    child,\n                    prediction.zero[level],\n                    (prediction.remainder >> level) & 1 != 0,\n                    bit,\n                )?;\n                let posterior = posterior_ratio(table, node.weight, pk, ceiling)?;\n",
+        "new": "                let posterior = if let Some(values) = compact.as_ref() {\n                    values[(DEPTH - 1 - level) % 4]\n                } else {\n                    let pk = if bit {\n                        Q.checked_sub(prediction.kt[level])\n                            .ok_or(\"CTS KT complement underflow\")?\n                    } else {\n                        prediction.kt[level]\n                    };\n                    let child = if bit {\n                        Q.checked_sub(prediction.zero[level + 1])\n                            .ok_or(\"CTS child complement underflow\")?\n                    } else {\n                        prediction.zero[level + 1]\n                    };\n                    // 観測側の上側丸めはzero予測floorとは別のcanonical仕様。\n                    let ceiling = cached_ceiling(\n                        node.weight,\n                        prediction.weights[level],\n                        pk,\n                        child,\n                        prediction.zero[level],\n                        (prediction.remainder >> level) & 1 != 0,\n                        bit,\n                    )?;\n                    posterior_ratio(table, node.weight, pk, ceiling)?\n                };\n",
+        "count": 1
+      },
+      {
+        "append": "\n#[cfg(khc_compact_counts)]\npub(super) fn compact_counts_json() -> String { exact_kt::compact_counts_json() }\n"
+      }
+    ]
+  }
+]

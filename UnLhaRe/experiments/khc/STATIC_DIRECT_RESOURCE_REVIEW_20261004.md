@@ -1,0 +1,11 @@
+# parent資源境界の事前照合
+
+固定入力の既存保存値は889227runs、3825340quaternary branches、2811006plain bytes。direct rank/length設計は2tokens/runなので1778454tokens、枝数/token数=約2.151。この数の削減だけで速度が2.151倍になるとは言わない。モデルをofflineへ移すことで各tokenの処理を変えるが、その速度は未測定。
+
+固定過去7-Zip gateのdecode47.3884msを全tokenへ均等に割ると約26.6458ns/token、encode574.5624msは約323.0685ns/token。この割算は仕事量の参考上限であり、coderへの実予算ではない。実際にはheader/model初期化、escape、inverse BWT、CRC、書庫/metadata/CLI処理も同じ時間に含まれる。モデルheaderが予算内でもdecode/resource通過を意味しない。
+
+counts配列の宣言上限はrank1286×257 + length46×256 =342278 u32 cells、1369112B。CDF prefixは末尾セルの分だけ別途必要でありcounts RAMと同じ値と断定しない。全1332CDFの32768slot×u16 decoder lookupは87293952B=83.25MiB。この最大表を実際に作ることは今回のbudget screenに含まれず、選択されたCDF数に基づく見積りを報告する。実codec段階では初期化コスト・peak RAM・table layoutを含めて測定する。
+
+parserにtraining履歴はない。空group/childのinherit強制はserializerが学習histogramから判断する保証であり、header単独parserの拒否保証ではない。2bit group tagは0..3が全合法。『不正tag値』は表現できないため、冗長split全child inherit等の正準性拒否と、tag payload切詰めを区別する。
+
+新方式はheaderの実RAM serialize/parseと全CDF/dispatch比較を行う計画だが、entropy+reserveによるサイズ見積りである。新payload全frame生成・復号・速度達成はまだ未実施。単一学習corpusへの適合はholdout/category優位ではない。総合目標の条件は維持する。

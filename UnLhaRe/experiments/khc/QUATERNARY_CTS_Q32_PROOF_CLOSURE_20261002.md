@@ -1,0 +1,13 @@
+# Q32 primitive保存済み出力の検証補遺
+
+元契約3A5FD8AB1A03A834A4F497B8734A2F44468F38B7A1ACD11D02674758D075C14D、元runner E139E3E7EE0B3E84C303F1B5EDB15D88AA0A4D1E4EBFB542CBC8D1FFB923AE3C、integer_cts.rs 5AE361CF9544AA75A86FECD852DBBCE6DA7EDF08AB169690B3C8A69973BEEED7、audit2EC2AE50F33CC74597F9C45B7AC75B6F63774D4E301A5B4643D186FDA7B836EEは変更しない。
+
+最初のone opt2/overflowyes compile/runで3childともexit0/stderr空、診断stdoutのstatusはpassedだった。しかし元runner130行の `@('field',2.0/$scale)` はPowerShellで配列全体へのdivisionとして解釈され、結果検査時に `Method invocation failed because [System.Object[]] does not contain a method named 'op_Division'.` となった。計算仕様・固定tol・case数の失敗ではなく、外側validatorの構文上の誤りである。元reportはstatus failedのまま凍結する。
+
+basis: build/khc-quaternary-cts-q32-primitive-20261002/report.json 11696byte、SHA C9DA0D03345C1D1913910F3A65FC17BCA128EAE75CE1569C51E8F3E009DC2AEA。EXE220160byte、現identity51315E1F6C8110AF9D5D2BB2C79A55981B5EC1A5992FB0166E77EC71CCDD3652。元reportにはEXEの実行前identityが永続化されていない。保存済みEXE前後hash一致の証拠を復元・捏造せず、この不足を明記する。元reportの13source前後hashとcompile/run recordsは実際に検証する。
+
+新verify-saved-primitive.ps1は親だけが所有する。fresh root build/khc-quaternary-cts-q32-primitive-20261002-proof-closureに小JSONを1件だけ保存する。compiler/EXEを起動せず、保存されたstdoutを独立に再検査するため、元条件のcompile/run retryではない。元report/EXE/各source・runtime・補遺・新scriptをreadlock/hash前後照合し、元13sourceのbefore/after一致、正確な3childのargv/cwd/exit/stderr、2source/1import、全固定scope/count/局所boundと数値finite/nonnegativeを検証する。配列内divisionを使わず、boundは名前付きhashtableの括弧付きscalar値で評価する。元仕様・局所上限・旧f64tolを変更しない。
+
+結果statusはsaved_output_verified、original_wrapper_passed=false、candidate_reexecuted=false、recorded_executable_before_identity_available=falseに固定する。integer numerical diagnosticの保存出力を検証できても、元wrapperをpassedへ書き換えたり整数全入力gate/実frame/性能/4native/総合goal達成を主張しない。
+
+新rootは8MiB cap、予想32KiB以下/report512KiB予約。元rootの2file231856byteと新JSONだけを保持し、Cargo/PDB/cache/frame/restore/trace/tableを作らない。guard前後は強制write quotaではない。PowerShell parse確認後に保存出力検証を一度だけ行い、fresh root上書き/同条件retryなし。stage/commit/push/version/外部書込/x86/共有cacheは禁止。製品・総合条件は維持、goal active・未達。

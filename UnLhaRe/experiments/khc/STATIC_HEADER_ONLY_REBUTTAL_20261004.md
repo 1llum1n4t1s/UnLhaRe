@@ -1,0 +1,13 @@
+# 静的CDF保存だけの最適化は今回進めない
+
+読み取り追加調査の結論を元RESULTへ上書きせず保存する。対象class-selective-static-mdl、固定CDF/treeと同じpayloadを維持する表現変更に限定。
+
+元RESULTの費用screen494389Bはgate483599Bを10790B超過。実bundleは10577B（32bit長fields1112B、model74804bits、padding916bits）。モデル全体を無料にする極端な仮定でも480733B token＋3079B既定side＝483812Bで213B超過する。長fields/padding除去だけでは約1226Bしか削減できない。同じCDFを保つheader圧縮だけのnative候補を作らない。
+
+無料screen473039Bとの差21350Bは、剪定でtokenが10773B増えた分と実保存10577B。より安い保存費用で再剪定するならCDF/payloadも変わる別候補であり、現CDFの圧縮改善とは呼ばない。
+
+既定sideには2048Bのcoder reserveがあり、全て実wireの不可避費用ではない。ただし実coder/frameを測らず勝手に無料化してsize達成としない。非選択classはteacherの逐次計算が残るので、保存サイズだけ通っても高速decoderの証拠にはならない。
+
+根拠：class-selective-static-mdl/RESULT.md、bundle.rsのappend、model.rsのFit::build_node/serialize、FLOAT_VS_STATIC_NODE_GAP_QUESTION_20261004.md。追加readonly担当は6filesを確認、compile/native/編集なし。親はRESULTと関連保存費用定義を再確認した。将来別CDF候補を選ぶ場合はactual model bytesとpayload/sideを全て計上し、483599B超過なら速度/holdoutへ進めない。
+
+この調査は不支持候補の重複実装を避ける証拠であり、7-Zip超えや候補採用ではない。entropy LUT実装と、新しいbeam expansion棄却の読み取り調査は別担当で進行中。

@@ -1,0 +1,101 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/light-compact-codec/codec.rs",
+    "changes": [
+      {
+        "old": "#[path = \"scheduler.rs\"]\nmod scheduler;",
+        "new": "#[path = \"scheduler.rs\"]\nmod scheduler;\n#[cfg(khc_stage_timing)]\nmod timing;",
+        "count": 1
+      },
+      {
+        "old": "    let (last, primary) = bwt(input)?;",
+        "new": "    let (last, primary) = {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = timing::Timer::start(timing::Span::Bwt);\n        bwt(input)?\n    };",
+        "count": 1
+      },
+      {
+        "old": "    let (payload, alphabet, runs, scheduling) = encode_payload(&last)?;",
+        "new": "    let (payload, alphabet, runs, scheduling) = {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = timing::Timer::start(timing::Span::EntropyEncode);\n        encode_payload(&last)?\n    };",
+        "count": 1
+      },
+      {
+        "old": "    let (last, runs, scheduling) = decode_payload(\n        payload,\n        &alphabet,\n        length.checked_add(1).ok_or(\"transform length overflow\")?,\n    )?;",
+        "new": "    let (last, runs, scheduling) = {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = timing::Timer::start(timing::Span::EntropyDecode);\n        decode_payload(payload, &alphabet, length.checked_add(1).ok_or(\"transform length overflow\")?)?\n    };",
+        "count": 1
+      },
+      {
+        "old": "    let plain = inverse_bwt(&last, primary, &alphabet)?;",
+        "new": "    let plain = {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = timing::Timer::start(timing::Span::InverseBwt);\n        inverse_bwt(&last, primary, &alphabet)?\n    };",
+        "count": 1
+      },
+      {
+        "old": "    #[cfg(khc_compact_counts)]\n    println!(\"{}\", scheduler::compact_counts_json());",
+        "new": "    #[cfg(khc_compact_counts)]\n    println!(\"{}\", scheduler::compact_counts_json());\n    #[cfg(khc_stage_timing)]\n    println!(\"{}\", timing::json());",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/light-compact-codec/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../cts-node-u32/cts_model.rs\"]",
+        "new": "#[path = \"heavy.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"../light-compact-path/light.rs\"]",
+        "new": "#[path = \"light.rs\"]",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "light.rs",
+    "original": "experiments/khc/light-compact-path/light.rs",
+    "changes": [
+      {
+        "old": "    pub(super) fn new() -> Result<Self> {",
+        "new": "    pub(super) fn new() -> Result<Self> {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = crate::timing::Timer::start(crate::timing::Span::LightInit);",
+        "count": 1
+      },
+      {
+        "old": "    pub(super) fn predict(&self, class: u32) -> Result<Prediction> {",
+        "new": "    pub(super) fn predict(&self, class: u32) -> Result<Prediction> {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = crate::timing::Timer::start(crate::timing::Span::LightPredict);",
+        "count": 1
+      },
+      {
+        "old": "    pub(super) fn update(&mut self, class: u32, prediction: &Prediction, bit: bool) -> Result<()> {",
+        "new": "    pub(super) fn update(&mut self, class: u32, prediction: &Prediction, bit: bool) -> Result<()> {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = crate::timing::Timer::start(crate::timing::Span::LightUpdate);",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "heavy.rs",
+    "original": "experiments/khc/cts-node-u32/cts_model.rs",
+    "changes": [
+      {
+        "old": "#[path = \"exact_kt.rs\"]",
+        "new": "#[path = \"../cts-node-u32/exact_kt.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "    pub(super) fn new() -> Result<Self> {",
+        "new": "    pub(super) fn new() -> Result<Self> {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = crate::timing::Timer::start(crate::timing::Span::HeavyInit);",
+        "count": 1
+      },
+      {
+        "old": "    pub(super) fn predict(&self, class: u32) -> Result<Prediction> {",
+        "new": "    pub(super) fn predict(&self, class: u32) -> Result<Prediction> {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = crate::timing::Timer::start(crate::timing::Span::HeavyPredict);",
+        "count": 1
+      },
+      {
+        "old": "    pub(super) fn update(&mut self, class: u32, prediction: &Prediction, bit: bool) -> Result<()> {",
+        "new": "    pub(super) fn update(&mut self, class: u32, prediction: &Prediction, bit: bool) -> Result<()> {\n        #[cfg(khc_stage_timing)]\n        let _stage_timer = crate::timing::Timer::start(crate::timing::Span::HeavyUpdate);",
+        "count": 1
+      }
+    ]
+  }
+]

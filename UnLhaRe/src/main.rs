@@ -6,7 +6,7 @@ use unlhare::{
 };
 
 #[derive(Parser)]
-#[command(version, about = "64-bit cross-platform LHA archiver (UTF-8)")]
+#[command(version, about = "64-bit cross-platform LHA and KHC archiver (UTF-8)")]
 struct Cli {
     /// Maximum number of archive entries.
     #[arg(long, global = true, default_value_t = 100_000)]
@@ -23,6 +23,29 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create an independent KHC1 archive (not an LHA method).
+    KhcCreate {
+        archive: PathBuf,
+        #[arg(short, long)]
+        source: PathBuf,
+        /// Explicit revision-2 through revision-10 strategies; default preserves revision 1.
+        #[arg(long, value_enum, default_value_t = KhcStrategy::Mdl)]
+        strategy: KhcStrategy,
+    },
+    /// List KHC metadata; use khc-test for complete decoded CRC validation.
+    KhcList {
+        archive: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Decode and validate every KHC file.
+    KhcTest { archive: PathBuf },
+    /// Extract KHC entries after validation, without overwriting.
+    KhcExtract {
+        archive: PathBuf,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
     /// List entry metadata (use test for CRC verification).
     List {
         archive: PathBuf,
@@ -44,15 +67,36 @@ enum Command {
         source: PathBuf,
         #[arg(long, value_enum, default_value_t = Codec::Lh5)]
         method: Codec,
+        /// Compare standard and high-compression output (slower, more memory).
+        #[arg(long)]
+        high_compression: bool,
     },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
 enum Codec {
     Stored,
+    Lh4,
     Lh5,
     Lh6,
     Lh7,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum KhcStrategy {
+    Mdl,
+    HybridTrial,
+    BinaryAdaptive,
+    RecordTrial,
+    Gather32Trial,
+    Delta16Trial,
+    RecordFastTrial,
+    SpatialBitsTrial,
+    RecordAdaptiveTrial,
+    #[value(name = "spatial-mdl-trial")]
+    SpatialMdlTrial,
+    #[value(name = "portfolio-trial")]
+    PortfolioTrial,
 }
 
 fn run(cli: Cli) -> unlhare::Result<()> {
@@ -62,6 +106,70 @@ fn run(cli: Cli) -> unlhare::Result<()> {
         max_total_bytes: cli.max_total_bytes,
     };
     match cli.command {
+        Command::KhcCreate {
+            archive,
+            source,
+            strategy,
+        } => {
+            unlhare::khc::create_from_directory(
+                &source,
+                &archive,
+                &unlhare::khc::CreateOptions {
+                    limits,
+                    block_strategy: match strategy {
+                        KhcStrategy::Mdl => unlhare::khc::BlockStrategy::Mdl,
+                        KhcStrategy::HybridTrial => unlhare::khc::BlockStrategy::HybridTrial,
+                        KhcStrategy::BinaryAdaptive => unlhare::khc::BlockStrategy::BinaryAdaptive,
+                        KhcStrategy::RecordTrial => unlhare::khc::BlockStrategy::RecordTrial,
+                        KhcStrategy::Gather32Trial => unlhare::khc::BlockStrategy::Gather32Trial,
+                        KhcStrategy::Delta16Trial => unlhare::khc::BlockStrategy::Delta16Trial,
+                        KhcStrategy::RecordFastTrial => {
+                            unlhare::khc::BlockStrategy::RecordFastTrial
+                        }
+                        KhcStrategy::SpatialBitsTrial => {
+                            unlhare::khc::BlockStrategy::SpatialBitsTrial
+                        }
+                        KhcStrategy::RecordAdaptiveTrial => {
+                            unlhare::khc::BlockStrategy::RecordAdaptiveTrial
+                        }
+                        KhcStrategy::SpatialMdlTrial => {
+                            unlhare::khc::BlockStrategy::SpatialMdlTrial
+                        }
+                        KhcStrategy::PortfolioTrial => unlhare::khc::BlockStrategy::PortfolioTrial,
+                    },
+                    ..Default::default()
+                },
+            )?;
+            println!("Created KHC: {}", archive.display());
+        }
+        Command::KhcList { archive, json } => {
+            let entries = unlhare::khc::list_archive(&archive, &limits)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&entries)
+                        .map_err(|e| unlhare::Error::Format(e.to_string()))?
+                );
+            } else {
+                for entry in entries {
+                    println!(
+                        "KHC1\t{}\t{}\t{}",
+                        entry.original_size, entry.compressed_size, entry.name
+                    );
+                }
+            }
+        }
+        Command::KhcTest { archive } => {
+            let s = unlhare::khc::verify_archive(&archive, &limits)?;
+            println!(
+                "OK KHC: {} files, {} entries, {} bytes",
+                s.files, s.entries, s.bytes
+            );
+        }
+        Command::KhcExtract { archive, output } => {
+            let s = unlhare::khc::extract_archive(&archive, &output, &limits)?;
+            println!("Extracted KHC: {} files, {} bytes", s.files, s.bytes);
+        }
         Command::List { archive, json } => {
             let entries = list_archive(&archive, &limits)?;
             if json {
@@ -97,14 +205,29 @@ fn run(cli: Cli) -> unlhare::Result<()> {
             archive,
             source,
             method,
+            high_compression,
         } => {
             let method = match method {
                 Codec::Stored => Method::Stored,
+                Codec::Lh4 => Method::Lh4,
                 Codec::Lh5 => Method::Lh5,
                 Codec::Lh6 => Method::Lh6,
                 Codec::Lh7 => Method::Lh7,
             };
-            create_from_directory(&source, &archive, &CreateOptions { method, limits })?;
+            let effort = if high_compression {
+                unlhare::CompressionEffort::High
+            } else {
+                unlhare::CompressionEffort::Standard
+            };
+            create_from_directory(
+                &source,
+                &archive,
+                &CreateOptions {
+                    method,
+                    limits,
+                    effort,
+                },
+            )?;
             println!("Created: {}", archive.display());
         }
     }

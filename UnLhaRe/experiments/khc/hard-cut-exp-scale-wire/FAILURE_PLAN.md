@@ -1,0 +1,25 @@
+# exp-scale 通常wire pair：先行失敗契約
+
+親PLAN SHA7074CB743B95017B2CE9AAD993EDD0D78B6FA9A0DDBC5D4F9E58AC768950923D全文確認。所有は本書/control_scope/candidate_scope/candidate_codec/scaled_pool/probeの6filesだけ。FAILURE_PLANを先に保存し、compile/native0で停止READY。親がrunner/PLAN/verifier/RESULTとcompile1/native3を所有する。
+
+## 接続の反証
+
+controlは凍結hard-cut-model-lazy/codecを直接参照。candidateは同codec SHA F082B13176D924EAF086F56A915A947DDD951751DDC634D78F58FFFC98D1E996からModel path1とmath/pool import各1の計3箇所だけ。Model本体は旧直接参照、superの型aliasで旧/新Mathとpoolを接続。scaled_poolは旧float_pool SHA F81EF1C2DAF9AF1E9B7C89679C4B6DB09101D4F8F8E59ACBFBF6116ADB7548AFのMath importだけ1箇所。scaled_mathは成功済み SHA9866EF3C173F4D4252A689D379702C925776C140180DEBA3ECB65CB2443791E4を直接参照し変更しない。全文復元は3/1箇所、追加残差0を必要とする。数値body/guard/error/commit/総timer/E2Eは不変。
+
+source/SHA/tool/input/前証拠差、graph外参照、cfg/allocator/profile混入、Math/Prediction型接続差、全文復元差を拒否。canonical Math/共有CTS adapter/価格/BWT/coder/有限fixtureは直接凍結参照。独立Modelを逐次生成・破棄し、通常codecへcounter/計器をリンクしない。
+
+## 先行固定census
+
+CLIはselfcontrol/selfcandidate/pair fixedInputの3つ。selfはそれぞれ専用processで元wire_audit E2Eを1回、正常14/全plain14/再frame14/破損34/短depth4をそのまま実行予定。両stdout JSON1・memoryAPI1、全文と厳密拒否reasonを親が前通常証拠へ照合。旧Model seed拒否26や別finite458878を今回case数へ足さない。
+
+pairは固定2811006B/SHA18B8B47B24DA910DEF2835F01200208966009FF442C62A29F40C959EB9801E76をread1。control encode1→candidate encode1で全478856frame bytesを直接Eq。control decode1→candidate decode1、各2811006plain bytesをinputへ直接比較、各directionで同型Proof14 Eq、validate_fixed(5)計4。4組stats文字列を全文一致させ、crossは型が違うためtypedEqとは呼ばず、両encode/decode全14field Debugを一致させる。Proof Debug/CRC/grammarだけを全frame/plain比較の代用品にしない。
+
+header285/payload478571、KHQCHC01、length/primary1762795/alphabet257/depth5、payload length・両CRC・inputCRC433441561を独立bit式で検査。frame<=483599の実serialized sizeを照合。再encode0、余分なdirection0。最初の差はbyte位置/方向またはbounded reasonで失敗し、成功JSONを出さない。
+
+## 寿命・資源・判定
+
+常に最大2frame＋input＋1plain。control plainをcandidate decode前にdropし、frame2は両restore終了まで保持。Modelは各API内の逐次所有、同時Model2ではない。input/frame/plain/rawcase/traceのdisk copy0。source＋PLAN300KiB/EXE1MiB/stdout16KiB/report256KiB/newbuild8MiB/空き5GiB。compile/timeout/panic/保存/容量/実memory超過は親runnerで失敗証拠保持、retry/sweep/ABBA追加無し。
+
+Model source推定21561264B、encoder旧参照frame込み45723494B、inverse=inputcap+controlframecap+candidateframecap+14*2811007+65536+4194304。source phase64MiB・model32MiB、BWT142647787B。actual Vec capacitiesとbase private Vec未測定を分離する。各selfとpairのWinAPI1回、実WS/private各160MiBは親がnull/0/errorと区別して照合。source推定はquotaやpeak実測保証ではない。
+
+各内部timerは元API境界のまま、control先行・warm0の各1回だけ。custom allocator/profile無し。ordinary pairの全同値と単回speed screenのみ、正式quiet/warm9/fullCLI/holdout/4native/安定改善率/製品採用/GOAL達成は未検証。speed_claimed/formal_speed_verified/native4_verified/adoptionはfalse。Git/version/API/product/x86/external/delete/追加委任0。他者dirty/旧失敗/成功証拠を変更しない。

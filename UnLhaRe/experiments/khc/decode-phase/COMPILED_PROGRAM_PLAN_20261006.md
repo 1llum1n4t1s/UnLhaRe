@@ -1,0 +1,13 @@
+# 次候補：検査済みgrammar/CDF復号program
+
+2026-10-06。divisionlessは局所速度失格、同class合成は明示枝削減7.08%で失格、split-component root先行選択は12.8%遅化。本来必要な202万interval自体と短いrank/run逐次モデルは変わっていない。laneを増やす候補・同じroot準備・CDF選択だけの除算変更へ戻らない。
+
+次の問いは、immutable Forest/固定grammarをdecode開始時に検査済み命令表へまとめ、毎branchのgeometry prefix探索・edge照合・CDF support/sum再走査・コピー・loop深さ確認を不要にできるか。packetのparseは既に全CDFを検査し、CompactTreeも固定142nodeを検査済み。private programはCDF累積境界と子行先/履歴classを持ち、全limitのkを固定byte表にする。wireは旧と同じ、整数interval/normalize/gap/終端/CRC/semantic rejectは残す。選択childのcumulative/frequencyは検査済み境界差から取り、一般range APIは保持する。
+
+これは実装最適化の候補で新しい圧縮原理ではない。過去ValidatedCdf型単独は1.55%遅化・fused CDFは再現失格だった。今回も改善を仮定せず、全部を包む型を追加するだけの反復にしない。prefixとnode/CDFのアクセス・有限grammar証明までまとめることが既試行との差である。CDF変換/表構築の費用、追加容量、分岐予測を含む完成decode wallが改善することを条件にする。
+
+事前の失敗：全合法limit/tokenでgeometry違い、partial prefix/k1/historyクラス/terminal/sentinel誤り、累積overflow/support/tail違反、parent→childがcycle/逆向き、下位alphabet外、invalid slot/gap/normalize切断を隠す、unchecked indexing追加、private型外から任意CDFを作る、mutable Forestのencoderへcumulativeを誤投入、旧reject意味を変える、同時live表/Forest二重容量/構築transient未課金。実装前に142nodeのdepth/forward edge/leaf範囲を全検証し、run出力が少なくとも1進むこととtoken深さ上限から有限CPUを証明する。global branch checkが不要ならその証拠を別に残す。s.branches統計は保持する。
+
+geometry66049合法token/limit・各k/history全CDFと旧参照・境界/normalize/gap/正準終端・有限raw49＋全11frame同一/旧新public復元・CRC修復異常/回復を確認。既存ValidatedCDFの旧報告を新program安全性証明に代用しない。旧rejectと相違があれば元入力と正確な拒否地点を確定し、採用前に修正する。
+
+追加program retained1MiB以下、scratch/prefix表/累積表の最大量を実装前に見積る。codec64MiB（構築の一時二重領域込み）、source1MiB/1work8MiB/report128KiB/compiler512MiB60秒/child64MiB60秒/suite180秒/free5GiB+8MiB/Cargo増加0。局所gateは全frame465951B完全一致、warm1+9paired normal/独立reverse、両集計MDLdecode>=15%短縮、encoder増加<=5%、各MDL10%以上decode悪化0。通常失格ならreverse/第三有利測定を実行しない。元native全書庫/強solid/真正未見/7Zip総合gateと独自性要件を緩めない。現段階は未実装・未測定。

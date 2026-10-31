@@ -1,0 +1,47 @@
+[
+  {
+    "old": "$candidateExpectedHash = '000670272980C2AA19AC9912611ED15DD43C85DC96D5F5BB64F0FEECF89E25B8'",
+    "new": "$candidateExpectedHash = '8BA849D4C3122D8F49DF8667D08A0DB497B575F2099EF37B73CD6A911FE04C3E'",
+    "count": 1
+  },
+  {
+    "old": "Q32 node-u32 compact-posterior dominant-shortcut scheduled candidate",
+    "new": "Q32 compact-light node-u32 compact-posterior dominant-shortcut scheduled candidate",
+    "count": 1
+  },
+  {
+    "old": "build/khc-cts-node-u32-20261002/performance",
+    "new": "build/khc-light-compact-codec-20261002/performance",
+    "count": 1
+  },
+  {
+    "old": "frozen node-u32 codec performance directory",
+    "new": "frozen compact-light codec performance directory",
+    "count": 1
+  },
+  {
+    "old": "../causal-compact-simd/compare.ps1') 'old-performance-harness'",
+    "new": "../cts-node-u32/compare.ps1') 'old-performance-harness'",
+    "count": 1
+  },
+  {
+    "old": "if($oldHarness.before_sha256 -cne '1BE81D1A34C8CDACDA75550C68F49ED3A2CA86AF3E1DFA8D256F8D0C5BF53C80')",
+    "new": "if($oldHarness.before_sha256 -cne '80732F393EA0A5E2EBCA782AC2CB6623373CC8B3ECD40207A0AF2D4B6E9FA333')",
+    "count": 1
+  },
+  {
+    "old": "$nodeOrdinary=@($nodeJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 243712})",
+    "new": "$nodeOrdinary=@($nodeJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq (Join-Path $root 'build/khc-cts-node-u32-20261002/codec-native.exe') -and $_.before_sha256 -ceq '000670272980C2AA19AC9912611ED15DD43C85DC96D5F5BB64F0FEECF89E25B8' -and $_.bytes -eq 243712})",
+    "count": 1
+  },
+  {
+    "old": "    $report['node_u32_proof']=$nodeProof",
+    "new": "    $report['node_u32_proof']=$nodeProof\n\n    $lightFullProof=Track-File (Join-Path $root 'build/khc-light-compact-codec-20261002/report.json') 'compact-light-full-proof'\n    if($lightFullProof.before_sha256 -cne '9DB9E948B5D9F270FB5C58D003DC6BF6650C61121A7F499D361B407B8108D2BD'){throw 'Compact-light full proof SHA'}\n    $lightFullJson=Get-Content -LiteralPath $lightFullProof.path -Raw|ConvertFrom-Json\n    if($lightFullJson.status -cne 'correctness_and_size_passed_not_timed' -or $lightFullJson.failure -or $lightFullJson.timing_used -or $lightFullJson.checks.Count -ne 51 -or $lightFullJson.invocations.Count -ne 86 -or $lightFullJson.identities.Count -ne 841 -or $lightFullJson.owned_tmp_or_reparse -ne 0 -or $lightFullJson.owned_pdb -ne 0 -or $lightFullJson.frame_bytes -ne 483496){throw 'Compact-light full proof matrix/status'}\n    if(($lightFullJson.variants -join ',') -cne 'native,checked,scalar,scalar-checked'){throw 'Compact-light full variant matrix'}\n    $lightOrdinary=@($lightFullJson.identities|Where-Object {$_.role -ceq 'native-codec' -and $_.path -ceq $candidate.path -and $_.before_sha256 -ceq $candidate.before_sha256 -and $_.bytes -eq 241152})\n    if($lightOrdinary.Count -ne 1){throw 'Candidate not the compact-light ordinary codec'}\n    $lightRefusals=@($lightFullJson.invocations|Where-Object exit -ne 0)\n    if($lightRefusals.Count -ne 8 -or @($lightRefusals|Where-Object {$_.exit -ne 1 -or !$_.stderr -or $_.stdout}).Count -or @($lightFullJson.invocations|Where-Object {$_.exit -eq 0 -and $_.stderr}).Count){throw 'Compact-light full child results'}\n    if($lightFullJson.reused_light_state_proof_sha256 -cne '99330ECA76275BE5B4B55F1E663612764B4CB88E60A02A8E3FE843B32928109F' -or $lightFullJson.reused_node_u32_proof_sha256 -cne '9627A3391CDC5995ADF757D2432235F9078899F026B02239AAA829D88EA8DF04'){throw 'Compact-light reused proof identities'}\n    $lightDiagnostic=$lightFullJson.compact_diagnostic\n    if($lightDiagnostic.heavy_events -ne 3223156 -or ($lightDiagnostic.encode|ConvertTo-Json -Compress) -cne ($lightDiagnostic.decode|ConvertTo-Json -Compress)){throw 'Compact-light full diagnostic mismatch'}\n    $ld=$lightDiagnostic.encode\n    if($ld.compact_groups -ne 12892624 -or $ld.fallback_groups -ne 0 -or $ld.compact_option_bytes -ne 40 -or $ld.plain_array_bytes -ne 32 -or $ld.legacy_array_bytes -ne 96 -or $ld.node_bytes -ne 12 -or $ld.node_count -ne 917497 -or $ld.logical_node_storage_bytes -ne 11009964 -or $ld.light_prediction_bytes -ne 24 -or $ld.scheduler_prediction_bytes -ne 608){throw 'Compact-light full kernel/layout'}\n\n    $lightStateProof=Track-File (Join-Path $root 'build/khc-light-compact-path-20261002/report.json') 'compact-light-state-proof'\n    if($lightStateProof.before_sha256 -cne '99330ECA76275BE5B4B55F1E663612764B4CB88E60A02A8E3FE843B32928109F'){throw 'Compact-light state proof SHA'}\n    $lightStateJson=Get-Content -LiteralPath $lightStateProof.path -Raw|ConvertFrom-Json\n    if($lightStateJson.status -cne 'light_compact_path_state_verified_not_codec_or_timing' -or $lightStateJson.failure -or $lightStateJson.timing_used -or $lightStateJson.full_codec_verified -or $lightStateJson.checks.Count -ne 7 -or $lightStateJson.invocations.Count -ne 9 -or $lightStateJson.identities.Count -ne 15 -or $lightStateJson.owned_tmp_pdb_reparse -ne 0 -or $lightStateJson.summaries.Count -ne 4){throw 'Compact-light state proof matrix/status'}\n    if(($lightStateJson.summaries.variant -join ',') -cne 'opt2-checkedFalse,opt2-checkedTrue,opt3-checkedFalse,opt3-checkedTrue'){throw 'Compact-light state variant matrix'}\n    foreach($item in $lightStateJson.summaries){\n        $s=$item.summary\n        if($s.mapping_records -ne 1114112 -or $s.invalid_depth_cases -ne 2 -or $s.state_events -ne 131072 -or $s.values_per_event -ne 72 -or $s.invalid_class_cases -ne 2 -or $s.stale_cases -ne 1 -or $s.class_mismatch_cases -ne 1 -or $s.injected_cap_cases -ne 1 -or $s.rollback_checks -ne 3 -or $s.continuation_events -ne 2 -or $s.fingerprint_u64 -cne 'd47b3bd91aab06f7'){throw 'Compact-light state coverage'}\n        if($s.old_prediction_bytes -ne 160 -or $s.new_prediction_bytes -ne 24 -or $s.old_node_bytes -ne 8 -or $s.new_node_bytes -ne 8 -or $s.classes.Count -ne 7 -or $s.selected_depths.Count -ne 17 -or ($s.classes|Measure-Object -Sum).Sum -ne 131072 -or ($s.selected_depths|Measure-Object -Sum).Sum -ne 131072){throw 'Compact-light state layout/class coverage'}\n        if($item.stdout -cne $lightStateJson.summaries[0].stdout -or ($s|ConvertTo-Json -Compress) -cne ($lightStateJson.summaries[0].summary|ConvertTo-Json -Compress)){throw 'Compact-light state summary differs'}\n    }\n    foreach($call in $lightStateJson.invocations){if($call.exit -ne 0 -or $call.stderr){throw 'Compact-light state invocation failure'}}\n    $report['compact_light_proofs']=[ordered]@{full=$lightFullProof;state=$lightStateProof}\n    $null=Track-File (Join-Path $PSScriptRoot '../LIGHT_COMPACT_CODEC_PERFORMANCE_CONTRACT_20261002.md') 'compact-light-performance-contract'\n",
+    "count": 1
+  },
+  {
+    "old": "$compactJson,$compactNumericJson,$nodeJson))",
+    "new": "$compactJson,$compactNumericJson,$nodeJson,$lightFullJson,$lightStateJson))",
+    "count": 1
+  }
+]

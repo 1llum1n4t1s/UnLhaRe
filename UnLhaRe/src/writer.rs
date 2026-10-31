@@ -89,7 +89,7 @@ struct PreparedEntry<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct FileIdentity {
+pub(crate) struct FileIdentity {
     volume: u64,
     file: u64,
 }
@@ -137,7 +137,7 @@ pub fn create_archive(
 ///
 /// The compression library encodes each LZH entry in one synchronous call.
 /// Cancellation is therefore observed while reading and between entries, but
-/// cannot interrupt an individual Lh5/Lh6/Lh7 encode already in progress.
+/// cannot interrupt an individual Lh4/Lh5/Lh6/Lh7 encode already in progress.
 pub fn create_archive_with_progress(
     destination: &Path,
     entries: &[SourceEntry],
@@ -336,8 +336,14 @@ fn create_archive_with_progress_impl(
         // checkpoint keeps cancellation responsive between entries without
         // presenting the current entry as complete before compression.
         checkpoint(callback, 2, completed_bytes, total_bytes)?;
-        let (method_id, packed) =
-            compress_entry(&data, options.method, &mut encoder, &mut compressed)?;
+        let (method_id, packed) = compress_entry(
+            &data,
+            options.method,
+            options.effort,
+            &mut encoder,
+            &mut compressed,
+            &mut || checkpoint(callback, 2, completed_bytes, total_bytes),
+        )?;
         let packed = packed.as_slice(&data, &compressed);
         completed_bytes = completed_bytes
             .checked_add(scanned_source.metadata.len())
@@ -450,7 +456,7 @@ fn prepare_entries(entries: &[SourceEntry]) -> Result<Vec<PreparedEntry<'_>>> {
     Ok(prepared)
 }
 
-fn reject_unsupported_source(path: &Path, metadata: &Metadata) -> Result<()> {
+pub(crate) fn reject_unsupported_source(path: &Path, metadata: &Metadata) -> Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -514,7 +520,7 @@ fn source_io_error(_path: &Path, error: io::Error) -> Error {
 }
 
 #[cfg(windows)]
-fn file_identity(file: &File, _metadata: &Metadata) -> io::Result<FileIdentity> {
+pub(crate) fn file_identity(file: &File, _metadata: &Metadata) -> io::Result<FileIdentity> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
@@ -550,7 +556,7 @@ fn open_matching_regular_file(
 }
 
 #[cfg(target_os = "macos")]
-fn file_identity(_file: &File, metadata: &Metadata) -> io::Result<FileIdentity> {
+pub(crate) fn file_identity(_file: &File, metadata: &Metadata) -> io::Result<FileIdentity> {
     use std::os::unix::fs::MetadataExt;
 
     Ok(FileIdentity {
@@ -660,11 +666,14 @@ fn read_regular_file(
 fn compress_entry(
     data: &[u8],
     requested: Method,
+    effort: crate::CompressionEffort,
     encoder: &mut Option<LzhEncoder>,
     compressed: &mut Vec<u8>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<([u8; 5], PackedData)> {
     let method = match requested {
         Method::Stored => return Ok((LzhMethod::Lh0.id(), PackedData::Source)),
+        Method::Lh4 => LzhMethod::Lh4,
         Method::Lh5 => LzhMethod::Lh5,
         Method::Lh6 => LzhMethod::Lh6,
         Method::Lh7 => LzhMethod::Lh7,
@@ -678,6 +687,18 @@ fn compress_entry(
     encoder
         .encode(data, compressed, true)
         .map_err(|error| Error::Format(format!("LZH compression failed: {error}")))?;
+    if effort == crate::CompressionEffort::High {
+        checkpoint()?;
+        // 推定符号コストの最適化は実サイズの改善を保証しないため、標準出力と比較する。
+        let mut optimized = Vec::new();
+        LzhEncoder::new(method)
+            .with_optimal()
+            .encode(data, &mut optimized, true)
+            .map_err(|error| Error::Format(format!("LZH compression failed: {error}")))?;
+        if optimized.len() < compressed.len() {
+            *compressed = optimized;
+        }
+    }
     if compressed.len() > data.len() {
         Ok((LzhMethod::Lh0.id(), PackedData::Source))
     } else {
@@ -804,6 +825,32 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use tempfile::tempdir;
+
+    #[test]
+    fn high_effort_can_cancel_before_optimization_and_stored_bypasses_it() {
+        let mut encoder = None;
+        let mut compressed = Vec::new();
+        let data = b"repeat".repeat(100);
+        let result = super::compress_entry(
+            &data,
+            crate::Method::Lh4,
+            crate::CompressionEffort::High,
+            &mut encoder,
+            &mut compressed,
+            &mut || Err(crate::Error::Cancelled),
+        );
+        assert!(matches!(result, Err(crate::Error::Cancelled)));
+        let (_, packed) = super::compress_entry(
+            &data,
+            crate::Method::Stored,
+            crate::CompressionEffort::High,
+            &mut encoder,
+            &mut compressed,
+            &mut || panic!("LH0は圧縮計算を行わない"),
+        )
+        .unwrap();
+        assert_eq!(packed.as_slice(&data, &compressed), data);
+    }
 
     #[test]
     fn crc16_matches_lha_known_value() {

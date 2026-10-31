@@ -1,0 +1,11 @@
+# split候補の新しい静穏区間での再確認
+
+旧performanceはround3候補の起動前CPU17%で失敗し、独立監査済み。report SHA A1444EDA5EC5BD78543785F86F90C46A7D782001AAA54A0B6EAB41130A90A78F、9samplesは正常9round比較に転用しない。
+
+その後ユーザーが「今はCPU負荷ないよね？」と現在の静穏性を確認し、親は16:32:56〜16:33:01 JSTに0/11/0/8/4%を観測した。以前の失敗と異なる区間の再確認根拠として扱うが、正式guardの成功証拠にはしない。
+
+同じ凍結compare SHA052E6B088E35D49DDEC29E0D7174C2909BE2F6FA650978F066B99C50486237DD、candidate471E62E5F804C74A498B266C458239C4B16A242172AF3B455CA0D5D8FB279D1C、inline control02C7D3D132DFD664CEA7BE643CDB0A5200583D5583AE101C715CC59FEF703083、同native/input/proofsを使い、未使用build/khc-bwt-causal-bayes-q32-split-lut-20261001/performance-user-quietへ1sessionだけ実行する。旧report/source/EXEは変更せず、sampleを混ぜない。
+
+quiet15%のpreflight5回と全child前後、warm1+9/circular3codec/nativeopts/全CLI時間・表構築込み/timeout120/全raw・pins・最終復号/元size483599Bとstrict574.5624msを維持する。CPU設定変更、他process停止、閾値緩和、途中失敗の自動再試行は禁止。
+
+数値候補mixture-reuseの担当からlive実行なしの通知を得て、ビルド/数値CLIの起動を比較terminalまで保留した。編集のみは許可するが、負荷が生じれば元guardが失敗と判定する。新候補と旧splitの測定は混同しない。session終了後に担当の実行保留を解除し、結果の独立監査を行う。成功は全9回比較の完了であり、総合7-Zip超過を意味しない。

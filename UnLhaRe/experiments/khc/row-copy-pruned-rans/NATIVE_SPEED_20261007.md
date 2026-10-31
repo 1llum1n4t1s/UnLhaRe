@@ -1,0 +1,7 @@
+# Native paired verify：実装前の固定条件（2026-10-07）
+
+revision3実archive457017Bと最新stable7za26.04の強いsolid/LZMA2:3m/mx9/mfb273/md4m/mmt1 archive481490Bを比較する。公式asset digestと再作成全byte復元はseven2604 report 5C205596E9528238B682C2A66AC6CAFD8A8FB6D5FBD299CC84C79509D377D0A9で合格。size5%条件457415.5Bに通過したが、それだけで最終達成としない。
+実CLI E9C5406C81BBF9CCDA783D491D18CF9831D7C61DEE8B284FFF576F8A0DF4C3D4はnative BF50A95F66645A60156F89C8C8833D7D65DCA0448E3F15A1731BA4176303DC30をリンクし、実CLI record create/list/test/extractと既存9E2Eを通過。既存collector不備は失敗reportを保持し、sameEXE/明示root再検証report8C48C989AFBF4EB93664481331A628AFA4DE02C14448900D5C87ED890A7941D1で全7証拠を確認する。
+既存native-port-compare-bのOS process wall/CPU/memory測定を再使用し、warm1+paired9・逆順反復とprocess起動/完全verifyを含む条件を維持する。7za t -mmt1とkhc-testで同じ原文CRC検査を行う。正常順→逆順、いずれのdecodeも7zip<=を必須、encode比較/未見/Zstd/他corpusは別途必要。OS CPU tick granularityとsampledprivate/peakWSを区別しzeroは取得不能とする。
+親source/library/CLI/7za/corpus/archives/proofのhash/bytes/mtimeを固定。採用元のsourceが一致しない場合は計測を中止する。Restore11filesは専用root内で全byte比較し、8MiB以内に保持、raw追加2810784B+report128KiBだけ。既存archiveを再作成/上書き/削除しない。CPU15%/quiet60s、child64MiB/60s、suite300s、free5GiB+8MiB、Cargo増分0。失敗source identity、復元差異、extent/時計/9pair欠落、資源超過を先に停止条件とする。速度不足は失格と報告し、閾値を緩めない。
+

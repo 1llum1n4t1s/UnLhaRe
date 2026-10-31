@@ -1,0 +1,77 @@
+[
+  {
+    "old": "../Q32_INTEGER_CODEC_CONTRACT_20261002.md",
+    "new": "../BAYES_DOMINANT_Q15_CONTRACT_20261002.md",
+    "count": 2
+  },
+  {
+    "old": "build/khc-causal-integer-refinement-20261002-comparison-repair",
+    "new": "build/khc-bayes-dominant-q15-20261002-codec",
+    "count": 1
+  },
+  {
+    "old": "$oldRoot=Join-Path $root 'build/khc-causal-expert-scheduling-20261001'",
+    "new": "$oldRoot=Join-Path $root 'build/khc-causal-integer-refinement-20261002-comparison-repair'\n$inputRoot=Join-Path $root 'build/khc-causal-expert-scheduling-20261001'",
+    "count": 1
+  },
+  {
+    "old": "BB5834FF75280F8BC820B825E21F2167CDBF4215FF6E66785E6BF7A4D0E06070",
+    "new": "9BC66305D8C01DEFD56CF33A643BA0963F49CB351EB3DCE84C4ED3F3E56EEFE5",
+    "count": 1
+  },
+  {
+    "old": "build/khc-integer-refinement-narrow-20261002/report.json",
+    "new": "build/khc-bayes-dominant-q15-20261002-numeric/report.json",
+    "count": 1
+  },
+  {
+    "old": "AB03ECAD9DC5BD8109792C85B6D4F94433064AC375A38A0975E4FD567B6DB68C",
+    "new": "CD285519F0EB1A74A5DBA01CDD26AFD484471586A6555537E3A7051FB69A5C51",
+    "count": 1
+  },
+  {
+    "old": "370534F32A979FE2768CD60C29DFBD8342CD7B358C15C4D510945B8F8DD35E7A",
+    "new": "B7BE539DB0DA5786EAAA1BC7F4E43DC983A4495F21E6B2E80BADD999407D459D",
+    "count": 1
+  },
+  {
+    "old": "@('cts_model.rs','exact_kt.rs','scheduler.rs','codec.rs','correspondence.json','verify.ps1')",
+    "new": "@('bayes_model.rs','bayes_old.rs','scheduler.rs','codec.rs','correspondence.json','verify-codec.ps1')",
+    "count": 1
+  },
+  {
+    "old": "foreach($change in $source.changes){if(([regex]::Matches($expected,[regex]::Escape($change.old))).Count -ne $change.count){throw 'source replacement occurrence'};$expected=$expected.Replace([string]$change.old,[string]$change.new)}",
+    "new": "foreach($change in $source.changes){if($change.PSObject.Properties.Name -contains 'append'){$expected+=$change.append}else{if(([regex]::Matches($expected,[regex]::Escape($change.old))).Count -ne $change.count){throw 'source replacement occurrence'};$expected=$expected.Replace([string]$change.old,[string]$change.new)}}",
+    "count": 1
+  },
+  {
+    "old": "Join-Path $oldRoot \"$case.input\"",
+    "new": "Join-Path $inputRoot \"$case.input\"",
+    "count": 1
+  },
+  {
+    "old": "Join-Path $oldRoot \"$case.bad\"",
+    "new": "Join-Path $inputRoot \"$case.bad\"",
+    "count": 1
+  },
+  {
+    "old": "Join-Path $oldRoot 'seeded_random.input'",
+    "new": "Join-Path $inputRoot 'seeded_random.input'",
+    "count": 1
+  },
+  {
+    "old": "-WorkDirectory $work",
+    "new": "-WorkDirectory $work -MaxRunMiB 32",
+    "count": 2
+  },
+  {
+    "old": "verifier=$PSCommandPath;runtime=",
+    "new": "verifier=$PSCommandPath;verifier_last_write_utc=(Get-Item -LiteralPath $PSCommandPath).LastWriteTimeUtc.ToString('o');runtime_exe=(Get-Process -Id $PID).Path;runtime=",
+    "count": 1
+  },
+  {
+    "old": "    $checks.Add('full-source-correspondence-four-files')",
+    "new": "    $numeric=Get-Content -LiteralPath (Join-Path $root 'build/khc-bayes-dominant-q15-20261002-numeric/report.json') -Raw|ConvertFrom-Json\n    if($numeric.status -cne 'numeric_native_equivalence_passed_not_timed' -or $numeric.checks.Count -ne 6 -or $numeric.invocations.Count -ne 7){throw 'numeric proof status/counts'}\n    foreach($id in $numeric.identities){Hold $id.path 'numeric-current-identity' $id.before_sha256}\n    $checks.Add('full-source-correspondence-four-files')",
+    "count": 1
+  }
+]

@@ -1,0 +1,11 @@
+# 初回codec入口の失敗と局所修正
+
+初回verifier SHA `374FF4EDC35189E84F0A5E5F5999DE51280EE7CD0AB4538A7032AF11AE7B1171` は、旧heavy/codecからコピーした末尾LF2個のうち1個が欠落していたため、最初のheavy全文対応で失敗した。4sourceの比較ではheavy/codecだけ1byte短く、TrimEnd後は全sourceが一致した。全文照合は緩めず、両末尾のLFを元と同じに復元した。
+
+そのfinallyで空の出力先に対する容量チェックがStrictModeの `Measure-Object` に存在しないSumを読むため失敗し、元の原因とterminal reportが隠れた。元の出力先 `build/khc-causal-integer-refinement-20261002` は空、コンパイル/圧縮出力なし。guardを「ファイル0件ならused=0」に修正し、StrictModeでこの同じ空ディレクトリを実行確認する。
+
+再実行は独立 `build/khc-causal-integer-refinement-20261002-harness-repair` とし、既存rootやreportを上書きしない。数値仕様・計算・固定gateは変えない。元の空rootは確認終了後に削除する。
+
+この再実行は通常/overflow-checks付きのcodecビルドと空入力encodeまで成功したが、PowerShellからAsSpan拡張methodを直接呼べず、最初のframe比較で失敗した。terminal reportと候補を同rootへ保持し、圧縮結果の不一致とは扱わない。比較だけ小さなin-memory C# helperでSpan比較を包み、`build/khc-causal-integer-refinement-20261002-comparison-repair` へ一度実行する。比較範囲・oracle・gateは変えない。
+
+共用disk-budget sourceは旧SHA `379BFC1CCE693FCADD75AD6D8C375FEA2F10151EBA4B63D8462ADA91C2051BBF` から変わる。広い/narrow数値report内のbudget-guard identityは実行時の歴史的記録であって、今後その1件のcurrent一致は主張しない。数値helper/CLI/compiler/EXE/reportと、直接比較した数値結果は変更していない。修正版guardはcodec入口で現在SHAを保持して再確認する。

@@ -1,0 +1,43 @@
+{
+  "kind": "static-probe-only-no-cycle-or-full-codec-claim",
+  "report_sha": "CA1522EDF48D3166B6234DA89D8DFADE3AD2AD9AC469FB694702C7EE12373DA2",
+  "asm_sha": "EC30EF8916CBF489A1EE0F76E4F1DE8F9BE95D90D5467C62C29274A08E1543AD",
+  "layouts": {
+    "ratio_bytes": {
+      "bytes": 24,
+      "resolved_symbol": "ratio_bytes"
+    },
+    "four_ratio_bytes": {
+      "bytes": 96,
+      "resolved_symbol": "four_cts_result_bytes"
+    },
+    "four_cts_result_bytes": {
+      "bytes": 96,
+      "resolved_symbol": "four_cts_result_bytes"
+    },
+    "four_cts_input_bytes": {
+      "bytes": 128,
+      "resolved_symbol": "four_cts_input_bytes"
+    },
+    "four_plain_posterior_bytes": {
+      "bytes": 32,
+      "resolved_symbol": "four_plain_posterior_bytes"
+    }
+  },
+  "whole_asm": {
+    "vdivpd": 1,
+    "SSE2_divpd": 2
+  },
+  "ratio4_body": {
+    "symbol": "_RNvMNtCs20UcKX0XH6B_5probe9exact_divNtB2_11BatchEngine6ratio4",
+    "static_instruction_lines": 825,
+    "call_lines": [
+      "callq\t_RNvNtCs20UcKX0XH6B_5probe9exact_div12divide4_avx2",
+      "callq\t_RNvNtNtCs8xEFJqa6dYS_4core9panicking11panic_const23panic_const_div_by_zero",
+      "callq\t_RNvNtNtCs8xEFJqa6dYS_4core9panicking11panic_const23panic_const_div_by_zero"
+    ],
+    "local_stack_alloc_bytes": 216,
+    "static_packed_sse2_divides": 2
+  },
+  "next_action": "Investigate compact reachable-node weight storage (u32) and plain posterior arrays separately; no adoption without E2E plus fixed performance gates."
+}

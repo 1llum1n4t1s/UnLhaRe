@@ -1,0 +1,198 @@
+//! 固定geometryのprivate復号命令表。入力依存CDFはpacket内の検査済み型で保持する。
+use super::Result;
+pub(crate) const RETAINED_BOUND: usize = 78000;
+pub(crate) const TRANSIENT_BOUND: usize = 65536;
+const PREFIX_BYTES: usize = 2 * 142 * 258;
+#[derive(Clone, Copy)]
+pub(crate) struct Instruction {
+    lo: [u16; 4],
+    next: [u8; 4],
+    pub(crate) class: u8,
+    count: u8,
+    hi: u16,
+}
+const _: () = assert!(std::mem::size_of::<Instruction>() <= 16);
+impl Instruction {
+    // count/prefixと区間被覆はProgramのconst構築で証明済み。
+    // 呼出はProgram::nodeで得たkの0..kだけ。通常のbounds-checked indexingを使う。
+    #[inline]
+    pub(crate) fn child(&self, child: usize, limit: usize) -> (usize, usize, Option<usize>) {
+        let a = self.lo[child] as usize;
+        let b = if child + 1 < self.count as usize {
+            self.lo[child + 1] as usize
+        } else {
+            self.hi as usize
+        }
+        .min(limit);
+        (
+            a,
+            b,
+            (self.next[child] != 255).then_some(self.next[child] as usize),
+        )
+    }
+    pub(crate) fn step(&self, child: usize) -> Result<(usize, Option<usize>)> {
+        if child >= self.count as usize {
+            return Err("tree edge".into());
+        }
+        Ok((
+            self.lo[child] as usize,
+            (self.next[child] != 255).then_some(self.next[child] as usize),
+        ))
+    }
+}
+pub(crate) struct Program {
+    nodes: [Instruction; 284],
+    prefixes: [u8; PREFIX_BYTES],
+}
+static COMPILED: Program = Program::compile();
+impl Program {
+    const fn compile() -> Self {
+        let mut program = Self {
+            nodes: [Instruction {
+                lo: [0; 4],
+                next: [255; 4],
+                class: 0,
+                count: 0,
+                hi: 0,
+            }; 284],
+            prefixes: [0; PREFIX_BYTES],
+        };
+        let mut c = 0;
+        while c < 2 {
+            let alphabet = if c == 0 { 257 } else { 256 };
+            let mut used = 0;
+            let mut terminals = 0;
+            let root = program.build(c, 0, alphabet, 1, &mut used, &mut terminals);
+            assert!(root == 0 && used == 142 && terminals == alphabet);
+            let mut n = 0;
+            while n < 142 {
+                let instruction = program.nodes[c * 142 + n];
+                assert!(instruction.class <= 2 && instruction.count >= 1 && instruction.count <= 4);
+                let mut limit = 1;
+                while limit <= alphabet {
+                    let mut k = 0;
+                    while k < instruction.count as usize && (instruction.lo[k] as usize) < limit {
+                        k += 1;
+                    }
+                    program.prefixes[(c * 142 + n) * 258 + limit] = k as u8;
+                    limit += 1;
+                }
+                n += 1;
+            }
+            c += 1;
+        }
+        assert!(std::mem::size_of::<Self>() <= RETAINED_BOUND);
+        program
+    }
+    const fn build(
+        &mut self,
+        c: usize,
+        lo: usize,
+        hi: usize,
+        depth: usize,
+        used: &mut usize,
+        terminals: &mut usize,
+    ) -> usize {
+        let alphabet = if c == 0 { 257 } else { 256 };
+        assert!(lo < hi && hi <= alphabet && depth >= 1 && depth <= 8 && *used < 142);
+        let id = *used;
+        *used += 1;
+        let class = if lo == 0 {
+            0
+        } else if (lo == 4 || lo == 32) && hi == alphabet {
+            1
+        } else {
+            2
+        };
+        let mut cuts = [0usize; 5];
+        let n;
+        if lo == 0 {
+            cuts = [0, 1, 2, 4, hi];
+            n = 4;
+        } else if lo == 4 && hi == alphabet {
+            cuts = [4, 8, 16, 32, hi];
+            n = 4;
+        } else if lo == 32 && hi == alphabet {
+            cuts = [32, 64, 128, 256, hi];
+            n = 4;
+        } else {
+            let difference = hi - lo;
+            n = if difference < 4 { difference } else { 4 };
+            let mut i = 0;
+            while i <= n {
+                cuts[i] = lo + (hi - lo) * i / n;
+                i += 1;
+            }
+        }
+        let mut instruction = Instruction {
+            lo: [0; 4],
+            next: [255; 4],
+            class,
+            count: 0,
+            hi: hi as u16,
+        };
+        assert!(cuts[0] == lo && cuts[n] == hi);
+        let mut i = 0;
+        while i < n {
+            let a = cuts[i];
+            let b = cuts[i + 1];
+            assert!(a >= lo && b <= hi && a <= b);
+            if a < b {
+                let child = instruction.count as usize;
+                assert!(child < 4 && a <= 256);
+                instruction.lo[child] = a as u16;
+                if b - a > 1 {
+                    let next = self.build(c, a, b, depth + 1, used, terminals);
+                    assert!(next > id && next < 142);
+                    let nested = self.nodes[c * 142 + next];
+                    assert!(nested.lo[0] as usize == a && nested.hi as usize == b);
+                    instruction.next[child] = next as u8;
+                } else {
+                    assert!(b == a + 1);
+                    *terminals += 1;
+                }
+                instruction.count += 1;
+            }
+            i += 1;
+        }
+        assert!(instruction.count >= 1 && instruction.count <= 4);
+        assert!(instruction.lo[0] as usize == lo);
+        let mut child = 0;
+        while child < instruction.count as usize {
+            let a = instruction.lo[child] as usize;
+            let b = if child + 1 < instruction.count as usize {
+                instruction.lo[child + 1] as usize
+            } else {
+                hi
+            };
+            assert!(a >= lo && a < b && b <= hi);
+            if instruction.next[child] == 255 {
+                assert!(b == a + 1);
+            }
+            child += 1;
+        }
+        self.nodes[c * 142 + id] = instruction;
+        id
+    }
+    pub(crate) fn new() -> &'static Self {
+        &COMPILED
+    }
+    pub(crate) fn node(&self, c: usize, n: usize, limit: usize) -> Result<(&Instruction, usize)> {
+        let alphabet = if c == 0 { 257 } else { 256 };
+        if c >= 2 || limit == 0 || limit > alphabet {
+            return Err("token/limit".into());
+        }
+        if n >= 142 {
+            return Err("tree node".into());
+        }
+        let index = c * 142 + n;
+        let k = self.prefixes[index * 258 + limit] as usize;
+        if k == 0 {
+            return Err("tree empty prefix".into());
+        }
+        Ok((&self.nodes[index], k))
+    }
+    pub(crate) fn capacity_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}

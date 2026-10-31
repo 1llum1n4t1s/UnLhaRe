@@ -1,0 +1,37 @@
+[
+  {
+    "old": "    estimated: u64,",
+    "new": "    estimated: u64,\n    compact: u64,",
+    "count": 1
+  },
+  {
+    "old": "table.ratio4(black_box(a), black_box(b), black_box(d))",
+    "new": "table.audit_ratio4(black_box(a), black_box(b), black_box(d))",
+    "count": 1
+  },
+  {
+    "old": "                if flags == exact_div::SHIFT {",
+    "new": "                if flags == exact_div::COMPACT {\n                    self.compact += 1;\n                } else if flags == exact_div::SHIFT {",
+    "count": 1
+  },
+  {
+    "old": "\\\"engine_bytes\\\":{}",
+    "new": "\\\"compact\\\":{},\\\"engine_bytes\\\":{}",
+    "count": 1
+  },
+  {
+    "old": "audit.native, audit.errors, audit.certificate_fallback, std::mem::size_of::<BatchEngine>(), audit.fingerprint",
+    "new": "audit.native, audit.errors, audit.certificate_fallback, audit.compact, std::mem::size_of::<BatchEngine>(), audit.fingerprint",
+    "count": 1
+  },
+  {
+    "old": "table.ratio(values[0], values[1], values[2])",
+    "new": "table.audit_ratio4([values[0], 0, 0, 0], [values[1], 1, 1, 1], [values[2], 1, 1, 1])[0]",
+    "count": 1
+  },
+  {
+    "old": "if audit.records != audit.matched || audit.estimated == 0 || audit.down == 0 || audit.native == 0 || audit.errors == 0 {",
+    "new": "if audit.records != audit.matched || audit.compact == 0 || audit.shifted + audit.estimated + audit.native == 0 || audit.native == 0 || audit.errors == 0\n        || audit.records != audit.compact + audit.shifted + audit.estimated + audit.native + audit.errors {",
+    "count": 1
+  }
+]

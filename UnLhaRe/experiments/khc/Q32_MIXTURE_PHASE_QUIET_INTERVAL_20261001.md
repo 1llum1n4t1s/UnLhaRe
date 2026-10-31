@@ -1,0 +1,15 @@
+# 別quiet intervalでの粗粒度phase診断
+
+前回binding修正版は2026-10-01T08:40:49.9745336Zのpreflight CPU29%で開始前に拒否された。failed report SHA364DE48342859C16A64D51972D5DAD6014B0EAC43165B94EC5D0F334E9BC0246、CLI0/phase0。前回root/source/failed証拠を変更せず保持する。
+
+現在2026-10-01T09:19:03〜06Zの3観測0/1/0%を受け、未完了診断を別intervalに1回だけ実施する。これは同一sessionの自動retryではなく、再開後の新しい診断実行。測定直前にも既存quiet15/preflight5と全child前後の負荷確認を必須にする。busyならfailedで停止し、閾値・設定を変えず再試行しない。
+
+## 変更前の失敗条件
+
+- 旧profile script SHA470E09B7A5CEABC9A299DE63CAA7EACDE438953FD1C359CFB2568D3B67CFD5D1との差が新work絶対範囲と本契約pin追加以外に生じる。
+- 元phase契約0C7154682FFC8F1EFEBA8757F57727B38DE7327A607E5F00F775738CA9A1EB33、codecA3B5E44469D173B49FA911F92DB9953E62D469728B35D100ABF0D671C66BB9C5、通常CTS/EXE/全frame/依存が変わる。
+- compile又は正式性能比較と実行を重ねる、旧rootを上書きする、busyを成功扱いする、自動retryする。
+
+親が編集所有を引き取りprofile.ps1のworkを未使用 `build/khc-q32-mixture-phase-profile-20261001-quiet-interval` へ変更し、本契約をpin追加する。全関数・timer・proof・CLI/timeout/quiet/3run/byte比較/公開安全性は保持する。source全文差分とParser確認後に親が1回実行する。他担当はCLIを実行しない。
+
+結果はinstrumented粗粒度診断のみ。正式速度採用へ使わず、主なコストを次の改善仮説の選択に使う。BWT/prepare/allocation/entropy loop等の親子spanを加算して全体時間にしない。loop内CTS/primary/Bayes/range個別内訳は未測定として残す。全固定合格条件と総合7-Zip超えの未達を維持する。

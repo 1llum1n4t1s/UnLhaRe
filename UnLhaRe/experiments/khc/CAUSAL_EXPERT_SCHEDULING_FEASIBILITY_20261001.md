@@ -1,0 +1,29 @@
+# heavy CTSを因果的に停止・再開する次仮説の支持範囲
+
+## 根拠と仮説
+
+[class別診断](SUFFIX_CLASS_ENTROPY_RESULT_20261001.md)で、今回の固定groupでは重いCTSと軽いsuffixの利得の符号が一致し、class0/3でpositive、他5classesでnegativeだった。一律のsuffix置換はclass3のlossを約40787bits増やし、size gate未達になった。これは「軽いexpertの過去の利得を、重いexpertを実行する必要性の信号へ使えるか」という検証可能な仮説を支持するだけである。他入力の信号一致、旧frame同値、性能向上は証明していない。
+
+## 研究候補の境界
+
+新しい別形式の研究codecで、BWT/grammar/primaryは保持し、7classすべてに同一の過去データだけを用いる制御を適用する。現在bitを見る前のprimary対light expertの累積loss差が十分positiveならheavy CTSを使い、十分negativeならlight mixtureへ戻す。observed class IDやmanifestに依存する固定routingは禁止する。confidence境界・hysteresis・journal上限は実装前の新契約で1構成へ固定し、size不合格後の境界sweepはしない。
+
+停止中はprimaryの更新前Q15と実bitをjournalへ保存する。heavyを再開するときは、そのclassの未処理journalだけを古い順にpredict/updateし、heavy CTSとheavy対primaryのBayes累積lossを当該prefixまで復元する。他classのeventを同classへ混入させない。active期間のeventはその場で学習し、replay済みeventを重複更新しない。予測・切替条件は更新前のprefixのみで決まり、現在bit/未来/事後最良ルートは利用しない。
+
+light側は全eventを連続学習し、停止後の分布変化も検出できる状態を保つ。heavyはclass別にjournal/replayと連続更新を組み合わせる。過去primary Q15はgrammar/primaryがroutingから独立していることを前提に保存できるが、この前提もsource対応と実E2Eで照合する。初期prefixのheavy lossを後で復元することと、過去の符号化データを書き換えることは別であり、後者は行わない。
+
+## 実装前に反証すべき点
+
+- lightのpositive gainはheavyのpositive gainを保証しない。false activationや見逃しが続けば重い計算や圧縮率が悪化する。
+- replayを省いてclass観測数だけ追いつかせる処方は、CTS weights/alpha/history/Bayes lossを復元できないので採用しない。
+- 停止中にheavyへ未来bitを与える、同じeventをreplayと通常更新で2回学習する、再開中の失敗後に中途半端な状態を成功公開する経路を拒否する。
+- prefix journalの無制限増加は許さない。memory上限到達時のforced catch-up、allocation失敗、replay上限/120秒timeoutは新契約の失敗条件へ含める。
+- 浮動lossの差で制御する場合、決定性は検証済み環境以外で未保証。4nativeと共通数値仕様の検証なしに製品形式へ採用しない。
+
+各eventのheavy処理はactive学習または後続replayのどちらか1回だけとし、replay合計がtotal observed bitsを超えないことを診断件数で確認する。これでも軽いモデル、journaling、切替、再開の費用が加わるため、速度目標を達成すると予告しない。
+
+## 次工程の完了条件
+
+まず仕様・source ownership・失敗条件を新契約へ固定して実装し、切替を含む空/短/反復/周期/random/固定group、frame反復、native/portable、復号、旧新magic拒否、no-clobber、journal/catch-upとprediction snapshotの整合性をCLIで検証する。単一構成のsize<=483599Bが通った場合だけ別のquiet-host fullCLI性能比較へ進む。strict encode<574.5624ms、同資源/native7za/同session条件、holdout・4native・製品と総合goalを維持する。
+
+このファイルは実装済みを示すものではない。仮説・残る反例・次の検証境界を保存した支持範囲であり、性能採用や総合7-Zip超えの証拠ではない。

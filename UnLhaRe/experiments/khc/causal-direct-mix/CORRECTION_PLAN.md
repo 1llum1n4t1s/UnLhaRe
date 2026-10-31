@@ -1,0 +1,9 @@
+# 親許可のwrapper構文修復と一回追加検証
+
+親が初回syntax失敗を確認し、報告用wrapperだけの1文字修復を明示許可した。元失敗report SHA193939C7A911AA00F309AC79DA371E386FF5BF16623A530179B00676C5CAFB95は保持し、元run-native.ps1/FAILURE_PLAN/親main planを変更しない。同条件無変更リトライではなく初回未実行だったnativeへの構文修復。追加compile上限1、追加native上限1、compile合計上限2、native合計上限1。再度失敗した場合は保持して親へ返す。
+
+probe.rsのprintln!末尾 `plain.capacity()));` を `plain.capacity());` へ、byte offset4990のASCII41=')'だけ除去する。修復前5095B/SHA5719F7EB5D53CB2C8C85A545CF97A2296665088F1B9990552F568BF26AB95382を元report pinと直接照合済み。修復後5094B/SHA C82B688BEC6E1CF5D4F19282385F9DB780F2803DD23FD73E7002F541E1FDEC1Eの同offsetへASCII41を戻した仮想bytesが修復前SHA/lengthへ一致することを確認する。旧sourceのdiskコピーは作らない。
+
+新corrected-run-native.ps1は元runner全文に対し出力rootを未使用build/khc-causal-direct-mix-20261004/corrected-nativeへ変える1置換と、自己pinに加え元runner/CORRECTION_PLANのreadonly pinsを加える1置換だけ。flags/設定/入力/モデル/hook/検証/timeout/処理順は一切変えない。allowlistをcorrection-allowlist.jsonへ保存し、再構成後全文/各1回置換をreadonlyで照合する。runner guardはchild出力、全parent+child上限8MiBは事前/最終readonly guardで確認し、各EXE1MiB/report256KiBから最大でも8MiB内と出力前に確認する。
+
+同じrustc1.98.1/edition2024/opt3/thin/CGU1/unwind/overflowyes/debug0/DEBUG:NONE/frame_audit/primitive_auditでcompile60s/native120s。初回reportのprobeだけをhistorical mismatchとして分離、他source/tool/input/failureplan/runner/plan pinsのlive一致を必須とする。成功時は新live beforeafter pins/EXE/最終guard/process0とRESULT/readonly verifierを保存する。policy metadata未定/f64 floor portability/実coder/速度/4native/別context独立監査未実施は維持する。

@@ -1,0 +1,11 @@
+# 費用込みMDL後のnode選択：採用しない補助screen
+
+2026-10-04。親の読み取り専用PowerShell集計。追加compile/native/writeなし。成功した診断report SHA542C8DA9030B4B30EE5F621A9FA7BB3CA68C5F11ED43C33FCDEC87ACC894B878 と旧teacher局在化report SHA AFC738A0949275414F6F08E3E53E92D54904FE2C99276267C223B59574442794 の284nodeを対応付けた。前者nodes列4はparsed loss、列1/2は保存bits/bytes。後者nodes列4はteacher loss、列0はbranch数。
+
+主候補はclass2/5を全部staticに置く事前固定maskで、Q token480733B＋保存模型10577B＋診断side3079B＝494389B。gate483599Bを10790B超過。無料分布の混合473039Bから、MDL剪定によるtoken増分10773Bと模型保存10577Bを別々に払った結果であり、保存費用だけが失敗原因ではない。
+
+補助screenでは各nodeについて teacher_loss > parsed_loss + 8*(4+model_bytes) の場合だけstaticを使う事後のoracle選択を集計した。固定mask候補の成功には読み替えない。選ばれるのは2nodes、他276nodesはteacherのまま。combined loss3818434.4164275033bits、模型241B、284bit maskをbyte切り上げ36Bとして、ceil(loss/8)+241+36+3079＝480661B。net費用利得401.75636152878315bits。
+
+選択2nodesは4724/3825340枝、約0.124%にすぎない。小さいin-sample費用改善を、大きいheavy予測省略や速度gate通過の根拠にしない。混合状態更新、逐次CDF、encoder/decoder、実frame、holdout、portableは未実装・未検証。速度のためのnode選択実codec実装へ進めず、旧rootを保持する。
+
+次の限定調査は既存BT5/Beamの遷移価格cacheのkey/寿命と未cache同値仕事の有無。到達不能bucket/同一Rep統合/BT無登録位置省略などSTRUCTURAL_PARSER_DECISION_20261004.mdで棄却した案は繰り返さない。新たな仕事削減が実在するかだけを先にコードで反証し、根拠を得る前に大きな生成物を作らない。総合goalは未達・active。

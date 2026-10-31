@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "root": "/Users/szk/Library/Caches/Kagayoi/UnLhaRe/goal-restore-20261019",
+  "rust_version": "1.99.1",
+  "manifest_url": "https://static.rust-lang.org/dist/channel-rust-1.99.1.toml",
+  "rust": [
+    {"package":"rustc","url":"https://static.rust-lang.org/dist/2026-10-15/rustc-1.99.1-aarch64-apple-darwin.tar.xz","sha256":"23948a0a9c162fd2952defb3fb0462c44e8fcfd1a4ab8a274a1e1bdb2cf810a3","download_max":157286400,"expanded_max":576716800},
+    {"package":"cargo","url":"https://static.rust-lang.org/dist/2026-10-15/cargo-1.99.1-aarch64-apple-darwin.tar.xz","sha256":"685e563d94db1f003ffa5f5831439eec02569b9950b69867953c8213269c1eaf","download_max":52428800,"expanded_max":83886080},
+    {"package":"rust-std","url":"https://static.rust-lang.org/dist/2026-10-15/rust-std-1.99.1-aarch64-apple-darwin.tar.xz","sha256":"fe79d6ab5a0321de26463999d8c112b8ad3eafbcbcf822d66a2300b45dde1031","download_max":62914560,"expanded_max":125829120},
+    {"package":"rustfmt-preview","url":"https://static.rust-lang.org/dist/2026-10-15/rustfmt-1.99.1-aarch64-apple-darwin.tar.xz","sha256":"8b80dda570f140ee9ced8799294e812bba847a025f185bae4cba85a2ba235570","download_max":31457280,"expanded_max":52428800},
+    {"package":"clippy-preview","url":"https://static.rust-lang.org/dist/2026-10-15/clippy-1.99.1-aarch64-apple-darwin.tar.xz","sha256":"c463f31831196702fc544900a0dc4c1837905327507fbec751fe46e59ca098bf","download_max":52428800,"expanded_max":104857600}
+  ],
+  "sevenzip": {"url":"https://github.com/ip7z/7zip/releases/download/26.05/7z2605-mac.tar.xz","sha256":"12ef6830317743cfd3f0ab1724bde43fcc270d8b6d8564f8c12c2a2b7f993570","download_max":1868068,"expanded_max":16777216}
+}

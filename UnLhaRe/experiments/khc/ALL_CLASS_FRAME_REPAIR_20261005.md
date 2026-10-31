@@ -1,0 +1,9 @@
+# 初回型エラーの最小修正
+
+2026-10-05。all-class-frameの初回compile 1回はE0503（同一Statsのmut借用と引数内field参照の競合）18診断で失敗し、nativeは0回だった。環境や検証器の不具合ではなく候補コードの型エラー。失敗reportはbuild/khc-all-class-frame-20261005/report.jsonに44270Bで保持、SHA256 7BD3FCED6B13EE0461B90A9B835DCAC63BC1AC25C89460924F116910AD98EA20。
+
+workerが編集停止後、親へcodec所有権を移管した。codec.rsの3箇所で容量式を先にmodel_bound/encode_bound/decode_boundへ計算し、その後gateへ渡す。式・上限・モデル・wire・試験条件は変更しない。初回codec SHAは7CD6623D7EBCA0D4F4423FFE0FA357F03D1A55D0C86BB0C8BFD59883104E7C69、修正後は9D4C3DC21870D7E2C025FC8AFEFDEC44B35B3AE9BEF75C878A42E540B95E7091。
+
+verify-repair.ps1は3差分をRAM内で逆適用し、元codecの14832Bと元SHAを厳密照合する。旧sourceのdiskコピー・バックアップを作らない。source-pins.jsonは修正後を識別する。初回reportの識別値は当時の記録であり、現sourceに一致する成功証拠として扱わない。
+
+原因修正後の再検証は新しい未使用出力build/khc-all-class-frame-20261005-repair1で行い、各出力8MiB・compile60秒/native120秒・RAM等の上限を変えない。`run-native.ps1 -Attempt repair1`を使う。これは1構成の原因修正であり、別設定の探索や結果を有利にする条件変更ではない。元出力・失敗ログは削除/上書きしない。

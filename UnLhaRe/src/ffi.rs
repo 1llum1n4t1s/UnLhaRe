@@ -269,11 +269,12 @@ unsafe fn copy_output(
 fn method_from_abi(method: i32) -> Result<Method, FfiError> {
     match method {
         0 => Ok(Method::Stored),
+        4 => Ok(Method::Lh4),
         5 => Ok(Method::Lh5),
         6 => Ok(Method::Lh6),
         7 => Ok(Method::Lh7),
         value => Err(FfiError::invalid(format!(
-            "method must be one of 0, 5, 6, or 7; received {value}"
+            "method must be one of 0, 4, 5, 6, or 7; received {value}"
         ))),
     }
 }
@@ -381,6 +382,7 @@ pub unsafe extern "C" fn unlhare_create(
         let options = CreateOptions {
             method,
             limits: Limits::default(),
+            ..CreateOptions::default()
         };
         crate::create_from_directory(&source_directory, &output, &options)
             .map_err(FfiError::archive)?;

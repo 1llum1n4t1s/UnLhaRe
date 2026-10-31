@@ -1,0 +1,28 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/cts-node-u32/codec.rs",
+    "changes": []
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/cts-node-u32/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"cts_model.rs\"]",
+        "new": "#[path = \"../cts-node-u32/cts_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"../adaptive-suffix-kt/cts_model.rs\"]",
+        "new": "#[path = \"../light-compact-path/light.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "pub(super) fn compact_counts_json() -> String { heavy::compact_counts_json() }",
+        "new": "pub(super) fn compact_counts_json() -> String {\n    let counts = heavy::compact_counts_json();\n    let prefix = counts.strip_suffix('}').expect(\"compact diagnostic JSON suffix\");\n    format!(\"{},\\\"light_prediction_bytes\\\":{},\\\"scheduler_prediction_bytes\\\":{}}}\",\n        prefix, std::mem::size_of::<light::Prediction>(), std::mem::size_of::<Prediction>())\n}",
+        "count": 1
+      }
+    ]
+  }
+]

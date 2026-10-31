@@ -1,0 +1,135 @@
+[
+  {
+    "name": "canterbury-development",
+    "role": "development",
+    "source": "https://corpus.canterbury.ac.nz/resources/cantrbry.zip",
+    "archive_sha256": "C44B686DFC137E74ABA4DB0540E5D6568CB09E270BA8F8411D2F9DF24F39A1A6",
+    "retrieved_utc": "2026-09-18T12:31:26.6925121Z",
+    "files": [
+      {
+        "name": "alice29.txt",
+        "bytes": 152089,
+        "sha256": "7467306EE0FEED4971260F3C87421154A05BE571D944E9CB021A5713700C38F0"
+      },
+      {
+        "name": "asyoulik.txt",
+        "bytes": 125179,
+        "sha256": "EAA3526FE53859F34ECDF255712F9ECF0B2C903451D4755B2EDAA2E2599CB0FC"
+      },
+      {
+        "name": "cp.html",
+        "bytes": 24603,
+        "sha256": "E0CD21CEF5B6C4069461E949BE100080C3CE887DE6F1DD8626C480528EFAAF61"
+      },
+      {
+        "name": "fields.c",
+        "bytes": 11150,
+        "sha256": "85D73E354CC50CEC76CB5A50537CF8DC035F8CBB8480F9E1CBE2F7D6C23393C7"
+      },
+      {
+        "name": "grammar.lsp",
+        "bytes": 3721,
+        "sha256": "1B0805DFC0AE706B35AAC2BB4E15F02485EFD24DDA5DBD29DE7B2F84D1A88C15"
+      },
+      {
+        "name": "kennedy.xls",
+        "bytes": 1029744,
+        "sha256": "9AF47239CA29DFE20E633F80BBBB9A4CC9783D0803D7B2B5626F42E4C3790420"
+      },
+      {
+        "name": "lcet10.txt",
+        "bytes": 426754,
+        "sha256": "5314BA1DBB03F471DF88BEC6CD120A938EF60D0FD3511C5C1DCE61BF7463245F"
+      },
+      {
+        "name": "plrabn12.txt",
+        "bytes": 481861,
+        "sha256": "07E2E0B461AF78C7C647CB53DAB39DE560198E16F799B4516ECCF0FBD69F764C"
+      },
+      {
+        "name": "ptt5",
+        "bytes": 513216,
+        "sha256": "0EC3A75089BB52342813496B17E51377BC9EBA3CB519A444D67025354841D650"
+      },
+      {
+        "name": "sum",
+        "bytes": 38240,
+        "sha256": "EE5733CD76ECC2F9D8FF156ADC3C02A7A851051DCF43A2D56FF4EE4FF606BDB3"
+      },
+      {
+        "name": "xargs.1",
+        "bytes": 4227,
+        "sha256": "C58AEB5D2D1E12751D47E7412B45784405FC30A5671B03D480FA05776E183619"
+      }
+    ]
+  },
+  {
+    "name": "silesia-holdout",
+    "role": "holdout-not-yet-measured",
+    "source": "https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip",
+    "archive_sha256": "0626E25F45C0FFB5DC801F13B7C82A3B75743BA07E3A71835A41E3D9F63C77AF",
+    "retrieved_utc": "2026-09-18T12:32:12.4984780Z",
+    "files": [
+      {
+        "name": "dickens",
+        "bytes": 10192446,
+        "sha256": "B24C37886142E11D0EE687DB6AB06F936207AA7F2EA1FD1D9A36763C7A507E6A"
+      },
+      {
+        "name": "mozilla",
+        "bytes": 51220480,
+        "sha256": "657FC3764B0C75AC9DE9623125705831EBBFBE08FED248DF73BC2DC66E2A963B"
+      },
+      {
+        "name": "mr",
+        "bytes": 9970564,
+        "sha256": "68637ED52E3E4860174ED2DC0840AC77D5F1A60ABBCB13770D5754E3774D53E6"
+      },
+      {
+        "name": "nci",
+        "bytes": 33553445,
+        "sha256": "FC63A31770947B8C2062D3B19CA94C00485A232BB91B502021948FEE983E1635"
+      },
+      {
+        "name": "ooffice",
+        "bytes": 6152192,
+        "sha256": "E7EE013880D34DD5208283D0D3D91B07F442E067454276095DED14F322A656EB"
+      },
+      {
+        "name": "osdb",
+        "bytes": 10085684,
+        "sha256": "60F027179302CA3AD87C58AC90B6BE72EC23588AAA7A3B7FE8ECC0F11DEF3FA3"
+      },
+      {
+        "name": "reymont",
+        "bytes": 6627202,
+        "sha256": "0EAC0114A3DFE6E2EE1F345A0F79D653CB26C3BC9F0ED79238AF4933422B7578"
+      },
+      {
+        "name": "samba",
+        "bytes": 21606400,
+        "sha256": "93BA07BC44D8267789C1D911992F40B089FFA2140B4A160FAC11CCAE9A40E7B2"
+      },
+      {
+        "name": "sao",
+        "bytes": 7251944,
+        "sha256": "C2D0EA2CC59D4C21B7FE43A71499342A00CBE530A1D5548770E91ECD6214ADCC"
+      },
+      {
+        "name": "webster",
+        "bytes": 41458703,
+        "sha256": "6A68F69B26DAF09F9DD84F7470368553194A0B294FCFA80F1604EFB11143A383"
+      },
+      {
+        "name": "x-ray",
+        "bytes": 8474240,
+        "sha256": "7DE9FCE1405DC44AE5E6813ED21CD5751E761BD4265655A005D39B9685D1C9AD"
+      },
+      {
+        "name": "xml",
+        "bytes": 5345280,
+        "sha256": "0E82E54E695C1938E4193448022543845B33020C8BE6BF3BF3EAD2224903E08C"
+      }
+    ]
+  }
+]

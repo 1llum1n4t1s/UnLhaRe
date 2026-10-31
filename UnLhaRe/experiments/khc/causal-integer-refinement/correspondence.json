@@ -1,0 +1,125 @@
+[
+  {
+    "name": "cts_model.rs",
+    "original": "experiments/khc/causal-bayes-q32-kt-reciprocal/cts_model.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../native32-quotient/exact_div.rs\"]\nmod exact_div;\n",
+        "new": "",
+        "count": 1
+      },
+      {
+        "old": "fn ratio(a: u64, b: u64, denominator: u64) -> Result<u64> {",
+        "new": "fn ratio(table: &exact_kt::KtTable, a: u64, b: u64, denominator: u64) -> Result<u64> {",
+        "count": 1
+      },
+      {
+        "old": "exact_div::ratio(a, b, denominator)",
+        "new": "table.ratio(a, b, denominator)",
+        "count": 1
+      },
+      {
+        "old": "pub(super) fn posterior_ratio(weight: u64, pk: u64, ceiling: u64) -> Result<u64> {",
+        "new": "pub(super) fn posterior_ratio(table: &exact_kt::KtTable, weight: u64, pk: u64, ceiling: u64) -> Result<u64> {",
+        "count": 1
+      },
+      {
+        "old": "ratio(weight, probability(pk)?, ceiling)?",
+        "new": "ratio(table, weight, probability(pk)?, ceiling)?",
+        "count": 1
+      },
+      {
+        "old": "pub(super) fn next_weight(alpha: u64, retained: u64, posterior: u64) -> Result<u64> {",
+        "new": "pub(super) fn next_weight(table: &exact_kt::KtTable, alpha: u64, retained: u64, posterior: u64) -> Result<u64> {",
+        "count": 1
+      },
+      {
+        "old": "ratio(retained, posterior, Q)?",
+        "new": "ratio(table, retained, posterior, Q)?",
+        "count": 1
+      },
+      {
+        "old": "fn update(&mut self, prediction: &Prediction, bit: bool) -> Result<()> {",
+        "new": "fn update(&mut self, prediction: &Prediction, bit: bool, table: &exact_kt::KtTable) -> Result<()> {",
+        "count": 1
+      },
+      {
+        "old": "ratio(Q, 1, denominator)?",
+        "new": "ratio(table, Q, 1, denominator)?",
+        "count": 1
+      },
+      {
+        "old": "posterior_ratio(node.weight, pk, ceiling)?",
+        "new": "posterior_ratio(table, node.weight, pk, ceiling)?",
+        "count": 1
+      },
+      {
+        "old": "next_weight(alpha, retained, posterior)?",
+        "new": "next_weight(table, alpha, retained, posterior)?",
+        "count": 1
+      },
+      {
+        "old": ".update(prediction, bit)",
+        "new": ".update(prediction, bit, &self.kt_table)",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "exact_kt.rs",
+    "original": "experiments/khc/causal-bayes-q32-kt-reciprocal/exact_kt.rs",
+    "changes": [
+      {
+        "old": "#[path = \"../native32-quotient/exact_div.rs\"]",
+        "new": "#[allow(dead_code)]\n#[path = \"../integer-refinement-narrow/exact_div.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "    reciprocals: Vec<u64>,",
+        "new": "    reciprocals: Vec<u64>,\n    ratios: exact_div::RatioTable,",
+        "count": 1
+      },
+      {
+        "old": "        Ok(Self { reciprocals })",
+        "new": "        Ok(Self { reciprocals, ratios: exact_div::RatioTable::new()? })",
+        "count": 1
+      },
+      {
+        "old": "    // domain検査を同関数へ局所化し、unchecked helperを公開しない。",
+        "new": "    pub fn ratio(&self, a: u64, b: u64, d: u64) -> Result<(u64, u8)> {\n        self.ratios.ratio(a, b, d)\n    }\n\n    // domain検査を同関数へ局所化し、unchecked helperを公開しない。",
+        "count": 1
+      },
+      {
+        "old": "exact_div::ratio(Q / 2, 2 * u64::from(zero) + 1, denominator)",
+        "new": "self.ratios.ratio(Q / 2, 2 * u64::from(zero) + 1, denominator)",
+        "count": 1
+      },
+      {
+        "old": "self.reciprocals.len() * std::mem::size_of::<u64>()",
+        "new": "self.reciprocals.len() * std::mem::size_of::<u64>() + self.ratios.bytes()",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/causal-expert-scheduling/scheduler.rs",
+    "changes": [
+      {
+        "old": "#[path = \"bayes_model.rs\"]",
+        "new": "#[path = \"../causal-expert-scheduling/bayes_model.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "#[path = \"../causal-bayes-q32-kt-reciprocal/cts_model.rs\"]",
+        "new": "#[path = \"cts_model.rs\"]",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/causal-expert-scheduling/codec.rs",
+    "changes": []
+  }
+]

@@ -1,0 +1,13 @@
+# payload構造の次の判断：局所改善を総合達成へ置き換えない
+
+ローカル証拠の再確認。hard-cut-entropy-lutは完全private frame478856Bを全復元したが、単回内部decode1956.446ms。8-anchor逆変換の内部中央値33.5442msだけを達成としても、固定CLI decode47.3884msにはまだ届かない。別binary・別時間条件の値を合算して正式予測にはしない。
+
+node-history-information/RESULT_20261004.mdはcoded3825218 branchを報告する。同件数に47.3884ms全予算を使っても平均12.39ns/branch、仮に逆変換33.5442msを費用として差し引くなら残13.8442ms、約3.62ns/branchに相当する。これは費用配賦の仮説・必要な処理密度の診断であり、各stageの実CPU下界や不可能性の証明ではない。CRC・run復元等の費用も残り、現online feature/CTS/log-linear更新の小改善だけでは必要差を支持できない。
+
+既存情報失敗を再試行しない：node/history固定CDFはモデル無料でも504637B screen、static directは626045B、causal direct arithmetic mixは568897B、class2/5選択static MDLは494389B。いずれも固定483599B未達。class2/5現CDFのheader無料でも483812Bという反証はそのCDF/sideのみで、時系列適応・別partition・別side・実coder全般の不可能性へ拡大しない。
+
+次のpayload構造の問いは、decoderの逐次学習・重いfeature混合を除くための時系列局所CDFと、実保存モデルを含む情報利得。node-history既存診断は時刻をkeyにせず、RESULTでも時間適応を範囲外と明記する。単純な全静的方式へ戻さず、現在の情報不足が時間局所性で減るかを先に検証すべき。まだ具体的candidate/最適なtile/paid model形式/速度は未決定・未実装。設定sweepやteacherを無料にする訓練値だけで採用しない。
+
+その有限情報診断を選ぶ場合、(1)decoderが既知のrun offset等で決まる時間key、(2)原grammarの履歴更新前/Meta一致、(3)hist保持予算・再利用と一read/BWT、(4)全empirical/Qlossのcomponent/node/時刻整合、(5)実CDF/partition/境界metadata費用、(6)holdoutと実coder/frameまでの道筋を先行契約へ固定する。巨大全event traceや全時刻Denseの同時保持は避ける。型・価格の数値同値を守る局所最適化とは別のprivate研究候補で、製品変更ではない。
+
+当面は新SA採取と8-anchor復元をCRC付きprivate frameへ接続する必要がある。現在frameではmetadataのCRC/整合性を検証していないので採用せず、size増分32Bとmagic・payload同一性・破損/no-output・正規fallbackを実計上する。全goalの固定条件は維持し、未達を明示して継続する。

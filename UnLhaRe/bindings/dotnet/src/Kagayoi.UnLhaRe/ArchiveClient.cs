@@ -15,6 +15,7 @@ public static unsafe class ArchiveClient
     private const uint RequiredErrorKindApiLevel = 4;
     private const uint RequiredCreatePolicyApiLevel = 4;
     private const uint RequiredStreamingListApiLevel = 5;
+    private const uint RequiredCompressionEffortApiLevel = 6;
     private const int StatusOk = 0;
     private const int StatusBufferTooSmall = 2;
     private const int StatusCancelled = 5;
@@ -167,7 +168,39 @@ public static unsafe class ArchiveClient
         CancellationToken cancellationToken = default)
     {
         var request = BuildCreateRequest(output, entries, method, limits);
-        Run(request, ArchiveJsonContext.Default.CreateRequest, progress, cancellationToken);
+        Run(request, ArchiveJsonContext.Default.CreateRequest, progress, cancellationToken,
+            method == CompressionMethod.Lh4 ? RequiredCompressionEffortApiLevel : RequiredApiLevel);
+    }
+
+    /// <summary>Creates an archive with an explicit compression work budget.</summary>
+    public static void Create(
+        string output,
+        IReadOnlyList<ArchiveSourceEntry> entries,
+        CompressionMethod method,
+        CompressionEffort effort,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = BuildCreateRequest(output, entries, method, limits, effort: effort);
+        Run(request, ArchiveJsonContext.Default.CreateRequest, progress, cancellationToken,
+            effort == CompressionEffort.High || method == CompressionMethod.Lh4
+                ? RequiredCompressionEffortApiLevel : RequiredApiLevel);
+    }
+
+    /// <summary>Creates an archive with explicit compression effort and per-entry results.</summary>
+    public static ArchiveCreateReport CreateWithResults(
+        string output,
+        IReadOnlyList<ArchiveSourceEntry> entries,
+        CompressionMethod method,
+        CompressionEffort effort,
+        ArchiveCreateReportOptions reportOptions = default,
+        ArchiveLimits? limits = null,
+        IProgress<ArchiveProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        return CreateWithResultsCore(output, entries, method, reportOptions, limits,
+            progress, cancellationToken, effort);
     }
 
     /// <summary>Creates an archive while reporting unreadable source entries that were skipped.</summary>
@@ -216,10 +249,11 @@ public static unsafe class ArchiveClient
         ArchiveCreateReportOptions? reportOptions,
         ArchiveLimits? limits,
         IProgress<ArchiveProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CompressionEffort effort = CompressionEffort.Standard)
     {
         var failIfAllSkipped = reportOptions?.FailIfAllSkipped == true ? true : (bool?)null;
-        var request = BuildCreateRequest(output, entries, method, limits, failIfAllSkipped);
+        var request = BuildCreateRequest(output, entries, method, limits, failIfAllSkipped, effort);
         return RunWithResult(
             request,
             ArchiveJsonContext.Default.CreateRequest,
@@ -227,7 +261,9 @@ public static unsafe class ArchiveClient
             NativeResultOperation.Create,
             progress,
             cancellationToken,
-            failIfAllSkipped == true ? RequiredCreatePolicyApiLevel : RequiredResultCallbackApiLevel);
+            effort == CompressionEffort.High || method == CompressionMethod.Lh4
+                ? RequiredCompressionEffortApiLevel
+                : failIfAllSkipped == true ? RequiredCreatePolicyApiLevel : RequiredResultCallbackApiLevel);
     }
 
     private static void VisitEntriesCore(
@@ -492,9 +528,14 @@ public static unsafe class ArchiveClient
         IReadOnlyList<ArchiveSourceEntry> entries,
         CompressionMethod method,
         ArchiveLimits? limits,
-        bool? failIfAllSkipped = null)
+        bool? failIfAllSkipped = null,
+        CompressionEffort effort = CompressionEffort.Standard)
     {
         ValidateText(output, nameof(output));
+        if (!Enum.IsDefined(effort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(effort), effort, "Unsupported compression effort.");
+        }
         ArgumentNullException.ThrowIfNull(entries);
         if (!Enum.IsDefined(method))
         {
@@ -517,7 +558,8 @@ public static unsafe class ArchiveClient
             requestEntries,
             (int)method,
             LimitsRequest.From(limits),
-            failIfAllSkipped);
+            failIfAllSkipped,
+            effort == CompressionEffort.High ? "high" : null);
     }
 
     private static byte[] ReadListJson(string request)

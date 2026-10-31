@@ -1,0 +1,13 @@
+# 次の問い：実float CDFと静的node/historyの情報差の局在化
+
+node-history-informationの全872448rows/二walkは一致したが、Qloss4012463.5702508213bits、無料model＋固定sideで504637Bと未達。empiricalも504630B。静的node/prefix/last5class-child分布へ保存MDLだけを足す主経路は支持しない。前のclass共有MDLとの差は、nodeの追加とMDL剪定対無料depth5全leafの差の両方を含み、nodeだけの因果的改善量へ置換しない。
+
+side3079Bの由来はstatic-direct-mdl/probe.rs:38の予算式：742escape＋285framing＋4model bit-length＋2048coder reserve。全体が実wire不可避のsideではない。全side無料でもQ token501558Bはframe483599Bより17959B大きいが、f64 product-log-lossを任意有限coderの整数frame下界とは呼ばない。保存source/report/pinとscreen数値を変更しない。
+
+実float CTSの保存CDF entropy3820764.172789027bitsとの差は約191699.397462bits。実floatはnode条件付きsymbol/recent/previous features、class CTS、時系列適応log-linear poolを合わせており、今回static診断は再現していない。この差を実frame478750Bや正式速度の内訳とは呼ばない。
+
+次に必要な限定調査は、新private診断で凍結実float Modelを同じFront/grammarへ結び、更新前の実Q CDF lossをcomponent/class/node別に集約すること。同じbranch列で無料static CDFとのloss差を計算して、残る差を局在化する。個々のfeatureや適応の寄与を分離するablationではない。prefix1もpredict/observeを省かず、旧run_doneのrecent/previous更新順、symbol mapping、length context=exponent(rank+1)を照合する必要がある。
+
+旧binary SUFFIX_CLASS_ENTROPY_RESULT_20261001.mdは7class/7622618bitであり、今回quaternary6class/3825340branchへ転用しない。byte Mode3のEWMAもREADME既存で、未試行の新方式として再提案しない。係数/prior/depth/precision sweepや失敗静的CDFのcoderは作らない。
+
+次のコード前契約で、実float source alias、callbackへの因果的feature追加、更新順、CDF entropy/state digest/class count等の凍結Proof、heap/phase/実peak、独立fixtureを確定する。予定は固定入力一read/BWT、event Vec/raw trace/frame/plain/inputコピーなし、output8MiB/全体160MiB/single native。未実装・実codec/速度/holdout/4native未成功。GOALはactive・総合未達で継続する。

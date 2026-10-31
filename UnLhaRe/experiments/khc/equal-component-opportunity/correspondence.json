@@ -1,0 +1,55 @@
+[
+  {
+    "name": "codec.rs",
+    "original": "experiments/khc/reciprocal-codec/codec.rs",
+    "changes": [
+      {
+        "old": "    #[cfg(khc_compact_counts)]\n    println!(\"{}\", scheduler::compact_counts_json());",
+        "new": "    #[cfg(khc_compact_counts)]\n    println!(\"{}\", scheduler::compact_counts_json());\n    #[cfg(khc_equal_component_counts)]\n    println!(\"{}\", scheduler::equal_counts_json());",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "scheduler.rs",
+    "original": "experiments/khc/reciprocal-codec/scheduler.rs",
+    "changes": [
+      {
+        "old": "rediction_bytes\\\":{}}}\",\n        prefix, std::mem::size_of::<light::Prediction>(), std::mem::size_of::<Prediction>())\n}\n",
+        "new": "rediction_bytes\\\":{}}}\",\n        prefix, std::mem::size_of::<light::Prediction>(), std::mem::size_of::<Prediction>())\n}\n\n#[cfg(khc_equal_component_counts)]\npub(super) fn equal_counts_json() -> String {\n    heavy::equal_component_counts_json()\n}\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "heavy.rs",
+    "original": "experiments/khc/reciprocal-codec/heavy.rs",
+    "changes": [
+      {
+        "old": "#[path = \"exact_kt.rs\"]",
+        "new": "#[path = \"../reciprocal-codec/exact_kt.rs\"]",
+        "count": 1
+      },
+      {
+        "old": "        let mut d = [0; 4];\n        for lane",
+        "new": "        let mut d = [0; 4];\n        #[cfg(khc_equal_component_counts)]\n        let (mut equal_mask, mut ceiling_mismatch) = (0_u8, 0_u64);\n        for lane",
+        "count": 1
+      },
+      {
+        "old": "            probability(pk).ok()?;\n            n[lane]",
+        "new": "            probability(pk).ok()?;\n            #[cfg(khc_equal_component_counts)]\n            if pk == child {\n                if ceiling == pk { equal_mask |= 1 << lane; }\n                else { ceiling_mismatch = ceiling_mismatch.checked_add(1)?; }\n            }\n            n[lane]",
+        "count": 1
+      },
+      {
+        "old": "        table.posterior4(n, d)\n",
+        "new": "        #[cfg(khc_equal_component_counts)]\n        equal_record(upper, equal_mask, ceiling_mismatch);\n        table.posterior4(n, d)\n",
+        "count": 1
+      },
+      {
+        "old": "overflow\" => 1,\n        Err(e) => return Err(e),\n    };\n    Ok([rejected, before, node.weight()])\n}\n",
+        "new": "overflow\" => 1,\n        Err(e) => return Err(e),\n    };\n    Ok([rejected, before, node.weight()])\n}\n\n#[cfg(khc_equal_component_counts)]\nstd::thread_local! {\n    static EQUAL_COUNTS: std::cell::RefCell<([[u64; 16]; 4], u64)> =\n        const { std::cell::RefCell::new(([[0; 16]; 4], 0)) };\n}\n#[cfg(khc_equal_component_counts)]\n#[inline(always)]\nfn equal_record(upper: usize, mask: u8, mismatch: u64) {\n    EQUAL_COUNTS.with(|cell| {\n        let mut counts = cell.borrow_mut();\n        let entry = &mut counts.0[upper / 4][usize::from(mask)];\n        *entry = entry.checked_add(1).expect(\"equal diagnostic group overflow\");\n        counts.1 = counts.1.checked_add(mismatch).expect(\"equal diagnostic mismatch overflow\");\n    });\n}\n#[cfg(khc_equal_component_counts)]\npub(super) fn equal_component_counts_json() -> String {\n    EQUAL_COUNTS.with(|cell| {\n        let counts = cell.borrow();\n        let (mut groups, mut equal_lanes, mut all_equal) = (0_u64, 0_u64, 0_u64);\n        for row in &counts.0 {\n            for (mask, &count) in row.iter().enumerate() {\n                groups = groups.checked_add(count).expect(\"equal diagnostic sum overflow\");\n                equal_lanes = equal_lanes.checked_add(count.checked_mul(u64::from(mask.count_ones()))\n                    .expect(\"equal diagnostic product overflow\")).expect(\"equal diagnostic lanes overflow\");\n            }\n            all_equal = all_equal.checked_add(row[15]).expect(\"equal diagnostic complete overflow\");\n        }\n        format!(\"{{\\\"kind\\\":\\\"equal_component_opportunity_not_performance\\\",\\\"upper_levels\\\":[3,7,11,15],\\\"groups\\\":{groups},\\\"equal_lanes\\\":{equal_lanes},\\\"all_equal_groups\\\":{all_equal},\\\"equal_component_ceiling_mismatch\\\":{},\\\"masks_by_upper\\\":{:?}}}\",\n            counts.1, counts.0)\n    })\n}\n",
+        "count": 1
+      }
+    ]
+  }
+]
