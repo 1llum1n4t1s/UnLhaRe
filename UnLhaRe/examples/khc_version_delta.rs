@@ -1,7 +1,7 @@
 //! Experimental, self-contained two-version binary archive using KHC blocks.
 //! This probe is intentionally separate from the stable LHA APIs.
 
-use crc_fast::{checksum, CrcAlgorithm};
+use crc_fast::{CrcAlgorithm, checksum};
 use std::{
     env,
     fs::{self, OpenOptions},
@@ -9,7 +9,7 @@ use std::{
     path::Path,
     time::Instant,
 };
-use unlhare::khc::{compress_block, decompress_block, BLOCK_BYTES};
+use unlhare::khc::{BLOCK_BYTES, compress_block, decompress_block};
 
 const MAGIC: &[u8; 8] = b"KHCDLT1\0";
 const HEADER_BYTES: usize = 48;
@@ -698,9 +698,17 @@ fn encode_to_file(
     }
     println!(
         "{{\"frame_bytes\":{},\"mode\":{},\"operations\":{},\"base_bytes\":{},\"target_bytes\":{},\"base_frame_bytes\":{},\"encoded_body_bytes\":{},\"patch_stream_bytes\":{},\"encode_ms\":{:.3}}}",
-        frame.len(), mode, operations, base.len(), target.len(), base_frame_bytes,
-        frame.len().saturating_sub(HEADER_BYTES + base_name.len() + target_name.len() + base_frame_bytes),
-        patch_bytes, started.elapsed().as_secs_f64() * 1000.0,
+        frame.len(),
+        mode,
+        operations,
+        base.len(),
+        target.len(),
+        base_frame_bytes,
+        frame
+            .len()
+            .saturating_sub(HEADER_BYTES + base_name.len() + target_name.len() + base_frame_bytes),
+        patch_bytes,
+        started.elapsed().as_secs_f64() * 1000.0,
     );
     Ok(())
 }
