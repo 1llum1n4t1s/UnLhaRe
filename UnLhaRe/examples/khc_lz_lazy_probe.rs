@@ -1,5 +1,9 @@
 //! バイナリ向け独立LZ試作。既存形式ではなく、採用前の実験用CLI。
 #[path = "../src/khc/block/multi_range.rs"]
+#[expect(
+    dead_code,
+    reason = "共有range実装のallocated_bytesは製品の容量検査用で、この独立LZ probeでは使用しない"
+)]
 mod range;
 use crc_fast::{CrcAlgorithm, Digest};
 use serde_json::json;
