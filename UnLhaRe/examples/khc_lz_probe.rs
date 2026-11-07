@@ -54,9 +54,11 @@ impl Models {
     }
     fn read(&mut self, r: &mut range::Decoder<'_>, index: usize) -> Result<u32> {
         let p = u32::from(self.p[index]);
-        let bit = u32::from(r.slot(32768)? >= p);
+        let slot = r.slot(32768)?;
+        let value = slot.value();
+        let bit = u32::from(value >= p);
         let (c, f) = if bit == 0 { (0, p) } else { (p, 32768 - p) };
-        r.consume(c, f, 32768)?;
+        r.consume(slot, c, f, 32768)?;
         self.update(index, bit);
         Ok(bit)
     }

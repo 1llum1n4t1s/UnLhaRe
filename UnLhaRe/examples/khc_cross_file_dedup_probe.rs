@@ -164,7 +164,7 @@ fn decode(b: &[u8]) -> R<[Vec<u8>; 2]> {
     let mut base = Vec::new();
     let mut sum = 0u64;
     let mut count_sum = 0usize;
-    for i in 0..2 {
+    for (i, output) in result.iter_mut().enumerate() {
         let name_len = p.u16()? as usize;
         require((1..=32).contains(&name_len), "name cap")?;
         let name = p.take(name_len)?;
@@ -209,7 +209,7 @@ fn decode(b: &[u8]) -> R<[Vec<u8>; 2]> {
                 len > 0 && len <= if mode == 0 { FILE_CAP } else { 8192 },
                 "chunk cap",
             )?;
-            let end = result[i].len().checked_add(len).ok_or("decoded overflow")?;
+            let end = output.len().checked_add(len).ok_or("decoded overflow")?;
             require(
                 end <= raw as usize && payload_len <= FILE_CAP + 40,
                 "record length",
@@ -242,17 +242,17 @@ fn decode(b: &[u8]) -> R<[Vec<u8>; 2]> {
                 base.push(decoded.clone());
             }
             lengths.push(len);
-            result[i].extend(decoded);
+            output.extend(decoded);
         }
         require(
-            result[i].len() == raw as usize && crc(&result[i]) == expected_crc,
+            output.len() == raw as usize && crc(output) == expected_crc,
             "file length/CRC",
         )?;
         if mode == 0 {
             require(count == usize::from(raw != 0), "full-file layout")?;
         } else {
             require(
-                chunks(&result[i]).iter().map(|b| b.len()).eq(lengths),
+                chunks(output).iter().map(|b| b.len()).eq(lengths),
                 "CDC layout",
             )?;
         }
@@ -517,10 +517,10 @@ fn sha256(input: &[u8]) -> String {
         bytes.push(0);
     }
     bytes.extend(((input.len() as u64) * 8).to_be_bytes());
-    for block in bytes.chunks_exact(64) {
+    for block in bytes.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
-        for (i, b) in block.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes(b.try_into().unwrap());
+        for (i, b) in block.as_chunks::<4>().0.iter().enumerate() {
+            w[i] = u32::from_be_bytes(*b);
         }
         for i in 16..64 {
             let x = w[i - 15];

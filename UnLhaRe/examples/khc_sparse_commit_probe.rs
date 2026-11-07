@@ -1,20 +1,21 @@
 //! 製品MDLとのframe一致を保ったphase診断。時間は優位判定へ使わない。
 #[allow(dead_code)]
 #[path = "../experiments/khc/mdl-phase/profile_block.rs"]
-mod profile;
+mod khc;
+use khc as profile;
 use std::{fs::File, io::Read, time::Instant};
-use unlhare::khc;
+use unlhare::khc as product_khc;
 fn execute() -> Result<(), String> {
     let path = std::env::args().nth(1).ok_or("input file")?;
     let mut raw = Vec::new();
-    raw.try_reserve_exact(khc::BLOCK_BYTES + 1)
+    raw.try_reserve_exact(product_khc::BLOCK_BYTES + 1)
         .map_err(|_| "input allocation")?;
     File::open(path)
         .map_err(|e| e.to_string())?
-        .take((khc::BLOCK_BYTES + 1) as u64)
+        .take((product_khc::BLOCK_BYTES + 1) as u64)
         .read_to_end(&mut raw)
         .map_err(|e| e.to_string())?;
-    if raw.len() > khc::BLOCK_BYTES {
+    if raw.len() > product_khc::BLOCK_BYTES {
         return Err("input bound".into());
     }
     let mut rows = Vec::new();
@@ -24,7 +25,7 @@ fn execute() -> Result<(), String> {
         for side in if round % 2 == 0 { [0, 1] } else { [1, 0] } {
             let time = Instant::now();
             if side == 0 {
-                let wire = khc::compress_block(&raw).map_err(|e| e.to_string())?;
+                let wire = product_khc::compress_block(&raw).map_err(|e| e.to_string())?;
                 let ns = time.elapsed().as_nanos();
                 product = Some((wire, ns));
             } else {
@@ -36,7 +37,7 @@ fn execute() -> Result<(), String> {
         let (wire, product_ns) = product.ok_or("product state")?;
         let (other, stats, total_ns) = measured.ok_or("profile state")?;
         if wire != other
-            || khc::decompress_block(&other).map_err(|e| e.to_string())? != raw
+            || product_khc::decompress_block(&other).map_err(|e| e.to_string())? != raw
             || profile::decode(&wire)?.0 != raw
         {
             return Err("frame/decode mismatch".into());

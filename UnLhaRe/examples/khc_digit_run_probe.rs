@@ -29,7 +29,7 @@ fn check(condition: bool, message: &str) -> Result<(), String> {
 }
 
 fn is_digit(byte: u8) -> bool {
-    (b'0'..=b'9').contains(&byte)
+    byte.is_ascii_digit()
 }
 
 fn discover_runs(input: &[u8]) -> Vec<Run> {

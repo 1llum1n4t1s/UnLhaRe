@@ -484,11 +484,12 @@ fn decode_interval(dec: &mut multi_range::Decoder<'_>, f: [u16; 4], k: usize) ->
         return Err("wire CDF support/total/tail".into());
     }
     let slot = dec.slot(32768).map_err(str::to_owned)?;
+    let value = slot.value();
     let mut sum = 0;
     for (i, &frequency) in f.iter().enumerate().take(k) {
         let v = u32::from(frequency);
-        if slot < sum + v {
-            dec.consume(sum, v, 32768).map_err(str::to_owned)?;
+        if value < sum + v {
+            dec.consume(slot, sum, v, 32768).map_err(str::to_owned)?;
             return Ok(i);
         }
         sum += v;
@@ -539,8 +540,10 @@ fn escape_read(
 ) -> Result<usize> {
     let mut value = 0usize;
     for i in 0..3 {
-        let b = dec.slot(256).map_err(str::to_owned)? as u8;
-        dec.consume(u32::from(b), 1, 256).map_err(str::to_owned)?;
+        let slot = dec.slot(256).map_err(str::to_owned)?;
+        let b = slot.value() as u8;
+        dec.consume(slot, u32::from(b), 1, 256)
+            .map_err(str::to_owned)?;
         s.escapes += 1;
         let part = usize::from(b & 127);
         value = value

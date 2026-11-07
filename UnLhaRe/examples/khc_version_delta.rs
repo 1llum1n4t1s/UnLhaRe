@@ -79,18 +79,30 @@ fn header_crc(header_prefix: &[u8], names: &[u8]) -> u32 {
     crc32(&bytes)
 }
 
+struct MemberMetadata<'a> {
+    name: &'a str,
+    len: usize,
+    crc: u32,
+}
+
 fn assemble_frame(
-    base_name: &str,
-    target_name: &str,
-    base_len: usize,
-    target_len: usize,
-    base_crc: u32,
-    target_crc: u32,
+    base: MemberMetadata<'_>,
+    target: MemberMetadata<'_>,
     mode: u8,
     operation_count: u32,
     base_frame: &[u8],
     body_frame: &[u8],
 ) -> Result<Vec<u8>, String> {
+    let MemberMetadata {
+        name: base_name,
+        len: base_len,
+        crc: base_crc,
+    } = base;
+    let MemberMetadata {
+        name: target_name,
+        len: target_len,
+        crc: target_crc,
+    } = target;
     if !valid_name(base_name) || !valid_name(target_name) {
         return Err("unsafe or oversized member name".into());
     }
@@ -330,12 +342,16 @@ fn encode_pair(
         None => (0, 0, direct_frame.clone(), target.len()),
     };
     let frame = assemble_frame(
-        base_name,
-        target_name,
-        base.len(),
-        target.len(),
-        crc32(base),
-        crc32(target),
+        MemberMetadata {
+            name: base_name,
+            len: base.len(),
+            crc: crc32(base),
+        },
+        MemberMetadata {
+            name: target_name,
+            len: target.len(),
+            crc: crc32(target),
+        },
         mode,
         operation_count,
         &base_frame,
@@ -599,12 +615,16 @@ fn self_check() -> Result<usize, String> {
     let invalid_body =
         compress_block(&invalid_copy).map_err(|error| format!("KHC body: {error}"))?;
     let bad_range = assemble_frame(
-        "base.bin",
-        "target.bin",
-        small_base.len(),
-        1,
-        crc32(small_base),
-        crc32(&[0]),
+        MemberMetadata {
+            name: "base.bin",
+            len: small_base.len(),
+            crc: crc32(small_base),
+        },
+        MemberMetadata {
+            name: "target.bin",
+            len: 1,
+            crc: crc32(&[0]),
+        },
         1,
         1,
         &base_frame,

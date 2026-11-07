@@ -1,23 +1,24 @@
 //! 起動/圧縮/IOを除いた復号batch。照合と解放は両側へ同じく課金する。
 #[allow(dead_code)]
 #[path = "../experiments/khc/active-rotation/baseline_block.rs"]
-mod baseline;
+mod khc;
+use khc as baseline;
 use std::{fs::File, io::Read, time::Instant};
-use unlhare::khc::{self, BlockStrategy};
+use unlhare::khc::{self as product_khc, BlockStrategy};
 fn execute() -> Result<(), String> {
     let path = std::env::args().nth(1).ok_or("input file")?;
     let mut raw = Vec::new();
-    raw.try_reserve_exact(khc::BLOCK_BYTES + 1)
+    raw.try_reserve_exact(product_khc::BLOCK_BYTES + 1)
         .map_err(|_| "input allocation")?;
     File::open(path)
         .map_err(|e| e.to_string())?
-        .take((khc::BLOCK_BYTES + 1) as u64)
+        .take((product_khc::BLOCK_BYTES + 1) as u64)
         .read_to_end(&mut raw)
         .map_err(|e| e.to_string())?;
-    if raw.len() > khc::BLOCK_BYTES {
+    if raw.len() > product_khc::BLOCK_BYTES {
         return Err("input bound".into());
     }
-    let wire = khc::compress_block_with_strategy(&raw, BlockStrategy::BinaryAdaptive)
+    let wire = product_khc::compress_block_with_strategy(&raw, BlockStrategy::BinaryAdaptive)
         .map_err(|e| e.to_string())?;
     let mut rows = Vec::new();
     for round in 0..10 {
@@ -28,7 +29,7 @@ fn execute() -> Result<(), String> {
                 let plain = if side == 0 {
                     baseline::decode(&wire)?.0
                 } else {
-                    khc::decompress_block(&wire).map_err(|e| e.to_string())?
+                    product_khc::decompress_block(&wire).map_err(|e| e.to_string())?
                 };
                 if plain != raw {
                     return Err("byte mismatch".into());

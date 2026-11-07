@@ -10,6 +10,7 @@ const CAP: usize = 1 << 20;
 const INPUT_SHA: &str = "e0cd21cef5b6c4069461e949be100080c3ce887de6f1dd8626c480528efaaf61";
 type R<T> = Result<T, String>;
 type Span = (u8, usize, usize);
+type SpanCase<'a> = (&'a str, &'a [u8], &'a [(u8, usize)]);
 
 fn require(ok: bool, message: &str) -> R<()> {
     if ok { Ok(()) } else { Err(message.into()) }
@@ -186,7 +187,7 @@ fn e2e() -> R<Vec<serde_json::Value>> {
         sha256(b"abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         "SHA-256 known answer",
     )?;
-    let cases: &[(&str, &[u8], &[(u8, usize)])] = &[
+    let cases: &[SpanCase<'_>] = &[
         ("empty", b"", &[]),
         ("plain-no-tag", b"plain", &[(0, 5)]),
         ("simple-tag", b"a<b>c", &[(0, 1), (1, 3), (0, 1)]),
@@ -308,10 +309,10 @@ fn sha256(input: &[u8]) -> String {
         bytes.push(0);
     }
     bytes.extend(((input.len() as u64) * 8).to_be_bytes());
-    for block in bytes.chunks_exact(64) {
+    for block in bytes.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
-        for (i, b) in block.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes(b.try_into().unwrap());
+        for (i, b) in block.as_chunks::<4>().0.iter().enumerate() {
+            w[i] = u32::from_be_bytes(*b);
         }
         for i in 16..64 {
             let x = w[i - 15];

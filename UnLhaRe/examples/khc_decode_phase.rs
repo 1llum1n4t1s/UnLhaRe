@@ -1,14 +1,15 @@
 //! 移植前CompactTreeの復号phase診断。現製品Programの時間や7-Zip優位の証拠ではない。
 #[allow(dead_code)]
 #[path = "../experiments/khc/compiled-program/pre_port_profile.rs"]
-mod profile;
+mod khc;
+use khc as profile;
 use std::{fs::File, io::Read, time::Instant};
-use unlhare::khc::{self, BlockStrategy};
+use unlhare::khc::{self as product_khc, BlockStrategy};
 
 fn execute() -> Result<(), String> {
     let path = std::env::args().nth(1).ok_or("input file")?;
     let mut raw = Vec::new();
-    raw.try_reserve_exact(khc::BLOCK_BYTES + 1)
+    raw.try_reserve_exact(product_khc::BLOCK_BYTES + 1)
         .map_err(|_| "input allocation")?;
     match path.as_str() {
         "--empty" => {}
@@ -16,17 +17,17 @@ fn execute() -> Result<(), String> {
         _ => {
             File::open(path)
                 .map_err(|e| e.to_string())?
-                .take((khc::BLOCK_BYTES + 1) as u64)
+                .take((product_khc::BLOCK_BYTES + 1) as u64)
                 .read_to_end(&mut raw)
                 .map_err(|e| e.to_string())?;
         }
     }
-    if raw.len() > khc::BLOCK_BYTES {
+    if raw.len() > product_khc::BLOCK_BYTES {
         return Err("input bound".into());
     }
-    let frame = khc::compress_block_with_strategy(&raw, BlockStrategy::BinaryAdaptive)
+    let frame = product_khc::compress_block_with_strategy(&raw, BlockStrategy::BinaryAdaptive)
         .map_err(|e| e.to_string())?;
-    if khc::decompress_block(&frame).map_err(|e| e.to_string())? != raw {
+    if product_khc::decompress_block(&frame).map_err(|e| e.to_string())? != raw {
         return Err("public decode mismatch".into());
     }
     let mut rows = Vec::with_capacity(9);
