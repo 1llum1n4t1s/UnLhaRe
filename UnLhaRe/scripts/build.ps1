@@ -272,7 +272,7 @@ try {
     try {
         if ($Test -and $isNativeTarget) {
             Invoke-Cargo -Arguments @('fmt', '--all', '--', '--check')
-            Invoke-Cargo -Arguments @('clippy', '--locked', '--workspace', '--all-targets', '--target', $Target, '--', '-D', 'warnings')
+            Invoke-Cargo -Arguments @('clippy', '--locked', '--workspace', '--all-targets', '--target', $Target, '--keep-going', '--', '-D', 'warnings')
             Invoke-Cargo -Arguments @('test', '--locked', '--workspace', '--target', $Target)
         } elseif ($Test) {
             Write-Warning "Tests run only on the native host target ($hostTarget); building $Target without running tests."

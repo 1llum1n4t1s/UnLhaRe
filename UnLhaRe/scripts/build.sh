@@ -74,7 +74,7 @@ cd -- "$repository_root"
 
 if [[ "$run_tests" == true && "$target" == "$host_target" ]]; then
     "$cargo_bin" fmt --all -- --check
-    "$cargo_bin" clippy --locked --workspace --all-targets --target "$target" -- -D warnings
+    "$cargo_bin" clippy --locked --workspace --all-targets --target "$target" --keep-going -- -D warnings
     "$cargo_bin" test --locked --workspace --target "$target"
 elif [[ "$run_tests" == true ]]; then
     echo "Tests run only on the native host target ($host_target); building $target without running tests." >&2

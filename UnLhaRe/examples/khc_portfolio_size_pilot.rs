@@ -91,7 +91,7 @@ fn run() -> PilotResult<String> {
         || files
             .iter()
             .map(|(name, _)| name.as_str())
-            .ne(EXPECTED_FILES.into_iter())
+            .ne(EXPECTED_FILES)
     {
         return Err("Canterbury11 filename set mismatch".into());
     }
