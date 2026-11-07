@@ -4,7 +4,7 @@
 
 互換版の実装は `UnLha32Re/` にあり、UNLHA32.DLL 3.00.0.5 の x86 ABI と観測可能な動作を再現する Windows DLL `UNLHA32RE.DLL` を構築する。完全互換は目標であり、全入力・全副作用の一致を示すものではない。確認範囲、既知の差異、データ保護上の例外は [プロジェクト README](UnLha32Re/README.md) を正本とする。
 
-`UnLhaRe/` はRust 1.98.1 / edition 2024による独立した近代化版。Windows/macOSのx64/ARM64を対象とし、旧x86 ABIを引き継がない。利用手順と機能境界は [新版README](UnLhaRe/README.md)。以下の互換版の設計とは実装と試験入口を分離する。
+`UnLhaRe/` はRust 1.98.1 / edition 2024による独立した近代化版。Windows x64/ARM64とmacOS ARM64を対象とし、旧x86 ABIを引き継がない。利用手順と機能境界は [新版README](UnLhaRe/README.md)。以下の互換版の設計とは実装と試験入口を分離する。
 
 開発版KHCのKCS1 encoderは、`src/khc/spatial.rs`で一度の因果Voter走査から有界Count/Literal記録を作り、CDF確定後に再生する。記録は1件2B、入力長以下で、最大2MiBをcodecの64MiB枠に課金する。長さ0のCountは直後Literalのbit14へ併合し、Count0・literal bitsの順で再生する。Countのvarintと保存したLiteral幅から位置・残差を復元し、frame確保・stored fallback前に記録を破棄する。SpatialMdlでは保持MDL frameの実capacityも合算する。記録はwireへ出さず、KCS1形式・復号規則とPortfolioの同長順位を維持する。2026-10-23の有限API/CLI E2Eで旧3完全frameと旧24書庫データ部分の一致を確認したが、速度・実ピークmemory改善は未評価である。task内限定Rust1.98.1/LLDでのbuild/lintは成功した。既定Rust1.99.1の検証と、以前のMSVC補助プロセス残存によるwrapper失敗は別途未解決。[形式とメモリ境界](UnLhaRe/KHC_FORMAT.md#メモリと有限製品e2e)、[実行記録](UnLhaRe/experiments/khc/STORAGE.md)を参照する。
 
@@ -38,7 +38,7 @@
 
 研究用の単一solid groupは`experiments/khc/solid.rs`で名前・長さ表と連続本文を検証し、既存KHC frameの入力として圧縮する。全metadataを先に検証した借用viewだけを返し、名前をファイルパスとして使わない。`khc_lab group-bench`で複数ファイルの履歴共有・復元を検証し、`group-encode` / `group-list` / `group-decode`で圧縮・名前一覧・本文連結stdoutを扱う。`compare-solid.ps1`は7-Zipのnative複数ファイルsolidと名前・サイズ・本文hashを照合する開発用比較であり、製品用書庫・group索引・hard memory契約とは分離する。詳細は[研究仕様](UnLhaRe/experiments/khc/README.md#研究用solid-group)。
 
-独自形式の開発版はRust `src/khc/` に統合し、LHAのMethod/Entry/C ABIと独立させる。[KHC1形式仕様](UnLhaRe/KHC_FORMAT.md)は独立archive/block magic、version、整数decode、費用込み静的モデル、1MiB bounded block/stored、CRC、manifest制限を規定する。`src/khc/block/` は検証済み実験から必要部分だけを独立portし、製品からexperimentsへのpath依存はない。containerは既存directoryのroot/beneath nofollow、readerのstaging/no-replace、writerのsource identity helperを再利用する。directory収集はlibの共通helperを保持root付きで使う。新API/CLIの完全復元・実費一致はWindows x64で確認し、比較性能・4環境nativeは未完了。先行研究との関係と未採用の量子手法は[方式選定](UnLhaRe/experiments/khc/RESEARCH_SELECTION_20261005.md)を参照。
+独自形式の開発版はRust `src/khc/` に統合し、LHAのMethod/Entry/C ABIと独立させる。[KHC1形式仕様](UnLhaRe/KHC_FORMAT.md)は独立archive/block magic、version、整数decode、費用込み静的モデル、1MiB bounded block/stored、CRC、manifest制限を規定する。`src/khc/block/` は検証済み実験から必要部分だけを独立portし、製品からexperimentsへのpath依存はない。containerは既存directoryのroot/beneath nofollow、readerのstaging/no-replace、writerのsource identity helperを再利用する。directory収集はlibの共通helperを保持root付きで使う。新API/CLIの完全復元・実費一致はWindows x64で確認し、比較性能・3環境nativeは未完了。先行研究との関係と未採用の量子手法は[方式選定](UnLhaRe/experiments/khc/RESEARCH_SELECTION_20261005.md)を参照。
 
 研究用beamのBT4候補は増分二分探索木を単調に更新し、区間snapshotを暫定学習と本解析で共有する。長一致の即時確定を先に判定してから区間の残りを挿入する。採取位置の木探索は可視一致長が16訪問連続で改善しなければ打ち切る近似で、追いつき挿入には適用しない。通常Matchだけは位置ごとの累積費用最小の親1つへ展開元を絞り、LiteralとRep系は全親を維持する近似とする。将来の距離履歴を含む厳密な最適化ではなく、個別のサイズ悪化を比較記録へ残す。固定prefixによる有界近似・追加メモリ・比較結果は上記実験仕様を正本とし、既定chain・製品API・LHA形式は変更しない。
 
@@ -58,7 +58,7 @@
 | `UnLhaRe/src/operation.rs`、`UnLhaRe/src/ffi/app.rs` | API level 2〜5の進捗・キャンセル、選択操作・上限指定・結果通知JSON・エラー分類・項目単位一覧通知 |
 | `UnLhaRe/bindings/dotnet/` | Native AOT対応C# API、CPU別DLLとライセンスのNuGet同梱 |
 | `UnLhaRe/tests/`、`UnLhaRe/bindings/dotnet/tests/`、`UnLhaRe/scripts/` | Rust・C・.NETの契約試験、ローカルbundle作成 |
-| `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 4環境のネイティブ検証、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
+| `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 3環境のネイティブ検証、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
 
 ### 近代化版のデータフローと契約
 

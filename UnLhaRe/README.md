@@ -1,10 +1,10 @@
 # UnLhaRe — 64bit版
 
-Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
+Windows x64/ARM64とmacOS ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
 
 ## バージョン1.0.4の配布
 
-[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.4)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布します。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
+[GitHub Releases](https://github.com/1llum1n4t1s/UnLhaRe/releases/tag/unlhare-v1.0.4)で、Windows x64/ARM64はZIP、macOS Intel/Apple Siliconはtar.gzを配布済みです。この1.0.4の既発行物は保持しますが、現在のmacOSサポート・ビルド・検証・今後の配布対象はApple Silicon（ARM64）だけです。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
 
 旧互換版の `v1.0.0` とは別の `unlhare-v1.0.4` タグです。ソースとビルド手順も同じタグから取得できます。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
 
@@ -20,7 +20,7 @@ Windows・macOSのx64/ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / 
 | 検査・展開 | LH0/LH1/LH4/LH5/LH6/LH7/LHX、LZS/LZ5、PM0/PM1/PM2。本文サイズとCRCを確認 |
 | 作成 | LH0、LH4、LH5（既定）、LH6、LH7。圧縮で大きくなる場合はLH0。レベル2ヘッダー |
 | 名前 | 新規作成はUTF-8とUnicode拡張。読取はUnicode拡張優先、コードページ65001/932/51932/20932/1252 |
-| プラットフォーム | Windows x64/ARM64、macOS Intel/Apple Silicon。32bitはコンパイル時に拒否 |
+| プラットフォーム | Windows x64/ARM64、macOS Apple Silicon（ARM64）。32bitはコンパイル時に拒否 |
 
 コードページ指定のない名前は有効なUTF-8を優先し、それ以外はCP932として読みます。無指定のEUC-JP等を自動判別する機能はありません。LH2/LH3、SFX、書庫の更新・結合・注釈編集、旧DLLコールバック、GUIは現APIの対象外です。従来の展開APIは日時を復元しません。API level 3では通常ファイルの更新日時を任意で復元できます。権限・拡張属性は復元せず、シンボリックリンクと特殊ファイルは受け付けません。
 
@@ -134,7 +134,7 @@ bash scripts/build.sh --test
 
 bundleは `artifacts/<target>/` に作成します。Windowsは `unlhare.dll`、`unlhare.dll.lib`、`unlhare-cli.exe`、macOSは `libunlhare.dylib`、`unlhare-cli` を含みます。ヘッダー、ライセンス、Cargo.lockも同梱します。署名・公証・公開は別工程です。
 
-WindowsからmacOSターゲットを指定した場合は `cargo check` のみ実行し、配布物を作りません。クロスビルド成功だけでは実行確認済みとは扱いません。CIは4環境でネイティブビルド・テストを行います。今回の確認済み範囲と未実行範囲は [検証記録](VALIDATION.md) に記載しています。
+WindowsからmacOSターゲットを指定した場合は `cargo check` のみ実行し、配布物を作りません。クロスビルド成功だけでは実行確認済みとは扱いません。CIは3環境でネイティブビルド・テストを行います。今回の確認済み範囲と未実行範囲は [検証記録](VALIDATION.md) に記載しています。
 
 ## ライブラリ
 

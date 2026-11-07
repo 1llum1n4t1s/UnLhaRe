@@ -3,7 +3,6 @@ param(
     [ValidateSet(
         'x86_64-pc-windows-msvc',
         'aarch64-pc-windows-msvc',
-        'x86_64-apple-darwin',
         'aarch64-apple-darwin'
     )]
     [string]$Target,
@@ -41,7 +40,6 @@ if ($isWindowsHost) {
     }
 } elseif ($isMacHost) {
     $hostTarget = switch ($hostArchitecture) {
-        'X64' { 'x86_64-apple-darwin' }
         'Arm64' { 'aarch64-apple-darwin' }
         default { throw "Unsupported macOS host architecture: $hostArchitecture" }
     }

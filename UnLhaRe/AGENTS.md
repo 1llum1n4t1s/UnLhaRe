@@ -1,17 +1,17 @@
 # 64bit版 UnLhaRe の作業規約
 
 - このディレクトリは新APIのRust版。親のx86 ABI、stdcall、Windows専用試験の制約は `../UnLha32Re/` のみへ適用する。
-- 対象はWindows/macOSのx64/ARM64。Rust toolchainとCargo.lockを使い、32bit対応を追加しない。
+- 対象はWindows x64/ARM64とmacOS ARM64。macOS Intelはサポート・ビルド・検証・配布の対象外とする。Rust toolchainとCargo.lockを使い、32bit対応を追加しない。
 - `scripts/build.ps1 -Test`（Windows）または `bash scripts/build.sh --test`（macOS）でfmt、clippy、テスト、Releaseビルドとローカルbundleを確認する。
-- クロスOSのcargo checkはネイティブビルド・実行検証と区別する。4環境のネイティブ検証は `../.github/workflows/modern.yml`。
+- クロスOSのcargo checkはネイティブビルド・実行検証と区別する。3環境のネイティブ検証は `../.github/workflows/modern.yml`。
 - 公開C ABIを変える場合は `src/ffi.rs`、`include/unlhare.h`、`tests/ffi.rs`、C exampleを照合する。UTF-8、固定幅整数、呼び出し側所有バッファを維持する。
 - JSON連携APIまたは.NET APIを変える場合は `src/operation.rs`、`src/ffi/app.rs`、`include/unlhare.h`、`tests/app_ffi.rs`、`tests/app_usability_ffi.rs`、`tests/create_report.rs`、`tests/reader_metadata.rs`、`tests/operation.rs`、`bindings/dotnet/src/`、同ContractTestsをまとめて照合する。Windowsではネイティブ対象のbundle作成後、`.github/workflows/modern.yml` と同じNative AOT publishと実行試験を行う。
 - 既存出力の保持、CRC検査後のファイル公開、Limits、独立呼び出しの状態分離を維持する。圧縮元・展開先・書庫出力先の親はファイルシステムルートから各要素を非追跡で解決し、Windowsではreparse point、macOSではsymlinkを拒否する。検査済み親ハンドルを基点とする一時作成とno-replace公開を維持する。
 - パス解決、一時ファイル、公開方法を変える場合は `src/directory.rs`、`src/lib.rs`、`src/reader.rs`、`src/writer.rs` と各モジュールのOS条件付き試験を照合し、変更対象OSでネイティブ試験を実行する。
 - 公開Rust API・C ABI・.NET APIは汎用ライブラリとして維持し、Lhamielなど特定の利用アプリやUIフレームワークへ依存させない。設定保存、UIへの進捗転送・間引き、上書き確認、関連付け、製品の更新処理は呼び出し側の責務とする。利用アプリの都合による上限値は公開APIの既定値へ混入させず、呼び出しごとの引数で指定する。
 - 設計はルートDESIGN.md、機能・制限・操作はこのREADME.mdを更新する。
-- 依存監視の対象は `../.github/dependabot.yml` を正本とする。Rust依存変更では `Cargo.lock` と第三者告知・ライセンス全文を照合・更新し、上記の `-Test` / `--test` と4環境のネイティブCIで検証する。NuGet依存変更ではWindowsのNative AOT ContractTestsも実行する。GitHub Actionsの更新では `../.github/workflows/modern.yml` のビルド・C API consumer・Native AOT検証を維持する。
-- バージョン、タグ、配布名、署名・公証、公開前後の確認は `RELEASING.md` を正本とし、4環境のネイティブCIを確認する。クロスOSのcargo checkだけで配布可と判断しない。
+- 依存監視の対象は `../.github/dependabot.yml` を正本とする。Rust依存変更では `Cargo.lock` と第三者告知・ライセンス全文を照合・更新し、上記の `-Test` / `--test` と3環境のネイティブCIで検証する。NuGet依存変更ではWindowsのNative AOT ContractTestsも実行する。GitHub Actionsの更新では `../.github/workflows/modern.yml` のビルド・C API consumer・Native AOT検証を維持する。
+- バージョン、タグ、配布名、署名・公証、公開前後の確認は `RELEASING.md` を正本とし、3環境のネイティブCIを確認する。クロスOSのcargo checkだけで配布可と判断しない。
 - 生成物はartifacts/、中間生成物はbuild/。コミット・公開は明示依頼時のみ。
 
 WindowsでJSON連携APIまたは.NET APIを変更した場合は、次を実行する。

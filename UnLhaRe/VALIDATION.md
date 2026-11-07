@@ -1,5 +1,7 @@
 # 検証記録 — 2026-09-18
 
+現在の検証対象はWindows x64/ARM64とmacOS ARM64の3環境です。以下の過去記録にあるmacOS x64や4環境の観測結果は史実として保持し、現在のサポート・ビルド・検証・配布対象には含めません。
+
 ## 1.0.4 API level 5 ストリーミング一覧
 
 - Windows x64で `scripts/build.ps1 -Target x86_64-pc-windows-msvc -Test` が成功。fmt、clippy `-D warnings`、Rust全62試験、doc test、Release bundleを確認した。Rust visitorとCの項目JSON通知について、書庫順、項目単位JSON、進捗、途中キャンセル、NULL callbackの事前拒否を含む。
@@ -49,7 +51,7 @@
 - Windows ARM64: Releaseクロスビルド成功。macOS x64/ARM64: 全ターゲットのcargo check成功。ネイティブ実行はModern Rust CIで確認する。
 - .NET 10: C#経由のUnicode往復、選択、上限、取消、コールバック例外、最終通知内取消を確認。x64 Native AOT実行成功、ARM64 Native AOTクロスビルド成功。
 - NuGet実物: PackageReference経由のx64 Native AOT実行、CPU別DLLとライセンスのpublish同梱を確認。
-- 4環境のネイティブCI、署名・公開物のハッシュとNuGet公開確認はリリースごとの `artifacts/release-<version>/release-state.json` に記録する。
+- 現在の3環境のネイティブCI、署名・公開物のハッシュとNuGet公開確認はリリースごとの `artifacts/release-<version>/release-state.json` に記録する。
 
 以下は1.0.0実装時のローカル検証記録。1.0.0の4環境ネイティブCIは [run 35207328000](https://github.com/1llum1n4t1s/UnLhaRe/actions/runs/35207328000) で成功済み。
 
@@ -72,6 +74,6 @@ fixtureは `../UnLha32Re/sample/lha-master/tests/` のローカル比較資料�
 
 - Windows: `pwsh -NoProfile -File scripts/build.ps1 -Test`
 - macOS: `bash scripts/build.sh --test`
-- CI: `../.github/workflows/modern.yml` で4環境のnativeテストとC consumerを実行。Windowsでは.NET Native AOT consumerも実行。
+- CI: `../.github/workflows/modern.yml` で3環境のnativeテストとC consumerを実行。Windowsでは.NET Native AOT consumerも実行。
 
-ローカルbundleは署名前の開発成果物です。配布は4環境のnative CIとWindows署名確認を経た別工程です。macOSはad-hoc署名であり、Developer ID署名・公証には対応していません。
+ローカルbundleは署名前の開発成果物です。配布は3環境のnative CIとWindows署名確認を経た別工程です。macOSはad-hoc署名であり、Developer ID署名・公証には対応していません。

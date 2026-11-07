@@ -4,7 +4,7 @@
 
 - **対象が明示されていない作業依頼は `UnLhaRe/`（64bit版・Rust版）を対象とする。** 調査、レビュー、修正、最適化、依存更新、検証、リリースのいずれもこの既定値に従う。
 - **`UnLha32Re/`（x86互換版）は、ユーザーがその版またはディレクトリを明示的に指定した場合だけ扱う。** 明示指定がなければ調査・編集・ビルド・テスト・リリースを行わず、全体監査、一括更新、サブエージェントへの委任にも含めない。ルートの共有文書・設定を変更するときも、依頼された `UnLhaRe/` の作業に必要な範囲に限定する。
-- x86互換版は `UnLha32Re/`、Windows/macOS x64/ARM64向け新APIのRust版は `UnLhaRe/` で扱う。以下のx86 ABI・専用試験規約は互換版に適用する。新版は [新版作業規約](UnLhaRe/AGENTS.md) に従う。構造と設計上の境界は [DESIGN.md](DESIGN.md) を参照する。
+- x86互換版は `UnLha32Re/`、Windows x64/ARM64とmacOS ARM64向け新APIのRust版は `UnLhaRe/` で扱う。以下のx86 ABI・専用試験規約は互換版に適用する。新版は [新版作業規約](UnLhaRe/AGENTS.md) に従う。構造と設計上の境界は [DESIGN.md](DESIGN.md) を参照する。
 - 明示指定された `UnLha32Re/` の互換性に関わる変更では [互換範囲と例外](UnLha32Re/README.md) と [比較資料](UnLha32Re/docs/reverse-engineering.md) を確認し、対応する `scripts/test-*.ps1` と `tests/compatibility_tests.cpp` のプローブを照合する。
 - 利用者向けの版選択はルート README、各版の機能・制限・操作は各ディレクトリの README、互換版の詳細な検証手順は `UnLha32Re/docs/` に記載する。DESIGN.md は実装構造の正本として更新する。
 

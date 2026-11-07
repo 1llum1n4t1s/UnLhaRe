@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -30,11 +31,8 @@ jobs:
             os: windows
             msvc_arch: arm64
             native_rid: win-arm64
-          - target: x86_64-apple-darwin
-            runner: macos-15-intel
-            os: macos
           - target: aarch64-apple-darwin
-            runner: macos-15
+            runner: [self-hosted, macOS, ARM64, m3mb14]
             os: macos
 
     runs-on: ${{ matrix.runner }}

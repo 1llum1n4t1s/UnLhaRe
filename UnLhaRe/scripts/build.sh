@@ -3,28 +3,12 @@ set -euo pipefail
 
 # macOS usage:
 #   bash scripts/build.sh --test
-#   bash scripts/build.sh --target x86_64-apple-darwin
+#   bash scripts/build.sh --target aarch64-apple-darwin
 # These are equivalent to cargo fmt/clippy/test followed by:
 #   cargo build --locked --workspace --release --target <target>
 
 script_dir="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd -- "$script_dir/.." && pwd)"
-
-if command -v cargo >/dev/null 2>&1; then
-    cargo_bin="$(command -v cargo)"
-elif [[ -x "$HOME/.cargo/bin/cargo" ]]; then
-    cargo_bin="$HOME/.cargo/bin/cargo"
-else
-    echo 'cargo was not found on PATH or at $HOME/.cargo/bin/cargo.' >&2
-    exit 1
-fi
-
-if command -v rustc >/dev/null 2>&1; then
-    rustc_bin="$(command -v rustc)"
-else
-    rustc_bin="$(dirname "$cargo_bin")/rustc"
-    [[ -x "$rustc_bin" ]] || { echo 'rustc was not found next to cargo.' >&2; exit 1; }
-fi
 
 target=''
 run_tests=false
@@ -46,17 +30,35 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "$target" in
+    ''|aarch64-apple-darwin|x86_64-pc-windows-msvc|aarch64-pc-windows-msvc) ;;
+    *) echo "Unsupported target: $target" >&2; exit 2 ;;
+esac
+
+
+if command -v cargo >/dev/null 2>&1; then
+    cargo_bin="$(command -v cargo)"
+elif [[ -x "$HOME/.cargo/bin/cargo" ]]; then
+    cargo_bin="$HOME/.cargo/bin/cargo"
+else
+    echo 'cargo was not found on PATH or at $HOME/.cargo/bin/cargo.' >&2
+    exit 1
+fi
+
+if command -v rustc >/dev/null 2>&1; then
+    rustc_bin="$(command -v rustc)"
+else
+    rustc_bin="$(dirname "$cargo_bin")/rustc"
+    [[ -x "$rustc_bin" ]] || { echo 'rustc was not found next to cargo.' >&2; exit 1; }
+fi
+
 host_target="$("$rustc_bin" -vV | sed -n 's/^host: //p')"
 case "$host_target" in
-    x86_64-apple-darwin|aarch64-apple-darwin|x86_64-pc-windows-msvc|aarch64-pc-windows-msvc) ;;
+    aarch64-apple-darwin|x86_64-pc-windows-msvc|aarch64-pc-windows-msvc) ;;
     *) echo "Unsupported host target: $host_target" >&2; exit 1 ;;
 esac
 
 target="${target:-$host_target}"
-case "$target" in
-    x86_64-apple-darwin|aarch64-apple-darwin|x86_64-pc-windows-msvc|aarch64-pc-windows-msvc) ;;
-    *) echo "Unsupported target: $target" >&2; exit 2 ;;
-esac
 
 host_os="${host_target#*-}"
 host_os="${host_os#*-}"

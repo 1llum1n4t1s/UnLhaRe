@@ -1,6 +1,6 @@
 # UnLhaRe
 
-UnLhaRe はLHA書庫を扱うライブラリです。Windows/macOSのx64/ARM64向けRust版と、既存Windowsアプリ向けx86互換版を分けて提供します。
+UnLhaRe はLHA書庫を扱うライブラリです。Windows x64/ARM64とmacOS ARM64向けRust版と、既存Windowsアプリ向けx86互換版を分けて提供します。
 
 ## 提供する2つの版
 
