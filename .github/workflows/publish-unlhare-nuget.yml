@@ -67,12 +67,12 @@ jobs:
           if ($IsWindows) {
             $installer = Join-Path $env:RUNNER_TEMP 'dotnet-install.ps1'
             Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installer
-            & $installer -Channel 10.0 -InstallDir $installRoot -NoPath
+            & $installer -Channel 11.0 -InstallDir $installRoot -NoPath
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           } else {
             $installer = Join-Path $env:RUNNER_TEMP 'dotnet-install.sh'
             Invoke-WebRequest 'https://dot.net/v1/dotnet-install.sh' -OutFile $installer
-            bash $installer --channel 10.0 --install-dir $installRoot --no-path
+            bash $installer --channel 11.0 --install-dir $installRoot --no-path
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
           "DOTNET_ROOT=$installRoot" >> $env:GITHUB_ENV
