@@ -138,6 +138,35 @@ pub struct Options {
     pub memory_budget: usize,
 }
 
+/// 窓共有segment試作の公開入口（LONG_RANGE_LZ_20261113.md）。研究専用で、wireは独立frameを持たない。
+/// `window[..start]` は copy 元だけに使う前置、`window[start..]` が符号化対象。
+/// lhc_window_lab だけが使い、lhc_lab からは呼ばないため dead_code を許可する。
+#[allow(dead_code)]
+pub fn encode_window_segment(
+    window: &[u8],
+    start: usize,
+    dictionary: usize,
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<Vec<u8>, Error> {
+    let options = Options {
+        dictionary,
+        ..Options::default()
+    };
+    lz::encode_window_segment(window, start, options, cancel)
+}
+
+/// `encode_window_segment` の逆。`output[..start]` に前置を入れて呼ぶ。
+#[allow(dead_code)]
+pub fn decode_window_segment(
+    output: &mut [u8],
+    start: usize,
+    packed: &[u8],
+    dictionary: usize,
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<(), Error> {
+    lz::decode_window_segment(output, start, packed, dictionary, cancel)
+}
+
 impl Default for Options {
     fn default() -> Self {
         Self {

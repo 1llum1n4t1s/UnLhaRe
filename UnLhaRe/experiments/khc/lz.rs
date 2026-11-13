@@ -7737,6 +7737,181 @@ pub(super) fn encode_history_seeded_chunks(
     Ok(payload)
 }
 
+/// 窓共有segment試作（LONG_RANGE_LZ_20261113.md）。`window[..start]` を符号化しない前置として
+/// copy元だけに使い、`window[start..]` を新しい確率model・Rep履歴で符号化した range payload を返す。
+/// 各segmentは前置を生データとして受け取るため、segment同士を並列に符号化できる。
+/// parser・token・range符号は history-seeded chunk と同じで、違いは seed 学習をしないことと、
+/// 1 segment が1 chunk になることだけ。BT5 は前置位置を `prepare_start` で順に挿入する。
+/// lhc_window_lab だけが使い、lhc_lab からは呼ばないため dead_code を許可する。
+#[allow(dead_code)]
+pub(super) fn encode_window_segment(
+    window: &[u8],
+    start: usize,
+    options: Options,
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<Vec<u8>, Error> {
+    check(cancel)?;
+    if start >= window.len()
+        || window.len() > MAX_INPUT
+        || options.dictionary == 0
+        || options.dictionary > MAX_DICTIONARY
+    {
+        return Err(Error::Limit);
+    }
+    let chunk_end = window.len();
+    let chunk_length = chunk_end - start;
+    let mut matcher = bt::Matcher::new(window.len(), 5)?;
+    let mut candidate_block = bt::Block::new(MAX_BEAM_BLOCK)?;
+    let mut models = Models::new()?;
+    let mut state = ParseState {
+        reps: [1usize; 4],
+        previous_match: false,
+    };
+    let mut coder = range::Encoder::with_limit(chunk_length).map_err(encode_error)?;
+    let mut pos = start;
+    {
+        let mut sink = FastRangeSink(&mut coder);
+        while pos < chunk_end {
+            check(cancel)?;
+            let block_end = pos.saturating_add(MAX_BEAM_BLOCK).min(chunk_end);
+            let plan = beam_plan_bt4(
+                &mut matcher,
+                &mut candidate_block,
+                &models,
+                window,
+                pos,
+                BeamParseConfig {
+                    dictionary: options.dictionary,
+                    initial_state: state,
+                    cache_prices: true,
+                    width: 2,
+                    block: MAX_BEAM_BLOCK,
+                    model: BeamModel::Blended,
+                    matches: BeamMatches::Bt5,
+                    rep_diverse_third_parent: false,
+                    fixed_rep_history: false,
+                },
+                Some(block_end),
+                cancel,
+            )?;
+            if plan.is_empty() {
+                return Err(Error::Format(
+                    "window segment beam parser returned empty plan",
+                ));
+            }
+            let plan_start = pos;
+            for token in plan {
+                let token_length = token.length();
+                if token_length == 0 || token_length > block_end - pos {
+                    return Err(Error::Format("window segment token crosses block boundary"));
+                }
+                put_token(
+                    &mut sink,
+                    &mut models,
+                    window,
+                    pos,
+                    &mut state.reps,
+                    state.previous_match,
+                    token,
+                )?;
+                pos += token_length;
+                state.previous_match = !matches!(token, Token::Literal);
+            }
+            if pos != block_end {
+                return Err(Error::Format(
+                    "window segment plan does not cover its block",
+                ));
+            }
+            sink.end_plan(pos - plan_start, cancel)?;
+        }
+    }
+    let packed = coder.finish_fast().map_err(encode_error)?;
+    if packed.is_empty() || packed.len() > chunk_length {
+        return Err(Error::CandidateFull);
+    }
+    Ok(packed)
+}
+
+/// `encode_window_segment` の逆。`output[..start]` には復号済みの前置が入っている前提で、
+/// `output[start..]` を厳密に復号する（余剰・距離超過・終端不一致は拒否）。
+#[allow(dead_code)]
+pub(super) fn decode_window_segment(
+    output: &mut [u8],
+    start: usize,
+    packed: &[u8],
+    dictionary: usize,
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<(), Error> {
+    check(cancel)?;
+    if start >= output.len() || dictionary == 0 || dictionary > MAX_DICTIONARY {
+        return Err(Error::Limit);
+    }
+    let chunk_end = output.len();
+    let mut models = Models::new()?;
+    let mut coder = range::Decoder::<false>::new(packed).map_err(Error::Format)?;
+    let mut reps = [1usize; 4];
+    let mut previous_match = false;
+    let mut delta_models = [16384u16; DISTANCE_CONTEXTS];
+    let mut pos = start;
+    while pos < chunk_end {
+        let decoded = if coder.input_remaining() >= FAST_TOKEN_INPUT_MARGIN {
+            // SAFETY: decode_history_seeded_chunks と同じ確率値域・token最大bit数・入力余裕を満たす。
+            let mut fast = unsafe { FastTokenRange::new(&mut coder) };
+            decode_token::<false>(
+                &mut fast,
+                &mut models,
+                &mut delta_models,
+                output,
+                pos,
+                reps,
+                previous_match,
+                dictionary,
+            )?
+        } else {
+            decode_token::<false>(
+                &mut coder,
+                &mut models,
+                &mut delta_models,
+                output,
+                pos,
+                reps,
+                previous_match,
+                dictionary,
+            )?
+        };
+        let (distance, length, rep_index) = match decoded {
+            DecodedToken::Literal(value) => {
+                output[pos] = value;
+                pos += 1;
+                previous_match = false;
+                coder.advance_output(1).map_err(Error::Format)?;
+                continue;
+            }
+            DecodedToken::Match {
+                distance,
+                length,
+                rep_index,
+            } => (distance, length, rep_index),
+        };
+        if distance == 0 || distance > dictionary || distance > pos {
+            return Err(Error::Format("invalid window segment repeat distance"));
+        }
+        if length == 0 || length > chunk_end - pos {
+            return Err(Error::Format("window segment token crosses its end"));
+        }
+        copy_match_bytes(output, pos, distance, length, cancel)?;
+        match rep_index {
+            Some(index @ 0..=3) => move_rep(&mut reps, index),
+            Some(4) => add_distance(&mut reps, distance),
+            _ => {}
+        }
+        pos += length;
+        previous_match = true;
+        coder.advance_output(length).map_err(Error::Format)?;
+    }
+    coder.finish().map_err(Error::Format)
+}
+
 fn encode_beam_bt4_batched(
     input: &[u8],
     options: Options,

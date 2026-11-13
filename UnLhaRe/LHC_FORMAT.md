@@ -337,7 +337,7 @@ revision 11の各blockはrevision 10が許す全frame（KCS1BLK、KRS2BLK、KRS3
 | 0 | 8 | `LPM1BLK\0` |
 | 8 | 2 | frame revision 1 |
 | 10 | 1 | method 1（PPM）。storedは持たず、利得がないblockは他候補を選ぶ |
-| 11 | 1 | 最大次数（2〜16。現行encoderは6） |
+| 11 | 1 | 最大次数（2〜16。現行encoderは5） |
 | 12 | 4 | raw長（manifestのblock長と一致、1〜1MiB） |
 | 16 | 4 | model arena上限MiB（40固定） |
 | 20 | 4 | payload長（raw長未満） |

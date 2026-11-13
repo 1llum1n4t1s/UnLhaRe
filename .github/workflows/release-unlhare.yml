@@ -69,10 +69,14 @@ jobs:
           $package = [regex]::Match($manifest, '(?ms)^\[package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
           $versions = [regex]::Matches($package.Groups['body'].Value, '(?m)^version\s*=\s*"([^"]+)"\s*$')
           if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -cne $env:RELEASE_VERSION) { throw 'Cargo package version does not match the requested release.' }
-          # 同じ SHA で成功した push の Modern Rust を使う（RELEASING.md の手順2）。
-          $listed = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/modern.yml/runs?head_sha=$sha&status=success&per_page=20" --jq '[.workflow_runs[] | {id, head_sha}]'
+          # 同じ SHA で成功した、release ブランチ上の Modern Rust を使う（RELEASING.md の手順2）。
+          # head_sha だけでは同じ SHA を head とする PR の run（base とのマージ結果をビルド）も一致するため、
+          # head_branch と event（push か、ブランチを指定した手動実行。どちらも $sha そのものをビルドする）も
+          # API の絞り込みと応答の両方で照合する。1.0.4 は手動実行の run で公開した。
+          $encodedBranch = [uri]::EscapeDataString($branch)
+          $listed = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/modern.yml/runs?head_sha=$sha&branch=$encodedBranch&status=success&per_page=20" --jq '[.workflow_runs[] | {id, head_sha, event, head_branch}]'
           if ($LASTEXITCODE -ne 0) { throw 'Modern Rust runs could not be listed.' }
-          $runs = @(($listed | ConvertFrom-Json) | Where-Object { $_.head_sha -ceq $sha } | ForEach-Object { $_.id })
+          $runs = @(($listed | ConvertFrom-Json) | Where-Object { $_.head_sha -ceq $sha -and $_.head_branch -ceq $branch -and $_.event -cin @('push', 'workflow_dispatch') } | ForEach-Object { $_.id })
           if ($runs.Count -lt 1) { throw "No successful Modern Rust run for $sha. Push the release branch and wait for CI first." }
           "sha=$sha" >> $env:GITHUB_OUTPUT
           "run_id=$($runs[0])" >> $env:GITHUB_OUTPUT

@@ -80,7 +80,7 @@ LHCの既定`mdl`は従来のrevision 1を維持します。明示指定の`hybr
 
 明示指定の`portfolio-trial`（Rust `BlockStrategy::PortfolioTrial`）はrevision 10の実験候補です。MDL、KCS1、KRS2、KRS3の完全frameをこの順でblockごとに試し、同じ長さなら先の方式を選びます。圧縮workspaceを抑えるため候補長だけを保持し、勝者を再符号化します。既存方式の組合せであり、新しいcodec原理ではありません。default `mdl`、revision 1〜9の読取を維持します。速度・高水位memory・製品性能優位は未評価です。[形式仕様](LHC_FORMAT.md#archive-revision-10-4方式のblock単位完全frame選択実験候補)を参照してください。
 
-明示指定の`portfolio-ppm-trial`（Rust `BlockStrategy::PortfolioPpmTrial`）はrevision 11の実験候補です。revision 10の4方式に、PPMII（PPMd var.H相当）の独自Rust実装によるテキスト候補（LPM1BLK、order 6）を加え、厳密に短い場合だけ採用します。2026-11-13のWindows x64開発測定では、Calgary 18fileの書庫が776,377B（7-Zip LZMA2 mx9 solidの0.913倍）、Canterbury 11fileのframe合計がrevision 10より約7.7%小さくなりました。一方でテキストblockの復号はMDLの約2〜3倍遅く、4worker展開は7-Zipの約3.0倍でした。default `mdl`、revision 1〜10の読取を維持します。[形式仕様](LHC_FORMAT.md#archive-revision-11ppmii系テキスト候補を加えたblock単位完全frame選択実験候補)を参照してください。
+明示指定の`portfolio-ppm-trial`（Rust `BlockStrategy::PortfolioPpmTrial`）はrevision 11の実験候補です。revision 10の4方式に、PPMII（PPMd var.H相当）の独自Rust実装によるテキスト候補（LPM1BLK、order 5）を加え、厳密に短い場合だけ採用します。2026-11-13のWindows x64開発測定では、Calgary 18fileの書庫が783,335B（7-Zip LZMA2 mx9 solidの0.921倍）、Canterbury 11fileのframe合計がrevision 10より約7.4%小さくなりました。一方でテキストblockの復号はMDLの約2倍遅く、4worker展開は7-Zipの約2.6倍でした。default `mdl`、revision 1〜10の読取を維持します。[形式仕様](LHC_FORMAT.md#archive-revision-11ppmii系テキスト候補を加えたblock単位完全frame選択実験候補)を参照してください。
 
 開発版LHCの実操作（既存`create/list/test/extract`は引き続きLHA）：
 

@@ -16,13 +16,15 @@
 //! 記録した上限（units）を超えると PPMd と同じくモデルを初期化し直す（restart）。
 use super::block::crc32;
 
-type Result<T> = std::result::Result<T, String>;
+// 内部のエラーは静的文字列にし、Result をレジスタで返せる大きさに保つ（復号の hot path で毎回返るため）。
+// 呼出し側（mod.rs）へ返す公開関数だけ String に変える。
+type Result<T> = std::result::Result<T, &'static str>;
 
 pub const MAGIC: &[u8; 8] = b"LPM1BLK\0";
 pub const HEADER: usize = 40;
 const FRAME_REVISION: u16 = 1;
 /// 既定の最大次数。Calgary/Canterbury のテキストで order 6〜8 が最良だった。
-pub const DEFAULT_ORDER: u8 = 6;
+pub const DEFAULT_ORDER: u8 = 5;
 /// モデル用 arena の上限（MiB）。1 unit = 16B（state 2 個、または context 1 個）。
 pub const MODEL_MIB: u32 = 40;
 const MIN_ORDER: u8 = 2;
@@ -115,14 +117,10 @@ fn tables() -> &'static Tables {
     })
 }
 
-fn invariant(what: &str) -> String {
-    format!("ppm model invariant: {what}")
-}
-
 /// 実装上の不変条件違反（境界検査の panic）を Err に変える安全網。入力由来の異常は通常の Err で返る。
 fn guarded<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-        .unwrap_or_else(|_| Err(invariant("internal panic")))
+        .unwrap_or_else(|_| Err("ppm model invariant: internal panic"))
 }
 
 /// 適応モデル本体。符号化・復号で共有する。
@@ -157,7 +155,7 @@ struct Model {
 impl Model {
     fn new(max_order: u8, text_capacity: usize) -> Result<Self> {
         if !(MIN_ORDER..=MAX_ORDER).contains(&max_order) {
-            return Err("ppm order".into());
+            return Err("ppm order");
         }
         let mut text = Vec::new();
         text.try_reserve_exact(text_capacity + 2)
@@ -191,6 +189,13 @@ impl Model {
             stamp: 0,
             restarts: 0,
         };
+        // テキストでは 1 byte あたり約 1 unit 以下で収まるため、その分を先に確保して伸長時の
+        // コピーを避ける。上限（max_units）は超えない。
+        let initial = (2 * text_capacity + (1 << 17)).min(2 * model.max_units);
+        model
+            .cells
+            .try_reserve_exact(initial)
+            .map_err(|_| "ppm arena allocation")?;
         model.reset()?;
         Ok(model)
     }
@@ -297,10 +302,10 @@ impl Model {
         self.cells.resize(2, Cell::default());
         let root = self
             .alloc_units(1)?
-            .ok_or_else(|| invariant("root context"))?;
+            .ok_or("ppm model invariant: root context")?;
         let stats = self
             .alloc_units(128)?
-            .ok_or_else(|| invariant("root allocation"))?;
+            .ok_or("ppm model invariant: root allocation")?;
         for i in 0..256u16 {
             self.cells[stats as usize + usize::from(i)] = Cell { a: i, b: 1, c: 0 };
         }
@@ -731,7 +736,7 @@ impl Model {
             self.order_fall += 1;
             let suffix = self.suffix(self.min_ctx);
             if suffix == 0 {
-                return Err("ppm escape at root".into());
+                return Err("ppm escape at root");
             }
             self.min_ctx = suffix;
             if self.ns(suffix) != num_masked {
@@ -854,7 +859,7 @@ impl Model {
                 }
             }
             if hi > total {
-                return Err("ppm escape count".into());
+                return Err("ppm escape count");
             }
             self.hi_bits_flag = u32::from(self.tables.hb2flag[usize::from(self.sym(self.found))]);
             rc.decode(hi, total - hi)?;
@@ -899,7 +904,7 @@ impl Model {
                         return Ok(state.a as u8);
                     }
                 }
-                return Err(invariant("escape candidate"));
+                return Err("ppm model invariant: escape candidate");
             }
             rc.decode(hi, esc_freq)?;
             let see = self.see_mut(see);
@@ -1004,11 +1009,11 @@ struct Decoder<'a> {
 impl<'a> Decoder<'a> {
     fn new(data: &'a [u8]) -> Result<Self> {
         if data.len() < 5 || data[0] != 0 {
-            return Err("ppm range header".into());
+            return Err("ppm range header");
         }
         let code = u32::from_be_bytes(data[1..5].try_into().unwrap());
         if code == u32::MAX {
-            return Err("ppm range code".into());
+            return Err("ppm range code");
         }
         Ok(Self {
             code,
@@ -1035,7 +1040,7 @@ impl<'a> Decoder<'a> {
         self.range /= total;
         let count = self.code / self.range;
         if count >= total {
-            return Err("ppm range count".into());
+            return Err("ppm range count");
         }
         Ok(count)
     }
@@ -1093,9 +1098,12 @@ fn encode_payload(raw: &[u8], order: u8) -> Result<Option<Vec<u8>>> {
 }
 
 /// PPM frame を作る。payload が raw 以上になる（利得がない）場合は `Ok(None)`。
-pub(super) fn encode(raw: &[u8], order: u8) -> Result<Option<Vec<u8>>> {
+pub(super) fn encode(raw: &[u8], order: u8) -> std::result::Result<Option<Vec<u8>>, String> {
+    encode_impl(raw, order).map_err(String::from)
+}
+fn encode_impl(raw: &[u8], order: u8) -> Result<Option<Vec<u8>>> {
     if raw.len() > super::BLOCK_BYTES {
-        return Err("ppm input bound".into());
+        return Err("ppm input bound");
     }
     if raw.is_empty() {
         return Ok(None);
@@ -1123,9 +1131,12 @@ pub(super) fn encode(raw: &[u8], order: u8) -> Result<Option<Vec<u8>>> {
 }
 
 /// header・長さ・CRC を確保前に検査する（`expected` は manifest 上の raw 長）。
-pub(super) fn validate_frame(frame: &[u8], expected: usize) -> Result<()> {
+pub(super) fn validate_frame(frame: &[u8], expected: usize) -> std::result::Result<(), String> {
+    validate_impl(frame, expected).map_err(String::from)
+}
+fn validate_impl(frame: &[u8], expected: usize) -> Result<()> {
     if frame.len() < HEADER + 5 || &frame[..8] != MAGIC {
-        return Err("ppm frame family/extent".into());
+        return Err("ppm frame family/extent");
     }
     if frame[8..10] != FRAME_REVISION.to_le_bytes()
         || frame[10] != 1
@@ -1133,18 +1144,18 @@ pub(super) fn validate_frame(frame: &[u8], expected: usize) -> Result<()> {
         || get32(frame, 16) != MODEL_MIB as usize
         || frame[32..40] != [0; 8]
     {
-        return Err("ppm frame header".into());
+        return Err("ppm frame header");
     }
     let raw = get32(frame, 12);
     let payload = get32(frame, 20);
     if raw != expected || raw == 0 || raw > super::BLOCK_BYTES || payload >= raw {
-        return Err("ppm frame lengths".into());
+        return Err("ppm frame lengths");
     }
     if HEADER + payload != frame.len() {
-        return Err("ppm frame extent".into());
+        return Err("ppm frame extent");
     }
     if wire_crc(frame) != get32(frame, 28) as u32 {
-        return Err("ppm frame wire CRC".into());
+        return Err("ppm frame wire CRC");
     }
     Ok(())
 }
@@ -1159,21 +1170,24 @@ fn decode_payload(frame: &[u8], raw_len: usize) -> Result<Vec<u8>> {
         out.push(model.decode_symbol(&mut rc)?);
     }
     if rc.position != rc.data.len() || rc.code != 0 {
-        return Err("ppm payload trailing/noncanonical".into());
+        return Err("ppm payload trailing/noncanonical");
     }
     Ok(out)
 }
 
 /// 自己完結した PPM frame を厳密に復号する（余剰・非正準な終端は拒否）。
-pub(super) fn decode(frame: &[u8]) -> Result<Vec<u8>> {
+pub(super) fn decode(frame: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    decode_impl(frame).map_err(String::from)
+}
+fn decode_impl(frame: &[u8]) -> Result<Vec<u8>> {
     if frame.len() < 16 {
-        return Err("ppm frame family/extent".into());
+        return Err("ppm frame family/extent");
     }
     let raw_len = get32(frame, 12);
-    validate_frame(frame, raw_len)?;
+    validate_impl(frame, raw_len)?;
     let out = guarded(|| decode_payload(frame, raw_len))?;
     if crc32(&out) != get32(frame, 24) as u32 {
-        return Err("ppm raw CRC".into());
+        return Err("ppm raw CRC");
     }
     Ok(out)
 }
@@ -1273,30 +1287,42 @@ mod tests {
         let path = std::env::var("LHC_PPM_FILE").expect("LHC_PPM_FILE");
         let data = std::fs::read(path).unwrap();
         let raw = &data[..data.len().min(super::super::BLOCK_BYTES)];
-        for order in [6u8, 8] {
-            let t = std::time::Instant::now();
-            let mut model = Model::new(order, raw.len()).unwrap();
-            let setup = t.elapsed();
-            let mut rc = Encoder::new(usize::MAX).unwrap();
-            for &b in raw {
-                model.encode_symbol(&mut rc, b).unwrap();
+        // LHC_PPM_ORDERS=4,5,6 で次数、LHC_PPM_REPEAT で反復回数（他の負荷の揺れを避けるため最小値を出す）。
+        let orders: Vec<u8> = std::env::var("LHC_PPM_ORDERS")
+            .map(|v| v.split(',').map(|o| o.parse().unwrap()).collect())
+            .unwrap_or(vec![DEFAULT_ORDER]);
+        let repeat: usize = std::env::var("LHC_PPM_REPEAT")
+            .map(|v| v.parse().unwrap())
+            .unwrap_or(5);
+        for order in orders {
+            let mut encode = std::time::Duration::MAX;
+            let mut decode = std::time::Duration::MAX;
+            let mut summary = String::new();
+            for _ in 0..repeat {
+                let t = std::time::Instant::now();
+                let mut model = Model::new(order, raw.len()).unwrap();
+                let mut rc = Encoder::new(usize::MAX).unwrap();
+                for &b in raw {
+                    model.encode_symbol(&mut rc, b).unwrap();
+                }
+                let payload = rc.finish().unwrap();
+                encode = encode.min(t.elapsed());
+                let units = model.cells.len() / 2;
+                summary = format!(
+                    "payload {} units {units} restarts {}",
+                    payload.len(),
+                    model.restarts
+                );
+                drop(model);
+                let t = std::time::Instant::now();
+                let mut model = Model::new(order, raw.len()).unwrap();
+                let mut dec = Decoder::new(&payload).unwrap();
+                for _ in 0..raw.len() {
+                    std::hint::black_box(model.decode_symbol(&mut dec).unwrap());
+                }
+                decode = decode.min(t.elapsed());
             }
-            let encode = t.elapsed();
-            let units = model.cells.len() / 2;
-            let restarts = model.restarts;
-            let payload = rc.finish().unwrap();
-            let t = std::time::Instant::now();
-            let mut model = Model::new(order, raw.len()).unwrap();
-            let mut dec = Decoder::new(&payload).unwrap();
-            for _ in 0..raw.len() {
-                std::hint::black_box(model.decode_symbol(&mut dec).unwrap());
-            }
-            let decode = t.elapsed();
-            println!(
-                "order {order}: payload {} units {units} ({} MiB) restarts {restarts} setup {setup:?} encode {encode:?} decode {decode:?}",
-                payload.len(),
-                (units * UNIT_BYTES) >> 20
-            );
+            println!("order {order}: {summary} encode-min {encode:?} decode-min {decode:?}");
         }
     }
 
