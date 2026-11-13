@@ -4,7 +4,7 @@
 
 1. mainでREADME・CHANGELOGを整え、`pwsh -NoProfile -File scripts/build.ps1 -Test` で検証する。依存関係はCargo.lockで固定し、不要な旧版Full試験を実行しない。
 2. mainと同じコミットをreleaseブランチへ通常pushする。Modern Rust CIの3ネイティブターゲット（Windows x64/ARM64、macOS ARM64）でfmt/clippy/test、Releaseビルド、C consumerが成功したことを確認する。CIキャッシュを使い、同じSHAのジョブを重複起動しない。
-3. mainから `Release UnLhaRe` workflow（`.github/workflows/release-unlhare.yml`）を手動実行する（`gh workflow run release-unlhare.yml --ref main -f version=<version> -f create_draft_release=true`）。Environment `release` の承認後、workflowは再ビルドせず、releaseブランチHEADで成功したModern RustのWindows x64/ARM64 bundleのDLL・CLIを [Sigilune](https://github.com/1llum1n4t1s/Sigilune) で署名し（`../UnLha32Re/scripts/sign-release.ps1` と同じ処理）、署名状態Valid・署名者・タイムスタンプを確認してからZIPを作る。署名用Secrets（`SIGILUNE_EMAIL`・`SIGILUNE_TOTP_URI`）は署名stepだけへ渡す。
+3. mainから `Release UnLhaRe` workflow（`.github/workflows/release-unlhare.yml`）を手動実行する（`gh workflow run release-unlhare.yml --ref main -f version=<version> -f create_draft_release=true`）。workflowは承認待ちなしで動き、再ビルドせず、releaseブランチHEADで成功したModern RustのWindows x64/ARM64 bundleのDLL・CLIを [Sigilune](https://github.com/1llum1n4t1s/Sigilune) で署名し（`../UnLha32Re/scripts/sign-release.ps1` と同じ処理）、署名状態Valid・署名者・タイムスタンプを確認してからZIPを作る。署名用Secrets（`SIGILUNE_EMAIL`・`SIGILUNE_TOTP_URI`）は署名stepだけへ渡す。
 4. macOS ARM64のtar.gzは同じCI runのartifactをそのまま使う。ad-hoc署名はDeveloper ID署名や公証の代用ではなく、その旨を公開説明に記載する（下書きの既定文に含む）。
 5. 配布名は `UnLhaRe-<version>-win-x64.zip`、`UnLhaRe-<version>-win-arm64.zip`、`UnLhaRe-<version>-macos-arm64.tar.gz`。workflowが全3ファイルの `SHA256SUMS.txt` を作り、Actionsの成果物にも残す。
 6. `create_draft_release=true` のとき、workflowが同じSHAを対象に `unlhare-v<version>` のGitHub Releaseを下書きで作成し、3パッケージとSHA256一覧を添付する。既存のタグ・Releaseは上書きしない。リリースノートを整えて本人が公開し、公開物のハッシュを記録する。
