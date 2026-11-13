@@ -243,6 +243,7 @@ fn timestamp_restoration_is_opt_in() {
         None,
         &ExtractOptions {
             preserve_timestamps: true,
+            ..Default::default()
         },
         &mut |_| true,
     )
@@ -271,6 +272,7 @@ fn timestamp_restoration_does_not_modify_an_existing_file() {
         None,
         &ExtractOptions {
             preserve_timestamps: true,
+            ..Default::default()
         },
         &mut |_| true,
     )

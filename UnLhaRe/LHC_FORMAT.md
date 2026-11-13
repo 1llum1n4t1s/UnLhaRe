@@ -1,6 +1,6 @@
 # LHC1形式仕様（開発版）
 
-2026-10-20。実装はRust API `unlhare::lhc` とCLI `lhc-*`。LHA方式の追加・置換ではない。LHC＝LHA High Compression、旧称KHC。2026-11-13にmagicを旧`KHC*`から`LHC*`へ改めたため、旧称時代に作成した書庫・frameは読めない（`KRS*`・`KCS1`はKHCを含まないため据え置き）。既存LHA API/C ABI/.NET APIとpackage versionは変えない。既定`Mdl`はrevision 1を維持し、明示的なhybrid戦略はrevision 2、`RecordTrial`（`record-trial`）はrevision 3、`Gather32Trial`（`gather32-trial`）はrevision 4、`Delta16Trial`（`delta16-trial`）はrevision 5、`RecordFastTrial`（`record-fast-trial`）はrevision 6、`SpatialBitsTrial`（`spatial-bits-trial`）はrevision 7、`RecordAdaptiveTrial`（`record-adaptive-trial`）はrevision 8、`SpatialMdlTrial`（`spatial-mdl-trial`）はrevision 9、`PortfolioTrial`（`portfolio-trial`）はrevision 10を作る。revision 1〜9の読取も維持し、未知のversionは拒否する。
+2026-10-20。実装はRust API `unlhare::lhc` とCLI `lhc-*`。LHA方式の追加・置換ではない。LHC＝LHA High Compression、旧称KHC。2026-11-13にmagicを旧`KHC*`から`LHC*`へ改めたため、旧称時代に作成した書庫・frameは読めない（`KRS*`・`KCS1`はKHCを含まないため据え置き）。既存LHA API/C ABI/.NET APIとpackage versionは変えない。既定`Mdl`はrevision 1を維持し、明示的なhybrid戦略はrevision 2、`RecordTrial`（`record-trial`）はrevision 3、`Gather32Trial`（`gather32-trial`）はrevision 4、`Delta16Trial`（`delta16-trial`）はrevision 5、`RecordFastTrial`（`record-fast-trial`）はrevision 6、`SpatialBitsTrial`（`spatial-bits-trial`）はrevision 7、`RecordAdaptiveTrial`（`record-adaptive-trial`）はrevision 8、`SpatialMdlTrial`（`spatial-mdl-trial`）はrevision 9、`PortfolioTrial`（`portfolio-trial`）はrevision 10、`PortfolioPpmTrial`（`portfolio-ppm-trial`）はrevision 11を作る。revision 1〜10の読取も維持し、未知のversionは拒否する。
 
 CPUだけで自己完結して復元できる。外部モデル・辞書・学習環境・ネットワークは不要。浮動小数点はencoderの木選択だけに使い、選択した整数CDFを保存する。decoderは整数だけで動作する。異なるCPUでencoderが同じ符号列を作る保証はないが、保存したCDFで復号できる設計。4環境でのnative確認はWindows x64以外未実施。
 
@@ -321,3 +321,30 @@ Rust `BlockStrategy::PortfolioTrial` / CLI `--strategy portfolio-trial` の明�
 revision 10では各blockにKCS1BLK、KRS2BLK、KRS3BLK、または完全なLHC1BLK fallbackを格納できる。LHC1 fallbackは内側revision 1 method 0/1、またはrevision 2 method 0/1/3に限る（revision 2 method 2のLZ3は不可）。KCS1/KRS2/KRS3は各revision固有のframe長・CRC・canonical payload検証を適用する。KRS1、G32、Delta16、BinaryAdaptiveの独立LHC frame、その他のframe familyは拒否する。revision 1〜9のdecoder規則は変えず、revision 1〜9 archiveの既存出力・読取も維持する。revision 10非対応の旧decoderはこのarchive revisionを拒否する。
 
 このportfolioは既存の四方式のblock単位切替で、新しい予測器・entropy coderではない。既定`Mdl`は変更しない。revision 10の固定E2Eが通過しても、それは完全復元と形式境界の確認に限り、速度・最大memory・7-Zip優位・未見入力への一般化は別の事前登録評価なしに主張しない。[E2Eと再現手順](experiments/khc/STORAGE.md#revision-10-portfolio-integration-e2e-preregistration-2026-10-19)に評価条件を記録する。
+
+## Archive revision 11：PPMII系テキスト候補を加えたblock単位完全frame選択（実験候補）
+
+Rust `BlockStrategy::PortfolioPpmTrial` / CLI `--strategy portfolio-ppm-trial` の明示指定だけがrevision 11を作る。各blockでrevision 10と同じMDL、KCS1、KRS2、KRS3の長さを求めた後、PPMII（PPMd var.H相当）の完全frame（LPM1BLK）を符号化し、既存候補の最小より厳密に短い場合だけ採用する。同長時の優先順はMDL、KCS1、KRS2、KRS3、PPMとなる。PPMの利得がない（payloadがraw以上）blockでは候補にしない。archiveのmanifest・block prefix・file CRC・終端はrevision 1と同じ。
+
+revision 11の各blockはrevision 10が許す全frame（KCS1BLK、KRS2BLK、KRS3BLK、同じ内側revision・methodのLHC1BLK fallback）とLPM1BLKを格納できる。LPM1BLKはrevision 11だけで受理し、revision 1〜10では拒否する。revision 10以前の旧decoderはrevision 11を拒否する。
+
+### LPM1BLK frame
+
+40 byte headerの後にrange coder payloadを置く。整数はlittle-endian。
+
+| offset | 長さ | 内容 |
+| ---: | ---: | --- |
+| 0 | 8 | `LPM1BLK\0` |
+| 8 | 2 | frame revision 1 |
+| 10 | 1 | method 1（PPM）。storedは持たず、利得がないblockは他候補を選ぶ |
+| 11 | 1 | 最大次数（2〜16。現行encoderは6） |
+| 12 | 4 | raw長（manifestのblock長と一致、1〜1MiB） |
+| 16 | 4 | model arena上限MiB（40固定） |
+| 20 | 4 | payload長（raw長未満） |
+| 24 | 4 | raw CRC-32 |
+| 28 | 4 | wire CRC-32（offset 28〜31を除くframe全体） |
+| 32 | 8 | 0 |
+
+modelはLZMA SDKのPpmd7（public domain）と同じPPMII手順（SEE、情報継承、binary context、最大頻度124のrescale）で、range coderは7-Zip PPMd（Ppmd7z）と同じ方式である。ただしmemory配置は独自（8 byte cellの添字arena、1 unit 16 byte）で、上限unit数に達するとPPMdと同様にmodelを初期化し直す。7-Zipの書庫・PPMd streamとの互換性はない。decoderはframe長・CRCを確保前に検査し、復号後にpayloadの余剰byte、最終codeが0でない非正準な終端、raw CRC不一致を拒否する。decodeの作業memoryはmodel上限40MiBとtext・出力の各1MiBで、64MiB codec gate内に収まる。
+
+テキストblockでは既存候補より小さくなる一方、PPMの復号はblock内で文脈modelを逐次更新するため、BWT系MDLの約2〜3倍の時間がかかる（2026-11-13のWindows x64開発測定で、Calgary book1の1 block復号が約80ms）。速度・7-Zip比較の評価条件と結果は[ゲート](experiments/khc/GOAL_GATE_20261113.md)に記録する。

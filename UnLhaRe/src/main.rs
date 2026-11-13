@@ -31,6 +31,13 @@ enum Command {
         /// Explicit revision-2 through revision-10 strategies; default preserves revision 1.
         #[arg(long, value_enum, default_value_t = LhcStrategy::Mdl)]
         strategy: LhcStrategy,
+        /// Block-compression workers (output bytes are identical for every value).
+        /// Each worker reserves the fixed LHC codec memory budget.
+        #[arg(long, default_value_t = 1)]
+        threads: usize,
+        /// Do not fsync the archive before publishing it.
+        #[arg(long)]
+        no_fsync: bool,
     },
     /// List LHC metadata; use lhc-test for complete decoded CRC validation.
     LhcList {
@@ -39,12 +46,23 @@ enum Command {
         json: bool,
     },
     /// Decode and validate every LHC file.
-    LhcTest { archive: PathBuf },
+    LhcTest {
+        archive: PathBuf,
+        /// Block-decoding workers: 0 keeps the legacy choice, 1 is serial.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
+    },
     /// Extract LHC entries after validation, without overwriting.
     LhcExtract {
         archive: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
+        /// Block-decoding workers: 0 keeps the legacy choice, 1 is serial.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
+        /// Do not fsync each extracted file before publishing it.
+        #[arg(long)]
+        no_fsync: bool,
     },
     /// List entry metadata (use test for CRC verification).
     List {
@@ -97,6 +115,7 @@ enum LhcStrategy {
     SpatialMdlTrial,
     #[value(name = "portfolio-trial")]
     PortfolioTrial,
+    PortfolioPpmTrial,
 }
 
 fn run(cli: Cli) -> unlhare::Result<()> {
@@ -110,7 +129,11 @@ fn run(cli: Cli) -> unlhare::Result<()> {
             archive,
             source,
             strategy,
+            threads,
+            no_fsync,
         } => {
+            // 並列作成は worker ごとに固定の codec 予約を課金する。
+            let workers = threads.clamp(1, unlhare::lhc::MAX_CREATE_WORKERS) as u64;
             unlhare::lhc::create_from_directory(
                 &source,
                 &archive,
@@ -136,8 +159,13 @@ fn run(cli: Cli) -> unlhare::Result<()> {
                             unlhare::lhc::BlockStrategy::SpatialMdlTrial
                         }
                         LhcStrategy::PortfolioTrial => unlhare::lhc::BlockStrategy::PortfolioTrial,
+                        LhcStrategy::PortfolioPpmTrial => {
+                            unlhare::lhc::BlockStrategy::PortfolioPpmTrial
+                        }
                     },
-                    ..Default::default()
+                    max_codec_memory_bytes: unlhare::lhc::CODEC_MEMORY_BYTES * workers,
+                    threads,
+                    skip_fsync: no_fsync,
                 },
             )?;
             println!("Created LHC: {}", archive.display());
@@ -159,15 +187,36 @@ fn run(cli: Cli) -> unlhare::Result<()> {
                 }
             }
         }
-        Command::LhcTest { archive } => {
-            let s = unlhare::lhc::verify_archive(&archive, &limits)?;
+        Command::LhcTest { archive, threads } => {
+            let s = unlhare::lhc::verify_archive_with_options(
+                &archive,
+                &limits,
+                &unlhare::ExtractOptions {
+                    threads,
+                    ..Default::default()
+                },
+            )?;
             println!(
                 "OK LHC: {} files, {} entries, {} bytes",
                 s.files, s.entries, s.bytes
             );
         }
-        Command::LhcExtract { archive, output } => {
-            let s = unlhare::lhc::extract_archive(&archive, &output, &limits)?;
+        Command::LhcExtract {
+            archive,
+            output,
+            threads,
+            no_fsync,
+        } => {
+            let s = unlhare::lhc::extract_archive_with_options(
+                &archive,
+                &output,
+                &limits,
+                &unlhare::ExtractOptions {
+                    threads,
+                    skip_fsync: no_fsync,
+                    ..Default::default()
+                },
+            )?;
             println!("Extracted LHC: {} files, {} bytes", s.files, s.bytes);
         }
         Command::List { archive, json } => {

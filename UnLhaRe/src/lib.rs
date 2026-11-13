@@ -98,6 +98,15 @@ pub struct ExtractOptions {
     /// Restore regular-file modification times before publishing each file.
     /// Directory timestamps are not changed.
     pub preserve_timestamps: bool,
+    /// Skip the per-file `sync_all` before publishing. The default keeps durable
+    /// extraction; set this only when the caller accepts data loss on power failure
+    /// (for example to compare with tools that do not fsync).
+    pub skip_fsync: bool,
+    /// LHC only: number of block-decoding workers. 0 keeps the existing behavior
+    /// (plain APIs decode eligible revision 4/5 archives with up to 4 workers),
+    /// 1 forces serial decoding, and 2 or more decode every frame family with up to
+    /// `min(threads, 4)` workers. LHA extraction ignores this field.
+    pub threads: usize,
 }
 
 /// Result of explicitly requesting creation that skips unreadable source files.

@@ -5,6 +5,8 @@ mod delta16;
 #[allow(dead_code)]
 mod g32;
 mod pipeline;
+// PPMII系テキスト候補（LPM1BLK）。revision 11 の portfolio が使う。
+mod ppm;
 #[allow(dead_code)]
 mod record;
 mod spatial;
@@ -15,10 +17,14 @@ use cap_std::fs::Dir;
 use crc_fast::{CrcAlgorithm, Digest, checksum};
 use serde::Serialize;
 use std::{
-    collections::HashMap,
+    collections::{BinaryHeap, HashMap, VecDeque},
     fs::File,
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    sync::{
+        Arc, Condvar, Mutex,
+        mpsc::{Receiver, Sender, channel},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -37,7 +43,14 @@ pub struct CreateOptions {
     /// revision 2〜10 は明示指定。既定は revision 1 の出力を維持する。
     pub block_strategy: BlockStrategy,
     /// Reject before processing when less than the fixed codec reservation.
+    /// Parallel creation also needs one reservation per worker.
     pub max_codec_memory_bytes: u64,
+    /// Block-compression workers. 0 and 1 compress serially. Larger values use up to
+    /// `min(threads, MAX_CREATE_WORKERS, max_codec_memory_bytes / CODEC_MEMORY_BYTES)`
+    /// workers. The archive bytes are identical for every worker count.
+    pub threads: usize,
+    /// Skip `sync_all` of the finished archive before publishing (default: durable).
+    pub skip_fsync: bool,
 }
 impl Default for CreateOptions {
     fn default() -> Self {
@@ -45,8 +58,224 @@ impl Default for CreateOptions {
             limits: Limits::default(),
             block_strategy: BlockStrategy::Mdl,
             max_codec_memory_bytes: CODEC_MEMORY_BYTES,
+            threads: 0,
+            skip_fsync: false,
         }
     }
+}
+
+/// Upper bound of parallel block-compression workers.
+pub const MAX_CREATE_WORKERS: usize = 16;
+// 研究由来の encoder は再帰・大きな局所配列を持ちうるため、mainと同等以上のstackを確保する。
+const ENCODE_STACK_BYTES: usize = 16 << 20;
+
+// threads と codec メモリ予約から、実際に使う worker 数を決める。
+fn create_workers(options: &CreateOptions) -> usize {
+    let by_memory = (options.max_codec_memory_bytes / CODEC_MEMORY_BYTES).max(1) as usize;
+    options.threads.clamp(1, MAX_CREATE_WORKERS).min(by_memory)
+}
+
+// ---- 並列作成 ----
+// workerは共有queueから「長いblockを先に」取り出す（LPT）。先頭blockが長くても他workerは
+// 後続blockを処理でき、全体の尾も短くなる。結果は OrderedWriter が書庫順に並べ直して書く。
+
+struct EncodeJob {
+    id: u64,
+    raw: Vec<u8>,
+}
+impl PartialEq for EncodeJob {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for EncodeJob {}
+impl PartialOrd for EncodeJob {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for EncodeJob {
+    // BinaryHeap は最大を先に返す。長い block を優先し、同長なら書庫順で早い方を先にする。
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.raw
+            .len()
+            .cmp(&other.raw.len())
+            .then_with(|| other.id.cmp(&self.id))
+    }
+}
+
+struct EncodeQueue {
+    state: Mutex<(BinaryHeap<EncodeJob>, bool)>,
+    ready: Condvar,
+}
+
+struct EncodePool {
+    queue: Arc<EncodeQueue>,
+    results: Receiver<(u64, Result<Vec<u8>>)>,
+}
+
+impl EncodePool {
+    fn start<'scope>(
+        scope: &'scope std::thread::Scope<'scope, '_>,
+        workers: usize,
+        strategy: BlockStrategy,
+    ) -> Result<Self> {
+        let queue = Arc::new(EncodeQueue {
+            state: Mutex::new((BinaryHeap::new(), false)),
+            ready: Condvar::new(),
+        });
+        let (sender, results) = channel();
+        // 先に pool を作っておく。途中の spawn が失敗して `?` で返っても Drop が queue を閉じるので、
+        // 起動済み worker は condvar 待ちから抜けて終わり、scope の join が止まらない。
+        let pool = Self {
+            queue: Arc::clone(&queue),
+            results,
+        };
+        for _ in 0..workers {
+            let queue = Arc::clone(&queue);
+            let sender: Sender<(u64, Result<Vec<u8>>)> = sender.clone();
+            std::thread::Builder::new()
+                .name("lhc-encode".into())
+                .stack_size(ENCODE_STACK_BYTES)
+                .spawn_scoped(scope, move || {
+                    loop {
+                        let job = {
+                            let mut state = queue.state.lock().unwrap_or_else(|e| e.into_inner());
+                            loop {
+                                if let Some(job) = state.0.pop() {
+                                    break Some(job);
+                                }
+                                if state.1 {
+                                    break None;
+                                }
+                                state = queue.ready.wait(state).unwrap_or_else(|e| e.into_inner());
+                            }
+                        };
+                        let Some(EncodeJob { id, raw }) = job else {
+                            return;
+                        };
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            compress_block_with_strategy(&raw, strategy)
+                        }))
+                        .unwrap_or_else(|_| {
+                            Err(Error::Unsupported("LHC encode worker panic".into()))
+                        });
+                        drop(raw);
+                        // 受信側が先に終了（エラー）していれば送信失敗するので、そのまま終わる。
+                        if sender.send((id, result)).is_err() {
+                            return;
+                        }
+                    }
+                })?;
+        }
+        Ok(pool)
+    }
+
+    fn submit(&self, id: u64, raw: Vec<u8>) {
+        let mut state = self.queue.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.0.push(EncodeJob { id, raw });
+        drop(state);
+        self.queue.ready.notify_one();
+    }
+
+    fn receive(&self) -> Result<(u64, Vec<u8>)> {
+        let (id, result) = self
+            .results
+            .recv()
+            .map_err(|_| Error::Unsupported("LHC encode workers disconnected".into()))?;
+        Ok((id, result?))
+    }
+}
+
+impl Drop for EncodePool {
+    // 正常終了・エラーのどちらでも queue を閉じ、未着手 job を捨てて worker を終わらせる。
+    // scope の終わりで全 worker が join される。
+    fn drop(&mut self) {
+        let mut state = self.queue.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.0.clear();
+        state.1 = true;
+        drop(state);
+        self.queue.ready.notify_all();
+    }
+}
+
+enum OrderItem {
+    Frame(u64),
+    Crc(u32),
+}
+
+// 圧縮結果を書庫順に書き出す。未書込み block は最大 window 個（raw/frame とも <= 1MiB 強）で、
+// それを超えると最古の結果が揃うまで受信して待つ。
+struct OrderedWriter {
+    order: VecDeque<OrderItem>,
+    done: HashMap<u64, Vec<u8>>,
+    next_id: u64,
+    outstanding: usize,
+    window: usize,
+}
+
+impl OrderedWriter {
+    fn new(workers: usize) -> Self {
+        Self {
+            order: VecDeque::new(),
+            done: HashMap::new(),
+            next_id: 0,
+            outstanding: 0,
+            window: workers.saturating_mul(4).max(1),
+        }
+    }
+
+    fn submit(&mut self, pool: &EncodePool, raw: Vec<u8>, output: &mut impl Write) -> Result<()> {
+        let id = self.next_id;
+        self.next_id += 1;
+        pool.submit(id, raw);
+        self.order.push_back(OrderItem::Frame(id));
+        self.outstanding += 1;
+        self.write_ready(output)?;
+        while self.outstanding >= self.window {
+            let (id, frame) = pool.receive()?;
+            self.done.insert(id, frame);
+            self.write_ready(output)?;
+        }
+        Ok(())
+    }
+
+    fn crc(&mut self, value: u32, output: &mut impl Write) -> Result<()> {
+        self.order.push_back(OrderItem::Crc(value));
+        self.write_ready(output)
+    }
+
+    fn finish(&mut self, pool: &EncodePool, output: &mut impl Write) -> Result<()> {
+        while !self.order.is_empty() {
+            let (id, frame) = pool.receive()?;
+            self.done.insert(id, frame);
+            self.write_ready(output)?;
+        }
+        Ok(())
+    }
+
+    fn write_ready(&mut self, output: &mut impl Write) -> Result<()> {
+        while let Some(item) = self.order.front() {
+            match *item {
+                OrderItem::Crc(value) => output.write_all(&value.to_le_bytes())?,
+                OrderItem::Frame(id) => {
+                    let Some(frame) = self.done.remove(&id) else {
+                        break;
+                    };
+                    write_frame(output, &frame)?;
+                    self.outstanding -= 1;
+                }
+            }
+            self.order.pop_front();
+        }
+        Ok(())
+    }
+}
+
+fn write_frame(output: &mut impl Write, frame: &[u8]) -> Result<()> {
+    output.write_all(&(frame.len() as u32).to_le_bytes())?;
+    output.write_all(frame)?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -98,6 +327,8 @@ pub enum BlockStrategy {
     SpatialMdlTrial,
     /// 候補の完全frameを MDL, KCS1, KRS2, KRS3 の順に比較する revision 10。
     PortfolioTrial,
+    /// revision 10 の候補へ PPMII 系テキスト候補（LPM1BLK、順位4）を加えた revision 11。
+    PortfolioPpmTrial,
 }
 
 pub fn compress_block_with_strategy(input: &[u8], strategy: BlockStrategy) -> Result<Vec<u8>> {
@@ -145,13 +376,19 @@ pub fn compress_block_with_strategy(input: &[u8], strategy: BlockStrategy) -> Re
             mdl
         });
     }
-    if strategy == BlockStrategy::PortfolioTrial {
+    if matches!(
+        strategy,
+        BlockStrategy::PortfolioTrial | BlockStrategy::PortfolioPpmTrial
+    ) {
         let spatial_len = spatial::encoded_len(input).map_err(Error::Format)?;
-        let (fast_len, adaptive_len) = record::scheduled_lengths(input).map_err(Error::Format)?;
-        // 共通KRS準備と各frameを破棄してから、最後のMDL workspaceへ進む。
-        let mdl = compress_block_with_strategy(input, BlockStrategy::Mdl)?;
+        // MDL は一度だけ計算する。テキスト入力では KRS 準備の基準（BinaryAdaptive）も MDL frame の
+        // revision 書換えなので、それを再利用して MDL の重複計算（最大3回）を避ける。出力は不変。
+        // MDL frame（<=1MiB+header）を KRS 準備中も保持するが、各 phase の gate 内に収まる。
+        let mdl = block::encode(input).map_err(Error::Format)?;
+        let (fast_len, adaptive_len) =
+            record::scheduled_lengths_with_mdl(input, &mdl).map_err(Error::Format)?;
         let mut best_strategy = BlockStrategy::Mdl;
-        let mut best_len = mdl.len();
+        let mut best_len = mdl.0.len();
         let mut best_rank = 0;
         let candidates = [
             (BlockStrategy::SpatialBitsTrial, spatial_len, 1),
@@ -165,13 +402,27 @@ pub fn compress_block_with_strategy(input: &[u8], strategy: BlockStrategy) -> Re
                 best_rank = rank;
             }
         }
-        if best_strategy == BlockStrategy::Mdl {
-            return Ok(mdl);
+        // revision 11 だけ PPM（順位4、同長なら既存候補を優先）を比較する。PPM の encode は
+        // 完全 frame を作るので、そのまま採用できる。モデル arena（ppm::MODEL_MIB）と保持中の
+        // MDL frame を合わせても codec gate 内に収まる（ppm 側の const 検査を参照）。
+        if strategy == BlockStrategy::PortfolioPpmTrial
+            && let Some(frame) = ppm::encode(input, ppm::DEFAULT_ORDER).map_err(Error::Format)?
+            && frame.len() < best_len
+        {
+            return Ok(frame);
         }
-        drop(mdl);
-        // Explicit ranks preserve the MDL → KCS1 → KRS2 → KRS3 tie order even though
-        // MDL runs last. Keep only a size so no prior winner overlaps a bounded workspace.
-        return compress_block_with_strategy(input, best_strategy);
+        // Explicit ranks preserve the MDL → KCS1 → KRS2 → KRS3 (→ PPM) tie order.
+        return match best_strategy {
+            BlockStrategy::Mdl => Ok(mdl.0),
+            BlockStrategy::RecordFastTrial | BlockStrategy::RecordAdaptiveTrial => {
+                let adaptive = best_strategy == BlockStrategy::RecordAdaptiveTrial;
+                record::encode_scheduled_with_mdl(input, adaptive, &mdl).map_err(Error::Format)
+            }
+            _ => {
+                drop(mdl);
+                compress_block_with_strategy(input, best_strategy)
+            }
+        };
     }
     block::encode_hybrid(input, strategy == BlockStrategy::BinaryAdaptive)
         .map(|(bytes, _)| bytes)
@@ -191,6 +442,9 @@ pub fn compress_block_with_history_mode(input: &[u8], mode: HistoryMode) -> Resu
 }
 /// Exact frame decoding; rejects noncanonical, corrupt or trailing data.
 pub fn decompress_block(frame: &[u8]) -> Result<Vec<u8>> {
+    if frame.get(..8) == Some(&ppm::MAGIC[..]) {
+        return ppm::decode(frame).map_err(Error::Format);
+    }
     if frame.get(..8) == Some(&spatial::MAGIC[..]) {
         let expected = spatial::field(frame, 12).map_err(Error::Format)?;
         return spatial::decode(frame, expected)
@@ -371,7 +625,7 @@ fn read_manifest(file: &mut File, limits: &Limits) -> Result<(Vec<Entry>, Summar
     let mut h = [0u8; HEADER];
     exact(file, &mut h)?;
     if &h[..8] != MAGIC
-        || !matches!(h[8], 1..=10)
+        || !matches!(h[8], 1..=11)
         || h[9..12] != [0; 3]
         || u32::from_le_bytes(h[12..16].try_into().unwrap()) != BLOCK_BYTES as u32
     {
@@ -546,6 +800,7 @@ fn create(
         BlockStrategy::RecordAdaptiveTrial => 8,
         BlockStrategy::SpatialMdlTrial => 9,
         BlockStrategy::PortfolioTrial => 10,
+        BlockStrategy::PortfolioPpmTrial => 11,
         _ => 2,
     };
     header[12..16].copy_from_slice(&(BLOCK_BYTES as u32).to_le_bytes());
@@ -556,47 +811,70 @@ fn create(
     header[28..32].copy_from_slice(&hcrc.to_le_bytes());
     output.write_all(&header)?;
     output.write_all(&manifest)?;
+    let workers = create_workers(options);
+    let strategy = options.block_strategy;
     let mut completed = 0u64;
-    for (index, (source, entry)) in sources.iter().zip(&entries).enumerate() {
-        checkpoint(callback, 2, completed, summary.bytes)?;
-        let mut file = open_source(source_root, &source.path)?;
-        let before = file.metadata()?;
-        if crate::writer::file_identity(&file, &before)? != scanned[index].0
-            || before.is_dir() != entry.is_directory
-            || (!entry.is_directory && before.len() != entry.original_size)
-            || before.modified().ok() != scanned[index].1
-        {
-            return Err(Error::Unsupported("LHC source changed after scan".into()));
-        }
-        if entry.is_directory {
-            continue;
-        }
-        let mut remaining = entry.original_size;
-        let mut file_crc = digest();
-        while remaining != 0 {
+    std::thread::scope(|scope| -> Result<()> {
+        // blockは独立に圧縮されるので、worker数や処理順にかかわらず書庫は byte 単位で同一になる。
+        // 書込みは常に書庫順（frame と file CRC を出現順に並べた order）で行う。
+        let mut writer = OrderedWriter::new(workers);
+        let pool = (workers > 1)
+            .then(|| EncodePool::start(scope, workers, strategy))
+            .transpose()?;
+        for (index, (source, entry)) in sources.iter().zip(&entries).enumerate() {
             checkpoint(callback, 2, completed, summary.bytes)?;
-            let length = remaining.min(BLOCK_BYTES as u64) as usize;
-            let mut raw = allocate(length)?;
-            exact(&mut file, &mut raw)?;
-            file_crc.update(&raw);
-            let frame = compress_block_with_strategy(&raw, options.block_strategy)?;
-            output.write_all(&(frame.len() as u32).to_le_bytes())?;
-            output.write_all(&frame)?;
-            remaining -= length as u64;
-            completed += length as u64;
+            let mut file = open_source(source_root, &source.path)?;
+            let before = file.metadata()?;
+            if crate::writer::file_identity(&file, &before)? != scanned[index].0
+                || before.is_dir() != entry.is_directory
+                || (!entry.is_directory && before.len() != entry.original_size)
+                || before.modified().ok() != scanned[index].1
+            {
+                return Err(Error::Unsupported("LHC source changed after scan".into()));
+            }
+            if entry.is_directory {
+                continue;
+            }
+            let mut remaining = entry.original_size;
+            let mut file_crc = digest();
+            while remaining != 0 {
+                checkpoint(callback, 2, completed, summary.bytes)?;
+                let length = remaining.min(BLOCK_BYTES as u64) as usize;
+                let mut raw = allocate(length)?;
+                exact(&mut file, &mut raw)?;
+                file_crc.update(&raw);
+                match &pool {
+                    None => {
+                        write_frame(&mut output, &compress_block_with_strategy(&raw, strategy)?)?
+                    }
+                    Some(pool) => writer.submit(pool, raw, &mut output)?,
+                }
+                remaining -= length as u64;
+                completed += length as u64;
+            }
+            let mut extra = [0u8; 1];
+            let after = file.metadata()?;
+            if file.read(&mut extra)? != 0
+                || after.len() != before.len()
+                || after.modified().ok() != before.modified().ok()
+            {
+                return Err(Error::Unsupported("LHC source changed while read".into()));
+            }
+            let value = file_crc.finalize() as u32;
+            match &pool {
+                None => output.write_all(&value.to_le_bytes())?,
+                Some(_) => writer.crc(value, &mut output)?,
+            }
         }
-        let mut extra = [0u8; 1];
-        let after = file.metadata()?;
-        if file.read(&mut extra)? != 0
-            || after.len() != before.len()
-            || after.modified().ok() != before.modified().ok()
-        {
-            return Err(Error::Unsupported("LHC source changed while read".into()));
+        if let Some(pool) = &pool {
+            writer.finish(pool, &mut output)?;
         }
-        output.write_all(&(file_crc.finalize() as u32).to_le_bytes())?;
-    }
+        Ok(())
+    })?;
     output.write_all(END)?;
-    output.sync_all()?;
+    if !options.skip_fsync {
+        output.sync_all()?;
+    }
     crate::reader::publish_staged_no_replace(
         &staging,
         &output,
@@ -616,14 +894,14 @@ fn read_frame(file: &mut File, expected: usize, archive_revision: u8) -> Result<
     let length = u32::from_le_bytes(prefix) as usize;
     let overhead = if archive_revision == 5 {
         delta16::HEADER
-    } else if matches!(archive_revision, 6..=10) {
+    } else if matches!(archive_revision, 6..=11) {
         40
     } else if matches!(archive_revision, 3 | 4) {
         80
     } else {
         block::HEADER
     };
-    let minimum = if matches!(archive_revision, 7 | 9 | 10) {
+    let minimum = if matches!(archive_revision, 7 | 9 | 10 | 11) {
         spatial::HEADER
     } else {
         block::HEADER
@@ -633,8 +911,10 @@ fn read_frame(file: &mut File, expected: usize, archive_revision: u8) -> Result<
     }
     let mut frame = allocate(length)?;
     exact(file, &mut frame)?;
-    if archive_revision == 10 {
-        if frame.get(..8) == Some(&spatial::MAGIC[..]) {
+    if matches!(archive_revision, 10 | 11) {
+        if archive_revision == 11 && frame.get(..8) == Some(&ppm::MAGIC[..]) {
+            ppm::validate_frame(&frame, expected).map_err(Error::Format)?;
+        } else if frame.get(..8) == Some(&spatial::MAGIC[..]) {
             spatial::validate_frame(&frame, expected).map_err(Error::Format)?;
         } else if frame.get(..8) == Some(&record::FAST_MAGIC[..]) {
             record::validate_fast_frame(&frame, expected).map_err(Error::Format)?;
@@ -643,7 +923,7 @@ fn read_frame(file: &mut File, expected: usize, archive_revision: u8) -> Result<
         } else if frame.get(..8) == Some(&block::MAGIC[..]) {
             validate_mdl_fallback_frame(&frame, expected, archive_revision)?;
         } else {
-            return Err(Error::Format("revision 10 frame family".into()));
+            return Err(Error::Format("revision 10/11 frame family".into()));
         }
     } else if archive_revision == 9 {
         if frame.get(..8) == Some(&spatial::MAGIC[..]) {
@@ -745,7 +1025,7 @@ fn validate_mdl_fallback_frame(frame: &[u8], expected: usize, archive_revision: 
     let method = frame[10];
     let allowed = match archive_revision {
         9 => frame_revision == 1 && method <= 1,
-        10 => matches!((frame_revision, method), (1, 0 | 1) | (2, 0 | 1 | 3)),
+        10 | 11 => matches!((frame_revision, method), (1, 0 | 1) | (2, 0 | 1 | 3)),
         _ => false,
     };
     if !allowed {
@@ -840,6 +1120,31 @@ pub fn extract_archive(archive: &Path, destination: &Path, limits: &Limits) -> R
         true,
     )
 }
+/// Plain verification with explicit options (`threads`); no progress callback.
+pub fn verify_archive_with_options(
+    archive: &Path,
+    limits: &Limits,
+    options: &ExtractOptions,
+) -> Result<Summary> {
+    process(archive, None, limits, options, &mut |_| true, true)
+}
+/// Plain extraction with explicit options (`threads`, `skip_fsync`,
+/// `preserve_timestamps`); no progress callback.
+pub fn extract_archive_with_options(
+    archive: &Path,
+    destination: &Path,
+    limits: &Limits,
+    options: &ExtractOptions,
+) -> Result<Summary> {
+    process(
+        archive,
+        Some(destination),
+        limits,
+        options,
+        &mut |_| true,
+        true,
+    )
+}
 pub fn extract_archive_with_progress(
     archive: &Path,
     destination: &Path,
@@ -863,7 +1168,14 @@ fn process(
     let root = destination
         .map(directory::create_ambient_directory_all_nofollow)
         .transpose()?;
-    if parallel && pipeline::eligible(&mut input, &entries, revision)? {
+    // threads: 0=旧来（G32系revision 4/5だけ4worker）、1=逐次、2以上=全familyを並列。
+    // 進捗付きAPI（parallel=false）は取消・進捗通知を保つため常に逐次。
+    let (workers, all_families) = match options.threads {
+        0 => (pipeline::WORKERS, false),
+        threads => (threads, true),
+    };
+    if parallel && workers >= 2 && pipeline::eligible(&mut input, &entries, revision, all_families)?
+    {
         pipeline::process(
             &mut input,
             &entries,
@@ -871,6 +1183,10 @@ fn process(
             root.as_ref(),
             destination,
             options,
+            pipeline::Parallelism {
+                workers,
+                all_families,
+            },
         )?;
         return Ok(summary);
     }
@@ -951,7 +1267,9 @@ fn process(
                     .into_std()
                     .set_times(std::fs::FileTimes::new().set_modified(time))?;
             }
-            output.sync_all()?;
+            if !options.skip_fsync {
+                output.sync_all()?;
+            }
             crate::reader::publish_staged_no_replace(
                 staging, output, parent, filename, &path, callback,
             )?;

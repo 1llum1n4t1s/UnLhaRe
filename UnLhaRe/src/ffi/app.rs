@@ -208,6 +208,7 @@ pub unsafe extern "C" fn unlhare_run_json(
                     entries.as_deref(),
                     &crate::ExtractOptions {
                         preserve_timestamps,
+                        ..Default::default()
                     },
                     &mut report,
                 )

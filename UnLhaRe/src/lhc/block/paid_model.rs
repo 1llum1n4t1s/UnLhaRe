@@ -56,12 +56,28 @@ struct Node {
     loss: f64,
     bits: usize,
 }
+// (32768 / f).log2() を f ごとに一度だけ計算した表。同じ f64 演算の結果を再利用するだけなので、
+// leaf の loss は表を使わない計算と bit 単位で一致する（木選択・wire は不変）。
+fn symbol_cost(frequency: u16) -> f64 {
+    static TABLE: std::sync::OnceLock<Box<[f64]>> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        (0..=32768u32)
+            .map(|f| {
+                if f == 0 {
+                    f64::INFINITY
+                } else {
+                    (32768.0 / f64::from(f)).log2()
+                }
+            })
+            .collect()
+    })[usize::from(frequency)]
+}
 fn leaf(counts: [u32; 4], frequency: [u16; 4], k: usize, depth: usize) -> Result<Node> {
     valid_frequency(frequency, k)?;
     let mut loss = 0.0;
     for i in 0..k {
         if counts[i] != 0 {
-            loss += f64::from(counts[i]) * (32768.0 / f64::from(frequency[i])).log2();
+            loss += f64::from(counts[i]) * symbol_cost(frequency[i]);
         }
     }
     if !loss.is_finite() || loss < 0.0 {
@@ -264,7 +280,7 @@ impl Fit {
 }
 // 短いleaf root拡張：Hist/quantizeを保持し、DP費用0とoracle wire3bitを区別。
 pub fn uniform(k: usize) -> Result<[u16; 4]> {
-    quantize([0; 4], k)
+    original::uniform_frequency(k)
 }
 impl Fit {
     pub fn root_loss(&self, k: usize) -> Result<f64> {

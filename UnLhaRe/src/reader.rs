@@ -479,7 +479,10 @@ pub fn extract_archive_with_options(
             {
                 set_modified_time(&file, seconds)?;
             }
-            file.sync_all()?;
+            // 既定は公開前にfsyncする。明示指定時だけ省略する（CRC検査とno-replace公開は維持）。
+            if !options.skip_fsync {
+                file.sync_all()?;
+            }
             publish_staged_no_replace(
                 &staging,
                 &file,

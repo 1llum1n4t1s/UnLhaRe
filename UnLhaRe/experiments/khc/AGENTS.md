@@ -8,5 +8,6 @@
 - 固定corpus・7-Zip基準・候補実行ファイル・採用結果・最小再現入力・ソース/コンパイラ/設定の識別値を保持する。既存の固定契約やSHA参照は書き換えず、参照された証拠を勝手に消さない。
   - 例外（2026-11-12、本人承認）: 旧Dドライブ作業フォルダー廃止に伴うパス置換で変わった `candidate-e2e-recovery` 一式と3つのscreen scriptのSHA固定値だけを、変更後の値へ連鎖的に更新した。
   - 例外（2026-11-13、本人承認）: 製品形式をKHCからLHC（LHA High Compression）へmagicを含めて改名した。ビルドを保つため、実験Rustコードの `src/khc` パスと `unlhare::khc` / `crate::khc` 参照だけを `lhc` へ置換した。このディレクトリ名、記録文書、PowerShell/Pythonスクリプト、研究frameのmagic、SHA固定値は旧称のまま残す。固定SHAと照合する旧スクリプトや旧 `khc-*` CLI・`--example khc_*` を呼ぶスクリプトは、再実行前に現行名へ合わせた新しい契約が必要。
+  - 例外（2026-11-13）: 旧作業root・固定corpus・旧ledgerが失われていたため、[見直したゲート](GOAL_GATE_20261113.md)の作業測定は登録runnerを通さず、`D:\tmp\lhc-perf` の作業用ハーネスと製品の通常ビルド（`scripts/build.ps1`、リポジトリの `build/cargo`）で行った。正式な合格判定の前に、現行名に合わせた新しいledgerと計測入口を用意する。
 - 旧 `build/`・CドライブのTemp/保全は読取専用の履歴入力として扱う。旧 `cleanup-incremental.ps1` の直接実行は通常経路に戻さず、新しいrunの清掃は [STORAGE.md](STORAGE.md) のPrunlet段階手順を通す。復元ZIP・台帳・削除記録はタスク保持先へ置き、既存の証拠や固定SHA参照を変更しない。
 - 清掃後の再ビルドはキャッシュを必要分だけ再生成する。製品ビルドや検証を容量節約のために省略した場合は、未実行と明記する。

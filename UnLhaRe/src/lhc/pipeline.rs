@@ -8,7 +8,10 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-const WORKERS: usize = 4;
+// 既定(旧来)のworker数と、threads指定時の上限。
+// 1worker当たりの復号scratchはframe/raw各1MiB強と小さなmodel表の見積もりで数MiBであり、
+// 4worker同時でも64MiB codec gate内に収まる想定（見積もりであり、全familyのpeak実測ではない）。
+pub(super) const WORKERS: usize = 4;
 const MAX_EVENTS: usize = 32;
 const STACK_BYTES: usize = 2 << 20;
 const MAX_PARALLEL_ENTRIES: usize = 4096;
@@ -38,8 +41,15 @@ fn worker_kind(frame: &[u8]) -> Option<bool> {
     }
 }
 
-pub(super) fn eligible(input: &mut File, entries: &[Entry], revision: u8) -> Result<bool> {
-    if !matches!(revision, 4 | 5)
+pub(super) fn eligible(
+    input: &mut File,
+    entries: &[Entry],
+    revision: u8,
+    all_families: bool,
+) -> Result<bool> {
+    // all_families は threads>=2 の明示指定時だけ。read_frame が revision ごとの family 境界を検証し、
+    // decompress_block が全 family を厳密に復号するため、worker_kind の制限を外せる。
+    if !(matches!(revision, 4 | 5) || (all_families && (1..=11).contains(&revision)))
         || entries.len() > MAX_PARALLEL_ENTRIES
         || entries.iter().map(|entry| entry.name.len()).sum::<usize>() > MAX_PARALLEL_NAME_BYTES
     {
@@ -53,8 +63,10 @@ pub(super) fn eligible(input: &mut File, entries: &[Entry], revision: u8) -> Res
             while remaining != 0 {
                 let expected = remaining.min(BLOCK_BYTES as u64) as usize;
                 let frame = read_frame(input, expected, revision)?;
-                let Some(frame_has_g32) = worker_kind(&frame) else {
-                    return Ok(false);
+                let frame_has_g32 = match worker_kind(&frame) {
+                    Some(kind) => kind,
+                    None if all_families => false,
+                    None => return Ok(false),
                 };
                 has_g32 |= frame_has_g32;
                 remaining -= expected as u64;
@@ -63,7 +75,7 @@ pub(super) fn eligible(input: &mut File, entries: &[Entry], revision: u8) -> Res
             exact(input, &mut crc)?;
         }
         finish(input)?;
-        Ok(has_g32)
+        Ok(has_g32 || all_families)
     })();
     // scanの失敗は元のserial経路で、元のentry順に報告する。
     // 復帰seekの失敗だけは、誤った位置からserialを続けられないため返す。
@@ -89,11 +101,11 @@ struct Pool {
     workers: Vec<Worker>,
 }
 impl Pool {
-    fn new() -> Result<Self> {
+    fn new(workers: usize) -> Result<Self> {
         let mut pool = Self {
-            workers: Vec::with_capacity(WORKERS),
+            workers: Vec::with_capacity(workers),
         };
-        for slot in 0..WORKERS {
+        for slot in 0..workers {
             let (sender, receiver) = sync_channel::<Job>(1);
             let (results, output) = sync_channel(1);
             let handle = thread::Builder::new()
@@ -190,18 +202,20 @@ struct Producer {
     entry: usize,
     phase: Phase,
     next_id: u64,
-    busy: [bool; WORKERS],
+    busy: Vec<bool>,
+    all_families: bool,
     done: bool,
     events: VecDeque<Event>,
 }
 impl Producer {
-    fn new(revision: u8) -> Self {
+    fn new(revision: u8, workers: usize, all_families: bool) -> Self {
         Self {
             revision,
+            all_families,
             entry: 0,
             phase: Phase::Begin,
             next_id: 0,
-            busy: [false; WORKERS],
+            busy: vec![false; workers],
             done: false,
             events: VecDeque::with_capacity(MAX_EVENTS),
         }
@@ -242,7 +256,7 @@ impl Producer {
                 let expected = remaining.min(BLOCK_BYTES as u64) as usize;
                 let frame = read_frame(input, expected, self.revision)?;
                 // prescan後に入力が変わっても、旧MDLをworkerへ渡さない。
-                if worker_kind(&frame).is_none() {
+                if !self.all_families && worker_kind(&frame).is_none() {
                     return Err(Error::Format("LHC parallel frame changed".into()));
                 }
                 let id = self.next_id;
@@ -348,7 +362,9 @@ impl Pending {
                     .into_std()
                     .set_times(std::fs::FileTimes::new().set_modified(time))?;
             }
-            output.sync_all()?;
+            if !options.skip_fsync {
+                output.sync_all()?;
+            }
             let filename = self
                 .path
                 .file_name()
@@ -370,6 +386,13 @@ impl Pending {
     }
 }
 
+/// 並列復号の設定。workers は 1..=WORKERS へ丸める。all_families は threads>=2 の明示指定時だけ真。
+#[derive(Clone, Copy)]
+pub(super) struct Parallelism {
+    pub workers: usize,
+    pub all_families: bool,
+}
+
 pub(super) fn process(
     input: &mut File,
     entries: &[Entry],
@@ -377,10 +400,16 @@ pub(super) fn process(
     root: Option<&Dir>,
     destination: Option<&Path>,
     options: &ExtractOptions,
+    parallelism: Parallelism,
 ) -> Result<()> {
-    let mut pool = Pool::new()?;
+    let Parallelism {
+        workers,
+        all_families,
+    } = parallelism;
+    let workers = workers.clamp(1, WORKERS);
+    let mut pool = Pool::new(workers)?;
     let result = (|| -> Result<()> {
-        let mut producer = Producer::new(revision);
+        let mut producer = Producer::new(revision, workers, all_families);
         let mut pending: Option<Pending> = None;
         loop {
             producer.fill(input, entries, &pool);

@@ -224,6 +224,32 @@ pub(crate) fn encode_hybrid(raw: &[u8], adaptive: bool) -> Result<(Vec<u8>, Stat
     Ok((best, s))
 }
 
+/// `encode_hybrid(raw, true)`（BinaryAdaptive）のうち、MDLを選ぶテキスト経路の結果を、
+/// 計算済みの `encode(raw)` から作る。テキスト経路は MDL frame の revision 欄を 2 にして
+/// CRC を付け直すだけなので、結果は `encode_hybrid(raw, true)` と byte 単位で一致する。
+/// MDL を選ばない（LZ8 経路の）入力では `None` を返し、呼出し側が従来どおり計算する。
+pub(crate) fn binary_adaptive_from_mdl(
+    raw: &[u8],
+    mdl: &(Vec<u8>, Stats),
+) -> Option<Result<(Vec<u8>, Stats)>> {
+    if raw.len() > MAX_INPUT {
+        return None;
+    }
+    let text = raw
+        .iter()
+        .filter(|&&b| matches!(b, 9 | 10 | 13 | 32..=126))
+        .count();
+    if text * 10 < raw.len() * 9 {
+        return None;
+    }
+    let mut best = mdl.0.clone();
+    if best.len() < 10 {
+        return Some(Err("binary adaptive MDL frame".into()));
+    }
+    best[8..10].copy_from_slice(&2u16.to_le_bytes());
+    Some(reseal(&mut best).map(|()| (best, mdl.1.clone())))
+}
+
 pub(crate) fn revision_method_valid(bytes: &[u8]) -> bool {
     bytes.len() >= 12
         && match u16::from_le_bytes([bytes[8], bytes[9]]) {
@@ -734,4 +760,43 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(Vec<u8>, Stats)> {
         return Err("plain CRC".into());
     }
     Ok((plain, s))
+}
+
+#[cfg(test)]
+mod binary_adaptive_reuse_tests {
+    use super::*;
+
+    // portfolio は BinaryAdaptive の基準を MDL frame から作る。encode_hybrid(raw, true) と
+    // byte 単位で一致すること、MDL を選ばない入力では None を返すことを固定する。
+    #[test]
+    fn mdl_reuse_matches_binary_adaptive_encoder() {
+        let mut text = Vec::new();
+        for i in 0..20_000u32 {
+            text.extend_from_slice(format!("line {} of shared text\n", i % 97).as_bytes());
+        }
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        let binary: Vec<u8> = (0..50_000)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect();
+        let inputs: [&[u8]; 5] = [b"", b"short text", &text[..200], &text[..4000], &text];
+        for raw in inputs {
+            let mdl = encode(raw).unwrap();
+            let reused = binary_adaptive_from_mdl(raw, &mdl)
+                .expect("text input takes the MDL path")
+                .unwrap();
+            assert_eq!(
+                reused.0,
+                encode_hybrid(raw, true).unwrap().0,
+                "{}",
+                raw.len()
+            );
+        }
+        let mdl = encode(&binary).unwrap();
+        assert!(binary_adaptive_from_mdl(&binary, &mdl).is_none());
+    }
 }

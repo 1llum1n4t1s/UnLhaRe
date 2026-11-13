@@ -790,6 +790,20 @@ pub(super) fn encode_adaptive(raw: &[u8]) -> Result<Vec<u8>> {
     encode_scheduled(raw, true)
 }
 
+/// `encode_fast` / `encode_adaptive` と同じ frame を、計算済みの MDL（`block::encode`）を
+/// BinaryAdaptive の基準として再利用して作る。portfolio が MDL を重複計算しないための入口。
+pub(super) fn encode_scheduled_with_mdl(
+    raw: &[u8],
+    adaptive: bool,
+    mdl: &(Vec<u8>, baseline::Stats),
+) -> Result<Vec<u8>> {
+    let prepared = prepare_scheduled_with(raw, Some(mdl))?;
+    match encode_prepared_scheduled(raw, &prepared, None, adaptive)? {
+        Some(frame) => Ok(frame),
+        None => Ok(prepared.legacy),
+    }
+}
+
 fn encode_scheduled(raw: &[u8], adaptive: bool) -> Result<Vec<u8>> {
     let prepared = prepare_scheduled(raw)?;
     match encode_prepared_scheduled(raw, &prepared, None, adaptive)? {
@@ -799,7 +813,22 @@ fn encode_scheduled(raw: &[u8], adaptive: bool) -> Result<Vec<u8>> {
 }
 
 pub(super) fn scheduled_lengths(raw: &[u8]) -> Result<(usize, usize)> {
-    let mut prepared = prepare_scheduled(raw)?;
+    scheduled_lengths_with(raw, None)
+}
+
+/// `scheduled_lengths` と同じ値を、計算済みの MDL を BinaryAdaptive の基準に再利用して求める。
+pub(super) fn scheduled_lengths_with_mdl(
+    raw: &[u8],
+    mdl: &(Vec<u8>, baseline::Stats),
+) -> Result<(usize, usize)> {
+    scheduled_lengths_with(raw, Some(mdl))
+}
+
+fn scheduled_lengths_with(
+    raw: &[u8],
+    mdl: Option<&(Vec<u8>, baseline::Stats)>,
+) -> Result<(usize, usize)> {
+    let mut prepared = prepare_scheduled_with(raw, mdl)?;
     let candidate_bound = prepared
         .bound
         .saturating_sub(HEADER + prepared.schedule.len());
@@ -876,10 +905,21 @@ struct ScheduledPreparation {
 }
 
 fn prepare_scheduled(raw: &[u8]) -> Result<ScheduledPreparation> {
+    prepare_scheduled_with(raw, None)
+}
+
+fn prepare_scheduled_with(
+    raw: &[u8],
+    mdl: Option<&(Vec<u8>, baseline::Stats)>,
+) -> Result<ScheduledPreparation> {
     if raw.len() > MAX_RAW {
         return Err("copy input bound".into());
     }
-    let (legacy, old) = baseline::encode_hybrid(raw, true)?;
+    // テキスト入力の BinaryAdaptive は MDL frame の revision 書換えだけなので、計算済みなら再利用する。
+    let (legacy, old) = match mdl.and_then(|mdl| baseline::binary_adaptive_from_mdl(raw, mdl)) {
+        Some(result) => result?,
+        None => baseline::encode_hybrid(raw, true)?,
+    };
     let mut stats = Stats::default();
     gate(&mut stats, old.phase_capacity_bound + raw.len() + FIXED)?;
     let bound = raw.len().min(legacy.len());

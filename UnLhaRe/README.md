@@ -80,6 +80,8 @@ LHCの既定`mdl`は従来のrevision 1を維持します。明示指定の`hybr
 
 明示指定の`portfolio-trial`（Rust `BlockStrategy::PortfolioTrial`）はrevision 10の実験候補です。MDL、KCS1、KRS2、KRS3の完全frameをこの順でblockごとに試し、同じ長さなら先の方式を選びます。圧縮workspaceを抑えるため候補長だけを保持し、勝者を再符号化します。既存方式の組合せであり、新しいcodec原理ではありません。default `mdl`、revision 1〜9の読取を維持します。速度・高水位memory・製品性能優位は未評価です。[形式仕様](LHC_FORMAT.md#archive-revision-10-4方式のblock単位完全frame選択実験候補)を参照してください。
 
+明示指定の`portfolio-ppm-trial`（Rust `BlockStrategy::PortfolioPpmTrial`）はrevision 11の実験候補です。revision 10の4方式に、PPMII（PPMd var.H相当）の独自Rust実装によるテキスト候補（LPM1BLK、order 6）を加え、厳密に短い場合だけ採用します。2026-11-13のWindows x64開発測定では、Calgary 18fileの書庫が776,377B（7-Zip LZMA2 mx9 solidの0.913倍）、Canterbury 11fileのframe合計がrevision 10より約7.7%小さくなりました。一方でテキストblockの復号はMDLの約2〜3倍遅く、4worker展開は7-Zipの約3.0倍でした。default `mdl`、revision 1〜10の読取を維持します。[形式仕様](LHC_FORMAT.md#archive-revision-11ppmii系テキスト候補を加えたblock単位完全frame選択実験候補)を参照してください。
+
 開発版LHCの実操作（既存`create/list/test/extract`は引き続きLHA）：
 
 MDL復号のモデル表は同じCDFを共有して保持メモリを抑えます。[公開経路の評価](experiments/khc/forest-layout/PUBLIC_RESULT_20261006.md)では調整用11入力の観測展開private最大が約9.74MBから5.33MBへ減りました。全処理の最大メモリは圧縮側でほぼ不変で、全モデルが可変な最悪条件の追加領域も必要です。形式・既定戦略は変更しません。小幅な時間短縮は確認していますが、7-Zip総合優位の証拠ではありません。
@@ -96,10 +98,16 @@ unlhare-cli lhc-create spatial.lhc --source input-directory --strategy spatial-b
 unlhare-cli lhc-create record-adaptive.lhc --source input-directory --strategy record-adaptive-trial
 unlhare-cli lhc-create spatial-mdl.lhc --source input-directory --strategy spatial-mdl-trial
 unlhare-cli lhc-create portfolio.lhc --source input-directory --strategy portfolio-trial
+unlhare-cli lhc-create portfolio-ppm.lhc --source input-directory --strategy portfolio-ppm-trial
 unlhare-cli lhc-list output.lhc --json
 unlhare-cli lhc-test output.lhc
 unlhare-cli lhc-extract output.lhc --output restored-directory
+# 並列処理とfsync省略（明示指定時のみ）
+unlhare-cli lhc-create fast.lhc --source input-directory --strategy portfolio-trial --threads 4 --no-fsync
+unlhare-cli lhc-extract fast.lhc --output restored-directory --threads 4 --no-fsync
 ```
+
+`--threads N`（Rust `CreateOptions::threads` / `ExtractOptions::threads`）は、作成では1MiB blockを長い順に取り出すworker poolで並列圧縮し、書庫順に書き出します。worker数にかかわらず書庫のbyteは同一です。作成のworkerはそれぞれ固定のcodecメモリ予約（64MiB）を課金し、CLIは`--threads`に合わせて予約を増やします。展開・検証（`*_with_options`）で2以上を指定すると、全frame familyを最大4workerで並列復号します。0は従来の選択、1は逐次です。`--no-fsync`（`skip_fsync`）は公開前のfsyncだけを省き、CRC検査とno-replace公開は維持します。停電時に直前の出力を失ってよい場合だけ指定してください。LHAの`ExtractOptions::skip_fsync`も同じ意味です。
 
 LHCは1MiB単位の自己完結CPU codecで、不利益なblockはstoredになります。外部モデル・量子機材不要。一覧は復号せず、完全CRC検証には`lhc-test`を使用してください。manifest最大4MiB/100,000項目、名前depth128、codec reservation64MiBに加えてsource/output bufferとmanifestのメモリが必要です。Rustには`compress_block`/`decompress_block`、create/list/visit/verify/extractとprogress入口があります。出力は検証済みentry単位のno-clobberで、後続失敗時に先行entryは残ります。同期のみ・block計算中の取消遅延・directory時刻非復元・C/.NET未対応という制限があります。LHC作成先は入力directoryの外へ指定してください。
 

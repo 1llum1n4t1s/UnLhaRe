@@ -141,10 +141,26 @@ pub fn compact_frequency(original: [u16; 4], k: usize) -> Result<[u16; 4]> {
     }
     Ok(f)
 }
+// quantize([0; 4], k) の結果を k ごとに固定した表（Hamilton配分を手計算した値）。
+// 木選択の内側で毎回Hamilton配分を計算しないための高速化で、値の一致は単体テストで確認する。
+const UNIFORM: [[u16; 4]; 5] = [
+    [0; 4],
+    [0; 4],
+    [16384, 16384, 0, 0],
+    [10923, 10923, 10922, 0],
+    [8192, 8192, 8192, 8192],
+];
+/// `quantize([0; 4], k)` と同じ一様CDF（k は 2..=4）。
+pub fn uniform_frequency(k: usize) -> Result<[u16; 4]> {
+    if !(2..=4).contains(&k) {
+        return Err("quantization prefix/tail".into());
+    }
+    Ok(UNIFORM[k])
+}
 // minor leafの厳密mode：uniform優先、pure完全一致、それ以外はcompact。
 pub fn leaf_mode(f: [u16; 4], k: usize) -> Result<(u32, usize)> {
     valid_frequency(f, k)?;
-    if f == quantize([0; 4], k)? {
+    if f == uniform_frequency(k)? {
         return Ok((0, 0));
     }
     for dominant in 0..k {
@@ -163,4 +179,16 @@ pub fn reverse_history(history: u16) -> u16 {
         result |= ((history >> (2 * d)) & 3) << (2 * (4 - d));
     }
     result
+}
+
+#[cfg(test)]
+mod uniform_tests {
+    use super::*;
+    #[test]
+    fn uniform_table_matches_hamilton_quantization() {
+        for k in 2..=4 {
+            assert_eq!(uniform_frequency(k).unwrap(), quantize([0; 4], k).unwrap());
+        }
+        assert!(uniform_frequency(1).is_err() && uniform_frequency(5).is_err());
+    }
 }

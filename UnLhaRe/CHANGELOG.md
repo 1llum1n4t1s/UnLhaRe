@@ -3,6 +3,10 @@
 ## Unreleased
 
 - 開発中の独自形式KHCをLHC（LHA High Compression、拡張子`.lhc`）へ改名。Rust APIは`unlhare::lhc`、CLIは`lhc-create`/`lhc-list`/`lhc-test`/`lhc-extract`、仕様は`LHC_FORMAT.md`。書庫・frameのmagicも`KHC*`から`LHC*`へ変更したため、改名前に作成した開発版書庫は読めない。LHAの圧縮方式ではなく、既存LHAツールとの互換性はない。
+- LHCの作成・展開・検証に`--threads`（`CreateOptions::threads` / `ExtractOptions::threads`、`lhc::extract_archive_with_options` / `verify_archive_with_options`）を追加。作成はblock単位の並列圧縮で、worker数にかかわらず書庫のbyteは同一。展開・検証は全frame familyを並列復号できる。
+- 公開前のfsyncを明示的に省く`--no-fsync`（`skip_fsync`）をLHCの作成・展開とLHAの展開へ追加。既定はfsyncを維持する。
+- LHCに実験候補`portfolio-ppm-trial`（`BlockStrategy::PortfolioPpmTrial`、archive revision 11）を追加。revision 10の4方式へPPMII（PPMd var.H相当）の独自Rust実装によるテキスト候補（frame `LPM1BLK`）を加え、block単位で最小の完全frameを選ぶ。Calgaryの書庫は7-Zip LZMA2 mx9 solidの約0.913倍になるが、テキストblockの復号は遅くなる。既定`mdl`と既存revisionの読取は変更しない。
+- LHC portfolio-trialのMDL重複計算を除き、MDL木選択の対数計算を表引きにして作成を高速化。出力の一致はCanterbury 11fileの書庫byte比較と、BinaryAdaptive基準の再利用を固定する単体テストで確認した。
 
 - ABI 1のAPI level 6としてLH4作成と、LH4/LH5/LH6/LH7の明示的な高圧縮オプションをRust・C JSON・CLI・.NETへ追加。標準と2パス最適化の本文サイズを比較して小さい方を採用し、LH0は無圧縮を維持する。既定の標準圧縮と公開版1.0.4は変更しない。高圧縮は追加の時間・入力サイズ比例の作業メモリを必要とする。
 
