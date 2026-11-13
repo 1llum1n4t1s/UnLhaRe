@@ -102,7 +102,7 @@ fn run() -> Result<()> {
     if std::fs::metadata(archive).map_err(|e| e.to_string())?.len() != 466395 {
         return Err("fixed native archive bytes".into());
     }
-    let entries = unlhare::khc::list_archive(archive, &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(archive, &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(archive).map_err(|e| e.to_string())?;
     if entries.len() != 11 || saved.len() != 466395 {
         return Err("fixed native corpus coverage".into());
@@ -133,7 +133,7 @@ fn run() -> Result<()> {
             return Err("native original size".into());
         }
         logical_peak = logical_peak.max(gate(&[32 << 20, saved.capacity(), raw.capacity(), raw.len(), DRIVER])?);
-        let native = unlhare::khc::decompress_block(old).map_err(|e| e.to_string())?;
+        let native = unlhare::lhc::decompress_block(old).map_err(|e| e.to_string())?;
         logical_peak = logical_peak.max(gate(&[32 << 20, saved.capacity(), raw.capacity(), native.capacity(), DRIVER])?);
         if native != raw {
             return Err(format!("native complete bytes {}", entry.name));

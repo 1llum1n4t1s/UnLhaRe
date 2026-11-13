@@ -1,8 +1,8 @@
 //! RAWから全trialを実行する開発入力専用screen。採用・7-Zip gateではない。
 #![allow(dead_code)]
-#[path = "../../../src/khc/block/mod.rs"]
+#[path = "../../../src/lhc/block/mod.rs"]
 mod block;
-#[path = "../../../src/khc/record.rs"]
+#[path = "../../../src/lhc/record.rs"]
 mod record;
 #[path = "../kht-root-table/codec.rs"]
 mod root;
@@ -150,7 +150,7 @@ fn verify(raw: &Vec<u8>, frame: &Vec<u8>, other: usize, peak: &mut usize) -> Res
         }
         gate(&[s.logical_bound, held, checked.capacity()], peak)?;
         drop(checked);
-        let out = unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())?;
+        let out = unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())?;
         gate(&[s.logical_bound, held, out.capacity()], peak)?;
         if out.capacity() > raw.len() {
             return Err("public decode capacity drift".into());
@@ -205,7 +205,7 @@ fn run() -> Result<()> {
         let row_proof = &proof[index];
         let baseline = native(&raw, 0, row_proof, &mut peak)?;
         gate(&[NATIVE_PROOF_BOUND, raw.capacity() - raw.len(), baseline.capacity(), DRIVER, raw.len() + 40], &mut peak)?;
-        let public = unlhare::khc::compress_block_with_strategy(&raw, unlhare::khc::BlockStrategy::RecordTrial).map_err(|e| e.to_string())?;
+        let public = unlhare::lhc::compress_block_with_strategy(&raw, unlhare::lhc::BlockStrategy::RecordTrial).map_err(|e| e.to_string())?;
         gate(&[row_proof.logical, raw.capacity() - raw.len(), DRIVER, baseline.capacity(), public.capacity()], &mut peak)?;
         if public.capacity() > raw.len() + 40 {
             return Err("public native capacity drift".into());

@@ -9,9 +9,9 @@ use std::{fs::File, io::Read};
 fn encoded(raw: &[u8]) -> Result<(Vec<u8>, Vec<u8>, [usize; 7]), String> {
     let before = old::encode_hybrid(raw, true)?.0;
     let after = new::encode_hybrid(raw, true)?.0;
-    let public = unlhare::khc::compress_block_with_strategy(
+    let public = unlhare::lhc::compress_block_with_strategy(
         raw,
-        unlhare::khc::BlockStrategy::BinaryAdaptive,
+        unlhare::lhc::BlockStrategy::BinaryAdaptive,
     )
     .map_err(|e| e.to_string())?;
     if before != after || public != before {
@@ -20,7 +20,7 @@ fn encoded(raw: &[u8]) -> Result<(Vec<u8>, Vec<u8>, [usize; 7]), String> {
     for frame in [&before, &after] {
         if old::decode(frame)?.0 != raw
             || new::decode(frame)?.0 != raw
-            || unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())? != raw
+            || unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())? != raw
         {
             return Err("full restore mismatch".into());
         }
@@ -33,7 +33,7 @@ fn malformed(raw: &[u8], frame: &[u8]) -> Result<(usize, usize), String> {
     let mut check = |bytes: &[u8]| -> Result<(), String> {
         let a = old::decode(bytes).map(|r| r.0);
         let b = new::decode(bytes).map(|r| r.0);
-        let c = unlhare::khc::decompress_block(bytes).map_err(|e| e.to_string());
+        let c = unlhare::lhc::decompress_block(bytes).map_err(|e| e.to_string());
         if a.is_ok() != b.is_ok() || a.is_ok() != c.is_ok() {
             return Err("decoder rejection drift".into());
         }
@@ -49,7 +49,7 @@ fn malformed(raw: &[u8], frame: &[u8]) -> Result<(usize, usize), String> {
         }
         if old::decode(frame)?.0 != raw
             || new::decode(frame)?.0 != raw
-            || unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())? != raw
+            || unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())? != raw
         {
             return Err("same-process recovery".into());
         }

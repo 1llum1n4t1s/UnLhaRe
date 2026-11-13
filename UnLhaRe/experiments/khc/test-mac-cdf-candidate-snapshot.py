@@ -64,7 +64,7 @@ class SetupLocation(unittest.TestCase):
         self.assertEqual(M.setup_dependency_path(HERE/'mac-cdf-candidate-snapshot.py'),HERE/'mac-native-setup.py')
 
     def test_fixture_identifier_is_explicit_and_cannot_escape(self):
-        parent=Path('D:/Codex/UnLhaRe/goal-restore-20261019')
+        parent=Path('D:/Claude/UnLhaRe/goal-restore-20261019')
         self.assertEqual(fixture_path(parent,'a'*32),parent/('cdf-candidate-snapshot-tests-'+'a'*32))
         for name in ('','a'*31,'A'*32,'../outside'):
             with self.assertRaises(ValueError):fixture_path(parent,name)
@@ -75,7 +75,7 @@ class Snapshot(unittest.TestCase):
     def setUpClass(cls):
         global ARENA
         if ARENA is not None:return
-        parent=Path('D:/Codex/UnLhaRe/goal-restore-20261019')
+        parent=Path('D:/Claude/UnLhaRe/goal-restore-20261019')
         checked(parent);cls.assertTrue(cls,parent.is_dir() and os.access(parent,os.W_OK))
         ARENA=fixture_path(parent,os.environ.get('KHC_CDF_SNAPSHOT_FIXTURE_ID',uuid.uuid4().hex))
         checked(ARENA);ARENA.mkdir(mode=0o700)

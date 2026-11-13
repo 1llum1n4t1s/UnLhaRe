@@ -48,12 +48,12 @@ pub fn measure(raw: &[u8], caller: usize) -> Result<(Option<usize>, usize, serde
     let retained=caller+front.capacity()+bytes.capacity(); paid(retained)?;
     if restore(&bytes,&front,vocab,escape,raw.len())?!=raw { return Err("BWT transform byte mismatch".into()); }
     paid(retained)?;
-    let dict=unlhare::khc::compress_block(&front).map_err(|e|e.to_string())?; paid(retained+dict.capacity())?;
+    let dict=unlhare::lhc::compress_block(&front).map_err(|e|e.to_string())?; paid(retained+dict.capacity())?;
     let dictionary_wire=front.len().min(dict.len()); let dict_frame=dict.len(); let dict_cap=dict.capacity();
-    if unlhare::khc::decompress_block(&dict).map_err(|e|e.to_string())?!=front { return Err("BWT dictionary native mismatch".into()); }
+    if unlhare::lhc::decompress_block(&dict).map_err(|e|e.to_string())?!=front { return Err("BWT dictionary native mismatch".into()); }
     drop(dict); paid(retained)?;
-    let token=unlhare::khc::compress_block(&bytes).map_err(|e|e.to_string())?; paid(retained+token.capacity())?;
-    if unlhare::khc::decompress_block(&token).map_err(|e|e.to_string())?!=bytes { return Err("BWT token native mismatch".into()); }
+    let token=unlhare::lhc::compress_block(&bytes).map_err(|e|e.to_string())?; paid(retained+token.capacity())?;
+    if unlhare::lhc::decompress_block(&token).map_err(|e|e.to_string())?!=bytes { return Err("BWT token native mismatch".into()); }
     let reserve_peak=LIBRARY_RESERVE+front.capacity()+bytes.capacity()+token.capacity().max(dict_cap);
     paid(caller+reserve_peak-LIBRARY_RESERVE)?;
     Ok((Some(48+dictionary_wire+token.len()),bound.max(reserve_peak),serde_json::json!({"vocab":vocab,"phrases":phrases,"symbols":symbol_count,

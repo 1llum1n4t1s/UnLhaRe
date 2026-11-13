@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # 保存済みprobeを読むだけ。run登録、ACL変更、Prunlet、削除は実行しない。
 [CmdletBinding()]
-param([string]$ProbeDirectory='D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/schema6-cleanup-20261026')
+param([string]$ProbeDirectory='D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/schema6-cleanup-20261026')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $tokens=$null;$errors=$null
@@ -296,7 +296,7 @@ Reject 'remote registration cannot lose private reserve flag' {Assert-KhcMacNati
 Reject 'public receipt alone cannot authorize cleanup' {Assert-KhcMacNativeE2eSealState $true $true $false -RequireSeal}
 Accept 'private canonical terminal seal authorizes cleanup' {Assert-KhcMacNativeE2eSealState $true $true $true -RequireSeal}
 foreach($name in @('ConvertFrom-KhcBoundedJsonSnapshot','Test-KhcMacNativeE2eJsonEqual','Assert-KhcMacNativeE2eReceiptData')){$f=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq $name},$false);if($null -eq $f){throw "Missing terminal validator: $name"};. ([scriptblock]::Create($f.Extent.Text))}
-$oracleData=Get-Content -LiteralPath 'D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-e2e-oracle.json' -Raw | ConvertFrom-Json -AsHashtable
+$oracleData=Get-Content -LiteralPath 'D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-e2e-oracle.json' -Raw | ConvertFrom-Json -AsHashtable
 $goldens=@(for($n=0;$n -lt 3;$n++){$hex=$oracleData.api.folded_zero_count_frames[$n];$bytes=[Convert]::FromHexString($hex);@{index=$n;hex=$hex;bytes=$bytes.Length;sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()}})
 $remoteReport=@{schema=1;state='passed';tracked_direct_children_absent=$true;windows_run_id=('a'*32);protocol_sha256=('f'*64);registration_sha256=('b'*64);checks=$oracleData.checks;api=$oracleData.api;full_goldens=$goldens;archive_suffixes=$oracleData.archive_suffixes;restored=$oracleData.restored}
 foreach($key in @('config_sha256','oracle_sha256','fixture_sha256','cli_sha256','e2e_sha256','old_failed_build_sha256','previous_e2e_sha256','e2e_script_sha256','reason')){$remoteReport[$key]=$psFreeProtocol[$key]}
@@ -307,7 +307,7 @@ Accept 'canonical endpoint terminal and full report' {$null=Assert-KhcMacNativeE
 foreach($case in @('children','children-type','windows-id','protocol-sha','source','binary','report-hash','report-missing','status','exit-type','extra')){Reject "endpoint terminal $case" {$r=Copy-Data $endpointReceipt;switch($case){children {$r.children_absent=$false};children-type {$r.children_absent='true'};windows-id {$r.windows_run_id='c'*32};protocol-sha {$r.protocol_sha256='0'*64};source {$r.source_sha256='0'*64};binary {$r.cli_sha256='0'*64};report-hash {$r.report_sha256='0'*64};report-missing {$r.report_base64=$null};status {$r.status='unknown'};exit-type {$r.exit='0'};extra {$r.other=1}};$null=Assert-KhcMacNativeE2eReceiptData $r $psFreeProtocol ('f'*64) ('a'*32) $oracleData}}
 Accept 'failed canonical terminal permits cleanup but never pass' {$r=Copy-Data $endpointReceipt;$r.exit=1;$r.status='failed';$r.report_sha256=$null;$r.report_base64=$null;$r.tracked_direct_children_absent=$false;$r.error='E2E failed';$null=Assert-KhcMacNativeE2eReceiptData $r $psFreeProtocol ('f'*64) ('a'*32) $oracleData}
 foreach($name in @('ConvertFrom-KhcMacNativeInvocationSnapshot','Get-KhcMacNativeE2eChildCommand')){$f=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq $name},$false);if($null -eq $f){throw "Missing child snapshot validator: $name"};. ([scriptblock]::Create($f.Extent.Text))}
-$nativeInvocation=[pscustomobject]@{script='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-spatial-mdl-e2e.ps1';parameters=@{WorkDirectory=('D:\Codex\UnLhaRe\goal-restore-20261019\run-'+('a'*32));ProtocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json';ProtocolSha256=('f'*64)}}
+$nativeInvocation=[pscustomobject]@{script='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-spatial-mdl-e2e.ps1';parameters=@{WorkDirectory=('D:\Claude\UnLhaRe\goal-restore-20261019\run-'+('a'*32));ProtocolPath='D:\Claude\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json';ProtocolSha256=('f'*64)}}
 $invocationBytes=[Text.Encoding]::UTF8.GetBytes([Management.Automation.PSSerializer]::Serialize($nativeInvocation,5))
 $invocationHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($invocationBytes)).ToLowerInvariant()
 Accept 'child parses only exact approved invocation snapshot' {$inv=ConvertFrom-KhcMacNativeInvocationSnapshot $invocationBytes $invocationHash;if($inv.script -cne $nativeInvocation.script){throw 'Wrong child worker'}}
@@ -338,7 +338,7 @@ $completedPublic=[pscustomobject]@{Disposition='recycle-retained';ReclaimedBytes
 Reject 'actual completed validator rejects remote seal single-record loss' {$null=Test-KhcRecycleV6Completed $completedLocation ('a'*32) $completedRecord $completedRequest $completedPublic}
 Accept 'actual completed validator accepts present canonical remote seal' {$script:missingCompletedRemoteSeal=$false;$result=Test-KhcRecycleV6Completed $completedLocation ('a'*32) $completedRecord $completedRequest $completedPublic;if($result.State -cne 'completed-receipts-verified'){throw 'Completion changed'}}
 Accept 'actual completed validator preserves nonremote completion' {$script:missingCompletedRemoteSeal=$true;$script:completedRemoteRequired=$false;$result=Test-KhcRecycleV6Completed $completedLocation ('a'*32) $completedRecord $completedRequest $completedPublic;if($result.State -cne 'completed-receipts-verified'){throw 'Nonremote completion changed'}}
-$referenceInvocation=[pscustomobject]@{script='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-canterbury-reference.ps1';parameters=@{WorkDirectory=$nativeInvocation.parameters.WorkDirectory;ProtocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-reference-protocol.json';ProtocolSha256=('f'*64)}}
+$referenceInvocation=[pscustomobject]@{script='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-canterbury-reference.ps1';parameters=@{WorkDirectory=$nativeInvocation.parameters.WorkDirectory;ProtocolPath='D:\Claude\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-reference-protocol.json';ProtocolSha256=('f'*64)}}
 $referenceInvocationBytes=[Text.Encoding]::UTF8.GetBytes([Management.Automation.PSSerializer]::Serialize($referenceInvocation,5))
 $referenceInvocationHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($referenceInvocationBytes)).ToLowerInvariant()
 Accept 'reference class dispatches only fixed reference worker' {$inv=ConvertFrom-KhcMacNativeInvocationSnapshot $referenceInvocationBytes $referenceInvocationHash 'reference';if($inv.script -cne $referenceInvocation.script){throw 'Wrong reference worker'}}

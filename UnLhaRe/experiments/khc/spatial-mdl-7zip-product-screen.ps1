@@ -157,7 +157,7 @@ function Write-Report {
 $work=Plain $WorkDirectory
 if (Test-Path -LiteralPath $work) { throw 'WorkDirectory must be unused.' }
 $khc=Plain $KhcExecutable; $seven=Plain $SevenZipPath; $recovery=Plain $InputRecoveryZip
-$expectedZip='D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+$expectedZip=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip')
 if ($recovery -cne $expectedZip) { throw 'Use the preregistered recovery ZIP.' }
 $source=Join-Path $work 'source'; $archives=Join-Path $work 'archives'
 $reportPath=Join-Path $work 'spatial-mdl-7zip-product-screen.json'

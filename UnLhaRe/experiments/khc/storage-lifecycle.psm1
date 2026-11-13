@@ -3,8 +3,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:ProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$script:WorkspaceBase = 'D:\Codex\UnLhaRe'
-$script:TaskArtifactsBase = 'D:\Codex\TaskArtifacts\UnLhaRe'
+# 作業先・保全先の基点は「ユーザー既定の一時フォルダー\UnLhaRe」とする（旧Dドライブ固定の作業フォルダー運用は廃止）。
+# - $env:TEMP ではなくユーザー環境変数TEMP（レジストリ値）を読む。Initialize-KhcStorageTaskEnvironment が
+#   子プロセス向けに $env:TEMP/TMP をtask専用tempへ差し替えるため、$env:TEMP や GetTempPath() を使うと
+#   子プロセスで再importした際に基点がずれ、固定パスの完全一致検査がすべて食い違ってしまう。
+# - ユーザー環境変数が無い環境だけ GetTempPath() へ退避する。
+# - work と TaskArtifacts は同じ親の兄弟にする。入れ子にすると Get-KhcTaskWorkspaceRoots が保全側を
+#   task rootと誤認し、容量計上（workspace + keep）も二重計上になるため。
+# 他スクリプトも同じ式をインラインで使う（AST抽出で関数単位に読み込むテストがあり、共有変数に依存できないため）。
+$script:KhcStorageRoot = (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe')
+$script:WorkspaceBase = (Join-Path $script:KhcStorageRoot 'work')
+$script:TaskArtifactsBase = (Join-Path $script:KhcStorageRoot 'TaskArtifacts')
 $script:TaskId = [string]$env:KHC_STORAGE_TASK_ID
 $script:TaskRoot = $null
 $script:TempRoot = $null
@@ -170,7 +179,7 @@ function Assert-KhcPlainPath {
 # 旧campaignの固定値は変更しない。開発集合と独立holdoutは別のprofile/markerを使う。
 function Assert-KhcSingleSealSpeedFrontierCampaign {
     param([string]$RunId, [switch]$RequireOpenWindow)
-    $directory=Assert-KhcPlainPath 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\krs2-single-seal-frontier-20261020'
+    $directory=Assert-KhcPlainPath (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\krs2-single-seal-frontier-20261020')
     $path=Assert-KhcPlainPath (Join-Path $directory 'campaign-start.json')
     $markerSha='9a3109f0b11f5f35b627982f494bd09888d3f070e47c17ee8329ea15d76aab77'
     if ((Get-Item -LiteralPath $path -Force).Length -ne 2390 -or
@@ -235,7 +244,7 @@ function Assert-KhcSingleSealSpeedFrontierCampaign {
             $claim.campaign_id -cne $marker.campaign_id -or $claim.record_path -cne $recordPath -or
             $record.run_id -cne $RunId -or $record.max_bytes -ne 28MB -or $record.max_entries -ne 128 -or
             $record.work_directory -cne $claim.work_directory -or
-            $location.StateRoot -cne 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle') { throw 'SingleSeal claim/current registration mismatch.' }
+            $location.StateRoot -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\storage-lifecycle')) { throw 'SingleSeal claim/current registration mismatch.' }
     }
     if ($RequireOpenWindow -and ([DateTime]::UtcNow -lt ([DateTimeOffset]$marker.start_utc).UtcDateTime -or
         [DateTime]::UtcNow -ge ([DateTimeOffset]$marker.end_utc).UtcDateTime)) { throw 'SingleSeal fixed UTC window is closed.' }
@@ -263,8 +272,8 @@ function Get-KhcPortfolioInputProfile {
     if ($CorpusProfile -ceq 'CanterburyDevelopmentKcs1CountLength20261020') {
         # 過去のCanterbury campaignとは別のsource条件。復旧ZIPは読み取り専用の入力container。
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020'
-            InputZipPath='D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020')
+            InputZipPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip')
             ZipBytes=8765120L; ZipSha256='b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb'
             Files=11; Bytes=2810784L; ManifestSha256='bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438'
             EntryPrefix='pipeline-e2e/canterbury/'; StoredMember=$false; InputRole='development-only'
@@ -290,9 +299,9 @@ function Get-KhcPortfolioInputProfile {
     if ($CorpusProfile -ceq 'UciDryBeanHoldout20261020') {
         # 一系統screen専用。取得証拠とwrapperはcampaign/run清掃rootの外で固定する。
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\campaign'
-            MetadataDirectory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020'
-            InputZipPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\dry-bean-input.zip'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\uci-dry-bean-holdout-20261020\campaign')
+            MetadataDirectory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\uci-dry-bean-holdout-20261020')
+            InputZipPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\uci-dry-bean-holdout-20261020\dry-bean-input.zip')
             ZipBytes=3813357L; ZipSha256='8052ba1666b0254c3b8911289d72d0cc205484cce37eb784cab3c14fdeff1221'
             Files=1; Bytes=3813205L; ManifestSha256='172896a2dfa74a8e8dad154c92bf5c12ab8ddf62e89d5d96c5e5f5c1769f7d83'
             EntryPrefix='input/'; StoredMember=$true; InputRole='holdout-only'
@@ -380,7 +389,7 @@ function Get-KhcPortfolioInputProfile {
     }
     if ($CorpusProfile -ceq 'eGovLawXml20261016') {
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\egov-screen-20261020')
             ZipBytes=1022150L; ZipSha256='861ce8956f8347b34223466d5fff93360d1901b6aa42cca1238965d590e73099'
             Files=100; Bytes=9527638L; ManifestSha256='332cb1043efa84127312da055bb8c03104b991cb8e0820195cb2aafa4bfefee3'
             EntryPrefix='input/'; StoredMember=$false
@@ -389,7 +398,7 @@ function Get-KhcPortfolioInputProfile {
     }
     if ($CorpusProfile -ceq 'JmaTokyoDaily2010_2025Holdout20261020') {
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\jma-holdout-20261020')
             ZipBytes=169228L; ZipSha256='bf89c170af85418f9911be0b2a547fae2029755ef06091b4209ca446841805f8'
             Files=1; Bytes=169060L; ManifestSha256='36d982b198c5557acb383b3fbe4df2aa74d08336705005916e25138973000dab'
             EntryPrefix='input/'; StoredMember=$true
@@ -401,7 +410,7 @@ function Get-KhcPortfolioInputProfile {
     }
     if ($CorpusProfile -ceq 'TokyoResidentRegister202101Holdout20261020') {
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\tokyo-population-holdout-campaign-20261020')
             ZipBytes=295202L; ZipSha256='7c5fa47e7c58cc2512024c6491af4589837e9395b8171ce84dd3d0193757c511'
             Files=1; Bytes=295022L; ManifestSha256='60964784dba36f8f7d3f63e71dda413aec4dbf501bf493dd19f9a1f85311159b'
             EntryPrefix='input/'; StoredMember=$true
@@ -614,7 +623,7 @@ text/topic-news/topic-news-6765528.txt	1872	f0b459eb399cd17a68d5ff15ece2d966d725
 text/topic-news/topic-news-6831564.txt	3118	ff81c19b3aaef7baf83e1fc507427d52d50e4a70689f6589c98cff83f7aa5dad
 '@
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\livedoor-holdout-20261020')
             ZipBytes=661042L; ZipSha256='e9d770628225650dd1b28a355f908cdf3c54b0ae68bf397776d6757cfc4a3209'
             Files=191; Bytes=629588L; ManifestSha256='4c23d4dbdd312c4d7c9efa4199ccfff30c36a33671f53421e27a0578b57beec1'
             EntryPrefix='input/'; StoredMember=$true; CandidateManifestSha256=$null
@@ -658,7 +667,7 @@ text/topic-news/topic-news-6831564.txt	3118	ff81c19b3aaef7baf83e1fc507427d52d50e
         $profile=Get-KhcPortfolioInputProfile 'NictWikiCorpusHoldout20261020'
         $metadataDirectory=$profile.Directory
         $profile.Name=$CorpusProfile
-        $profile.Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2'
+        $profile.Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2')
         $profile.Scope='HOLDOUT ONLY: fixed 195 XML members, 13 per category; KCS1 count-only code lengths; one source family; never development/training/tuning'
         $profile | Add-Member -NotePropertyMembers @{
             InputZipPath=(Join-Path $metadataDirectory 'input.zip'); MetadataDirectory=$metadataDirectory
@@ -671,7 +680,7 @@ text/topic-news/topic-news-6831564.txt	3118	ff81c19b3aaef7baf83e1fc507427d52d50e
     }
     if ($CorpusProfile -ceq 'NictWikiCorpusHoldout20261020') {
         return [pscustomobject]@{
-            Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry'
+            Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry')
             ZipBytes=5257215L; ZipSha256='aee6335bc9f43f35e5c29c3944cb8067eefed618578c02c8faac4ff4112c5ecd'
             Files=195; Bytes=5236133L; ManifestSha256='cad92e76db4142c15c32b924f8906320a38fff42638d1cdc69e5a9ed157b66f5'
             EntryPrefix=''; StoredMember=$true; Entries=@(); CandidateManifestSha256=$null; ListingOutputBytes=256KB
@@ -700,7 +709,7 @@ text/topic-news/topic-news-6831564.txt	3118	ff81c19b3aaef7baf83e1fc507427d52d50e
     }
     if ($CorpusProfile -cne 'AozoraDevelopment20261020') { throw 'Corpus profile spelling/case must match the fixed identifier.' }
     return [pscustomobject]@{
-        Name=$CorpusProfile; Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020'
+        Name=$CorpusProfile; Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\aozora-dev-20261020')
         ZipBytes=222247L; ZipSha256='9772d6af224028a70c2d50af8f64faebf03de9a487a08fee566de4c1128cb0b6'
         Files=2; Bytes=222009L; ManifestSha256='4d9ded91fe0a2e7657cce870f7fd39a4c83c8b7fe5e26f7230ebd8e53c1d2ea6'
         EntryPrefix='input/'; StoredMember=$false
@@ -962,7 +971,7 @@ function Assert-KhcPortfolioCampaign {
     if ([string]::IsNullOrWhiteSpace($activeTaskId) -or [string]$marker.task_id -cne $activeTaskId) {
         throw 'Fixed portfolio start-marker task ID does not match the execution task context.'
     }
-    $cli='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    $cli=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe')
     $cliSha='3dd0e0503ed6ec11c90ad1ff9ee69b2e34c564f8710871ab182dd684f27b7b4b'
     $seven='C:\Program Files\7-Zip\7z.exe'
     $sevenSha='95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'
@@ -1126,12 +1135,21 @@ function Get-KhcTreeUsage {
     return [Khc.Storage.TreeCounter]::Bytes($path)
 }
 
+# 関数名は旧Dドライブ固定運用時代のまま残す（test-storage-recycle-v6.ps1 などが同名でmockするため）。
+# 現在は「ユーザー既定TEMP\UnLhaRe」配下の基点を検査する。基点のドライブが利用可能であること、
+# ドライブrootと基点フォルダー群がreparse pointでないことを確認し、基点フォルダーが無ければ作成する
+# （TEMP配下は初回に存在しないのが普通なので、旧運用の「事前に存在しなければ停止」はやめた）。
 function Assert-KhcDStorageBase {
-    $drive = [IO.DriveInfo]::new('D:\')
-    if (-not $drive.IsReady) { throw 'KHC storage requires an available D: drive; no fallback is permitted.' }
-    $driveItem = Get-Item -LiteralPath 'D:\' -Force -ErrorAction Stop
-    if ($driveItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'D: root cannot be a reparse point.' }
-    foreach ($root in @('D:\Codex','D:\Codex\UnLhaRe','D:\Codex\TaskArtifacts','D:\Codex\TaskArtifacts\UnLhaRe')) {
+    $storageRoot = (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe')
+    $driveRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($storageRoot))
+    $drive = [IO.DriveInfo]::new($driveRoot)
+    if (-not $drive.IsReady) { throw "KHC storage requires an available drive for the TEMP base: $driveRoot" }
+    $driveItem = Get-Item -LiteralPath $driveRoot -Force -ErrorAction Stop
+    if ($driveItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "KHC storage drive root cannot be a reparse point: $driveRoot" }
+    foreach ($root in @($storageRoot,(Join-Path $storageRoot 'work'),(Join-Path $storageRoot 'TaskArtifacts'))) {
+        # 作成前にも祖先のreparse pointを拒否してから作る。
+        $path = Assert-KhcPlainPath $root
+        if (-not [IO.Directory]::Exists($path)) { $null = New-Item -ItemType Directory -Path $path -ErrorAction Stop }
         $path = Assert-KhcPlainPath $root
         if (-not [IO.Directory]::Exists($path)) { throw "KHC storage parent directory is unavailable: $path" }
     }
@@ -1188,7 +1206,7 @@ function Assert-KhcStorageTaskWorkDirectory {
     $paths = Get-KhcStorageTaskPaths
     $work = Assert-KhcPlainPath $LiteralPath
     if ([IO.Path]::GetDirectoryName($work) -ine $paths.WorkRoot -or $work -notmatch '(?i)\\run-[0-9a-f]{32}$' -or $work.Length -gt 200) {
-        throw 'WorkDirectory must be a new run-GUID directly under the validated D: task workspace.'
+        throw 'WorkDirectory must be a new run-GUID directly under the validated TEMP-based task workspace.'
     }
     return $work
 }
@@ -1352,7 +1370,7 @@ function Get-KhcRetirementRetentionBytes {
 
 function Get-KhcRecycleV6AnchorRoot {
     # この既存taskのbootstrapは利用者が一度だけ明示実行する。通常経路は再作成しない。
-    'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\recycle-v6'
+    (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\storage-lifecycle\recycle-v6')
 }
 
 function Assert-KhcRecycleV6ProtocolData {
@@ -1466,7 +1484,8 @@ function Assert-KhcRecycleV6BootstrapCapacity {
     if($archive -gt $keep){throw 'Bootstrap fixed archive accounting mismatch.'}
     $ordinary=$temp+$keep-$taskCargo-$archive
     if($ordinary -lt 0 -or $ordinary+$probeCharge+$recordsMargin -gt 2GB -or $build+$temp+$keep+$probeCharge+$recordsMargin -gt 30GB -or $cargo -gt 6GB){throw 'Bootstrap cannot reserve probe charge and records within fixed storage caps.'}
-    if(([IO.DriveInfo]::new('D:\')).AvailableFreeSpace -lt 5GB+$recordsMargin){throw 'Bootstrap lacks fixed free space and record margin.'}
+    # 空き容量は作業・保全の基点（ユーザー既定TEMP\UnLhaRe）があるドライブで測る。
+    if(([IO.DriveInfo]::new([IO.Path]::GetPathRoot((Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe')))).AvailableFreeSpace -lt 5GB+$recordsMargin){throw 'Bootstrap lacks fixed free space and record margin.'}
 }
 
 function Initialize-KhcRecycleV6TrustAnchor {
@@ -1476,7 +1495,7 @@ function Initialize-KhcRecycleV6TrustAnchor {
     $state=Assert-KhcPlainPath ([IO.Path]::GetDirectoryName($root))
     if(-not [IO.Directory]::Exists($state)){throw 'Existing task StateRoot is required for explicit bootstrap.'}
     $null=Assert-KhcRecycleV6Installed
-    $probe='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\schema6-cleanup-20261026\probe-contract.json'
+    $probe=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\schema6-cleanup-20261026\probe-contract.json')
     if((Get-KhcRecycleV6Hash $probe) -cne '78c8b3aa78e3baf6ea482bb6edc6119cd2aaf10dd2cbe783c4e37ac3296f3519'){throw 'Probe contract changed.'}
     $registrationLease=$null;$cargoLock=$null
     try{
@@ -1708,7 +1727,7 @@ function Read-KhcMacBuildAmendmentSnapshot {
 
 function Register-KhcMacBuildAmendment {
     param([Parameter(Mandatory)][string]$SpecPath,[Parameter(Mandatory)][ValidatePattern('\A[0-9a-f]{64}\z')][string]$SpecSha256)
-    $expected='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-build-amendment-spec.json'
+    $expected=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-native-build-amendment-spec.json')
     if($script:TaskId -cne 'goal-restore-20261019' -or $SpecPath -cne $expected -or (Assert-KhcPlainPath $SpecPath) -cne $expected){throw 'Amendment spec must use the current task fixed keep path.'}
     $spec=Read-KhcMacBuildAmendmentSnapshot $SpecPath $SpecSha256
     $root=Assert-KhcRecycleV6PrivatePath (Get-KhcRecycleV6AnchorRoot) -ProtectedRoot
@@ -1804,7 +1823,7 @@ function Get-KhcMacCdfCandidateTrustSpec {
     $pins=(Get-KhcMacDecodeRetryTrustSpec '771443623c9255e7cfd1ef2272dd265035aa38c3c5a903c245b63361db8eaafe' 'b99b4338cc3253181402b215fa826230d6284a9044ba9520efc04af1d0253806').Pins
     $pins['mac-cdf-candidate-build.py']='2f11f23570c9553430cded38b3920ee878867a0a0f8ef5bb9486bcacdf9e1aa5'
     $pins['mac-cdf-candidate-snapshot.py']='80b14beefefbee2f4559f6c50a128794c7c5240ca8f08d606a4818ee4feb1f7f'
-    return [pscustomobject]@{Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-verifier-2f11f23570c9553430cded38b3920ee878867a0a0f8ef5bb9486bcacdf9e1aa5';Pins=$pins}
+    return [pscustomobject]@{Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-verifier-2f11f23570c9553430cded38b3920ee878867a0a0f8ef5bb9486bcacdf9e1aa5');Pins=$pins}
 }
 
 function Get-KhcMacCdfCandidateProtocol {
@@ -1949,7 +1968,7 @@ function Assert-KhcMacCdfCandidateSummary {
 
 function Assert-KhcVerifierQuarantineClear {
     if(('Khc.Storage.VerifierQuarantineState' -as [type]) -and [Khc.Storage.VerifierQuarantineState]::Count -gt 0){throw 'An unconfirmed verifier process/lease is quarantined in this host; further work is blocked.'}
-    $marker=Assert-KhcPlainPath 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\recycle-v6\mac-verifier-unresolved.json'
+    $marker=Assert-KhcPlainPath (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\storage-lifecycle\recycle-v6\mac-verifier-unresolved.json')
     if(Test-Path -LiteralPath $marker){throw 'Persistent unresolved verifier marker blocks further work; explicit evidence-based resolution is required.'}
 }
 
@@ -2012,7 +2031,7 @@ function Get-KhcMacDecodeRetryTrustSpec {
     $pins['mac-decode-phase-retry.py']='771443623c9255e7cfd1ef2272dd265035aa38c3c5a903c245b63361db8eaafe'
     $pins['mac-diagnostic-storage-snapshot.py']='b99b4338cc3253181402b215fa826230d6284a9044ba9520efc04af1d0253806'
     $pins['mac-native-setup.py']='9790c77fb4e427247e9c1217c08b18243a31cdcd6e868ff1836ae392bfa59fd1'
-    return [pscustomobject]@{Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-decode-retry-verifier-771443623c9255e7cfd1ef2272dd265035aa38c3c5a903c245b63361db8eaafe';Pins=$pins;AmendmentSha256='f2a4979ed0f796b98876a324734998329eb40255b8593350ee439165873ae46e'}
+    return [pscustomobject]@{Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-decode-retry-verifier-771443623c9255e7cfd1ef2272dd265035aa38c3c5a903c245b63361db8eaafe');Pins=$pins;AmendmentSha256='f2a4979ed0f796b98876a324734998329eb40255b8593350ee439165873ae46e'}
 }
 
 function Assert-KhcMacDecodeRetryAmendment {
@@ -2307,7 +2326,7 @@ function Get-KhcMacDecodeVerifierBundleSpec {
     # 履歴で承認済みのSHAだけを選ぶ。receiptや公開pathを保存先として受け取らない。
     if($ControllerSha256 -cne 'da3ba8ba569bd4335776b9276ce1eb42cea4412ba4aa65e77545d59ebfec2cbc'){throw 'Unknown immutable diagnostic verifier SHA.'}
     return [pscustomobject]@{
-        Directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-decode-verifier-da3ba8ba569bd4335776b9276ce1eb42cea4412ba4aa65e77545d59ebfec2cbc'
+        Directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-decode-verifier-da3ba8ba569bd4335776b9276ce1eb42cea4412ba4aa65e77545d59ebfec2cbc')
         Pins=@{'mac-decode-phase-build.py'='da3ba8ba569bd4335776b9276ce1eb42cea4412ba4aa65e77545d59ebfec2cbc';'mac-finite-supervisor.py'='51a0dcca109e302543b9a643f7d255813163cae64c4c0404dc74c7b9b5932b30';'mac-native-build.py'='9bd8d719b7f94305070866a5c84a62ffdb805f2b0bf16599dfc568522b3fddfb';'mac-canterbury-reference.py'='a73c73df659adac86160661c53e48098873c298c4e94489773b8169d8ac421a4'}
     }
 }
@@ -2383,12 +2402,12 @@ namespace Khc.Storage {
 function Enter-KhcMacDecodeVerifierReadLease {
     param($Bundle)
     Initialize-KhcVerifierDirectoryHandle
-    $taskRoot=Assert-KhcPlainPath 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019'
+    $taskRoot=Assert-KhcPlainPath (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019')
     $directory=Assert-KhcPlainPath $Bundle.Directory
     if([IO.Path]::GetDirectoryName($directory) -cne $taskRoot){throw 'Verifier bundle must be a direct child of the dedicated task root.'}
     $handles=[Collections.Generic.List[IDisposable]]::new()
     try{
-        # 共有D:\/D:\Codexなどは保持しない。task専用root以下だけrename/writeを抑止する。
+        # 共有の上位フォルダー（ドライブrootやTEMP\UnLhaRe基点など）は保持しない。task専用root以下だけrename/writeを抑止する。
         foreach($path in @($taskRoot,$directory)){
             $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
             if((Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value -cne $sid){throw 'Verifier task/bundle owner mismatch.'}
@@ -2563,10 +2582,12 @@ function ConvertFrom-KhcMacNativeInvocationSnapshot {
     $xml=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes)
     $invocation=[Management.Automation.PSSerializer]::Deserialize($xml)
     $worker=if($Class -ceq 'reference'){'D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-canterbury-reference.ps1'}else{'D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-spatial-mdl-e2e.ps1'}
-    $protocolPath=if($Class -ceq 'reference'){'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-reference-protocol.json'}else{'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json'}
+    $protocolPath=if($Class -ceq 'reference'){(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-canterbury-reference-protocol.json')}else{(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json')}
     if($Class -ceq 'candidate-e2e'){$kind=Get-KhcMacCandidateE2eKind;$worker=$kind.Worker;$protocolPath=$kind.ProtocolPath}
     if($Class -ceq 'reference' -and $invocation.script -ceq 'D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-canterbury-continuous-reference.ps1'){$kind=Get-KhcMacReferenceKind 'khc-mac-canterbury-continuous-reference-v1';$worker=$kind.Worker;$protocolPath=$kind.ProtocolPath}
-    if(@($invocation.PSObject.Properties).Count -ne 2 -or $invocation.script -cne $worker -or $invocation.parameters -isnot [Collections.IDictionary] -or $invocation.parameters.Count -ne 3 -or @($invocation.parameters.Keys | Where-Object {$_ -cnotin @('WorkDirectory','ProtocolPath','ProtocolSha256')}).Count -or [string]$invocation.parameters.WorkDirectory -cnotmatch '\AD:\\Codex\\UnLhaRe\\goal-restore-20261019\\run-[0-9a-f]{32}\z' -or $invocation.parameters.ProtocolPath -cne $protocolPath -or [string]$invocation.parameters.ProtocolSha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Approved typed remote invocation shape/worker mismatch.'}
+    # WorkDirectory はユーザー既定TEMP\UnLhaRe\work\goal-restore-20261019\run-<GUID> だけを許可する（旧Dドライブ固定の作業フォルダー運用は廃止）。
+    $workPattern='\A'+[regex]::Escape((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\run-'))+'[0-9a-f]{32}\z'
+    if(@($invocation.PSObject.Properties).Count -ne 2 -or $invocation.script -cne $worker -or $invocation.parameters -isnot [Collections.IDictionary] -or $invocation.parameters.Count -ne 3 -or @($invocation.parameters.Keys | Where-Object {$_ -cnotin @('WorkDirectory','ProtocolPath','ProtocolSha256')}).Count -or [string]$invocation.parameters.WorkDirectory -cnotmatch $workPattern -or $invocation.parameters.ProtocolPath -cne $protocolPath -or [string]$invocation.parameters.ProtocolSha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Approved typed remote invocation shape/worker mismatch.'}
     return $invocation
 }
 
@@ -2607,16 +2628,16 @@ function Assert-KhcRemoteReferenceClassData {
 }
 
 function Get-KhcMacCandidateE2eKind {
-    return [pscustomobject]@{Worker='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-cdf-candidate-e2e.ps1';ProtocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json';Protocol='khc-mac-cdf-candidate-e2e-v1'}
+    return [pscustomobject]@{Worker='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-cdf-candidate-e2e.ps1';ProtocolPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json');Protocol='khc-mac-cdf-candidate-e2e-v1'}
 }
 
 function Get-KhcMacCandidateRecoveryE2eKind {
     # schemaの識別子であり、この情報だけでは登録や実行を認可しない。
     return [pscustomobject]@{
         Worker='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\candidate-e2e-recovery\mac-cdf-candidate-e2e-recovery.ps1'
-        ProtocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-recovery-protocol.json'
-        ProtocolSha256='173ef073007c62d9a5dc013bb5724c1ea8c8177ee6327a6081ea752540403dbf'
-        EndpointSha256='424bc74f81d8d11af03c7ad0ae9df36cdd2252fed9995d3cdcbf0f1ea57cc069'
+        ProtocolPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-recovery-protocol.json')
+        ProtocolSha256='95cbd4db2f793720b4612a36bc50525fc5bd00cb6c1e44b0586e5f1e78f0c148'
+        EndpointSha256='18471c7bad1c36f56220838dda491c5769cdb5a98e152644049f861e05e479e2'
         OldRunId='8fd4b003ba9e406da5a21b9be5a37c56'
         WindowsBindingSha256='af044113e2f841728f8da01095b3ae6bdeb7018b7f1730046f88129ba0596a9f'
         Protocol='khc-mac-cdf-candidate-e2e-recovery-v1'
@@ -2771,7 +2792,7 @@ function Publish-KhcCandidateRunnerResult {
 
 function Set-KhcCandidateRunnerDeadlineFailure {
     param($Context,[byte[]]$OriginalBytes,[byte[]]$FailedBytes,[double]$ElapsedSeconds)
-    $state='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle'
+    $state=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\storage-lifecycle')
     if($Context.StateRoot -cne $state -or $Context.RunId -cnotmatch '\A[0-9a-f]{32}\z'){throw 'Candidate result update is restricted to the fixed task/run.'}
     $directory=Assert-KhcPlainPath (Join-Path (Join-Path $state 'runs') $Context.RunId)
     if($Context.RecordDirectory -cne $directory -or $Context.RecordPath -cne (Join-Path $directory 'run.json')){throw 'Candidate result update directory mismatch.'}
@@ -2839,7 +2860,7 @@ function Get-KhcMacCandidateE2eRegistration {
     $required=$Reserve.Contains('remote_candidate_e2e_required')
     $null=Assert-KhcRemoteReferenceClassData ($Reserve.Contains('remote_native_e2e_required')) ($Reserve.Contains('remote_reference_required')) $required
     if(-not $required){if((Test-Path -LiteralPath $path) -or (Test-Path -LiteralPath $sealPath)){throw 'Candidate E2E metadata has no required private reservation.'};return $null}
-    if($State -cne 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle' -or $RunId -cnotmatch '\A[0-9a-f]{32}\z'){throw 'Candidate E2E registration belongs only to the fixed task state and typed run ID.'}
+    if($State -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\storage-lifecycle') -or $RunId -cnotmatch '\A[0-9a-f]{32}\z'){throw 'Candidate E2E registration belongs only to the fixed task state and typed run ID.'}
     if($Reserve.remote_candidate_e2e_required -isnot [bool] -or -not $Reserve.remote_candidate_e2e_required -or $Reserve.max_bytes -ne 8MB -or $Reserve.max_entries -ne 96){throw 'Candidate E2E reserve type/resources mismatch.'}
     if(-not (Test-Path -LiteralPath $path)){throw 'Candidate E2E registration is missing or partial.'}
     $record=Read-KhcRecycleV6PrivateJson $path
@@ -2904,7 +2925,7 @@ function Save-KhcMacCandidateE2eSeal {
 function Get-KhcMacCandidateE2eTrustSpec {
     param([string]$ProtocolSha256,[string]$EndpointSha256)
     if($ProtocolSha256 -cne '95b2fd0228cca0f440d4a45998d6d2ad709b0e6cf20a5e42db6a439eccf67d5c' -or $EndpointSha256 -cne 'da6231a6f6fb61b04fd2c7833661a6a4467d3ee14db5d9fcf6e19ae2731b79ba'){throw 'Unknown candidate E2E protocol/endpoint; no fallback is permitted.'}
-    $directory='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-verifier-da6231a6f6fb61b04fd2c7833661a6a4467d3ee14db5d9fcf6e19ae2731b79ba'
+    $directory=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-verifier-da6231a6f6fb61b04fd2c7833661a6a4467d3ee14db5d9fcf6e19ae2731b79ba')
     $pins=(Get-KhcMacCdfCandidateTrustSpec '2f11f23570c9553430cded38b3920ee878867a0a0f8ef5bb9486bcacdf9e1aa5' '80b14beefefbee2f4559f6c50a128794c7c5240ca8f08d606a4818ee4feb1f7f' '8c6f4576d868e43158ade779ee176719bc6a7281d4420a4bfe3d371d25ab0082').Pins
     $pins['mac-cdf-candidate-e2e-endpoint.py']='da6231a6f6fb61b04fd2c7833661a6a4467d3ee14db5d9fcf6e19ae2731b79ba'
     $pins['mac-native-e2e-oracle.json']='343e08f0e41295e736ffc94d2ab70340228e6e50bacd829a5e72c3b5a4b39d75'
@@ -3030,7 +3051,7 @@ function Assert-KhcMacNativeE2eProtocolData {
 
 function Read-KhcMacNativeE2eProtocol {
     param([string]$Path,[string]$Sha256)
-    if($Path -cne 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json'){throw 'Use the fixed current-task native protocol path.'}
+    if($Path -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json')){throw 'Use the fixed current-task native protocol path.'}
     $bytes=Read-KhcBoundedSnapshotBytes $Path
     $data=ConvertFrom-KhcBoundedJsonSnapshot $bytes $Sha256
     Assert-KhcMacNativeE2eProtocolData $data
@@ -3147,7 +3168,7 @@ function Confirm-KhcMacNativeE2eTerminal {
 function Get-KhcMacReferenceKind {
     param([string]$Protocol)
     $base='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\'
-    $keep='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\'
+    $keep=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\')
     switch -CaseSensitive ($Protocol){
         'khc-mac-canterbury-reference-v1' {$prefix='mac-canterbury-reference';$seconds=1800;$continuous=$false}
         'khc-mac-canterbury-continuous-reference-v1' {$prefix='mac-canterbury-continuous-reference';$seconds=180;$continuous=$true}
@@ -3389,7 +3410,7 @@ function Assert-KhcMacReferenceReceiptData {
 
 function Read-KhcMacReferenceProtocol {
     param([string]$Path,[string]$Sha256)
-    if($Path -cnotin @('D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-reference-protocol.json','D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-continuous-reference-protocol.json')){throw 'Use an exact current-task reference protocol path.'}
+    if($Path -cnotin @((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-canterbury-reference-protocol.json'),(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-canterbury-continuous-reference-protocol.json'))){throw 'Use an exact current-task reference protocol path.'}
     $bytes=Read-KhcBoundedSnapshotBytes $Path
     $data=ConvertFrom-KhcBoundedJsonSnapshot $bytes $Sha256
     Assert-KhcMacReferenceProtocolData $data
@@ -3756,11 +3777,12 @@ function Assert-KhcStorageBudget {
     $external = $temp + $keep + $recycle.total_bytes + $remoteTotal
     $externalRegular = $external - $taskCargo - $archive - $remoteCargo
     if ($externalRegular -lt 0) { throw '外部作業先/Cargo/固定保管の容量分類が一致しません。' }
-    if ($externalRegular + $ReserveBytes -gt 2GB) { throw '旧C・全Dの通常外部作業と保全の合算2GiB枠を超えています（Cargoと登録済み固定保管ZIPは内数除外）。' }
-    if ($cargo + $CargoReserveBytes -gt 6GB) { throw '旧build/cargoと全DタスクCargoの固定6GiB枠を超えています。' }
+    if ($externalRegular + $ReserveBytes -gt 2GB) { throw '旧C・全taskの通常外部作業と保全の合算2GiB枠を超えています（Cargoと登録済み固定保管ZIPは内数除外）。' }
+    if ($cargo + $CargoReserveBytes -gt 6GB) { throw '旧build/cargoと全taskのCargoの固定6GiB枠を超えています。' }
     if ($state -gt $script:LifecycleCapBytes) { throw '復元バックアップと清掃台帳の固定1GiB枠を超えています。' }
-    $free = ([IO.DriveInfo]::new('D:\')).AvailableFreeSpace
-    if ($free -lt 5GB + $ReserveBytes + $CargoReserveBytes) { throw 'D:空き容量5GiBと今回の作業・Cargo予約を確保できません。' }
+    # 空き容量は作業・保全の基点（ユーザー既定TEMP\UnLhaRe）があるドライブで測る。旧D:固定は廃止。
+    $free = ([IO.DriveInfo]::new([IO.Path]::GetPathRoot((Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe')))).AvailableFreeSpace
+    if ($free -lt 5GB + $ReserveBytes + $CargoReserveBytes) { throw '作業基点ドライブの空き容量5GiBと今回の作業・Cargo予約を確保できません。' }
     [pscustomobject]@{
         build_bytes=$build; legacy_temp_bytes=$legacyTemp; workspace_bytes=$workspace; temp_bytes=$temp
         legacy_keep_bytes=$legacyKeep; task_artifact_bytes=$taskArtifacts; keep_bytes=$keep
@@ -3796,15 +3818,15 @@ function New-KhcStorageRun {
         if(Test-Path -LiteralPath (Join-Path (Get-KhcRecycleV6AnchorRoot) 'mac-cdf-candidate-e2e.claim.json')){throw 'Candidate example E2E purpose is one-shot, including failed or partial attempts.'}
     }elseif($RemoteNativeE2e){
         if($script:TaskId -cne 'goal-restore-20261019' -or $MaxRunMiB -ne 8 -or $MaxEntries -ne 96 -or $RemoteInvocationSha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Remote native registration requires the exact task/resources/invocation binding.'}
-        $nativeProtocol=Read-KhcMacNativeE2eProtocol 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json' $RemoteProtocolSha256
-        $nativeOracleBytes=Read-KhcBoundedSnapshotBytes 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-oracle.json'
+        $nativeProtocol=Read-KhcMacNativeE2eProtocol (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json') $RemoteProtocolSha256
+        $nativeOracleBytes=Read-KhcBoundedSnapshotBytes (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-native-e2e-oracle.json')
         $null=ConvertFrom-KhcBoundedJsonSnapshot $nativeOracleBytes $nativeProtocol.Data.oracle_sha256
     }elseif($RemoteReference){
         if($script:TaskId -cne 'goal-restore-20261019' -or $MaxRunMiB -ne 8 -or $MaxEntries -ne 96 -or $RemoteInvocationSha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Reference registration requires the exact task/resources/invocation binding.'}
         $referenceKind=Get-KhcMacReferenceKind $RemoteReferenceProtocol
         $referenceProtocol=Read-KhcMacReferenceProtocol $referenceKind.ProtocolPath $RemoteProtocolSha256
         if($referenceProtocol.Data.protocol -cne $RemoteReferenceProtocol){throw 'Reference registration protocol type mismatch.'}
-        $referenceManifestBytes=Read-KhcBoundedSnapshotBytes 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-input-manifest.json'
+        $referenceManifestBytes=Read-KhcBoundedSnapshotBytes (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-canterbury-input-manifest.json')
         $referenceManifest=ConvertFrom-KhcBoundedJsonSnapshot $referenceManifestBytes $referenceProtocol.Data.input_manifest_sha256
         Assert-KhcMacReferenceManifestData $referenceManifest
     }elseif($RemoteProtocolSha256 -or $RemoteInvocationSha256){throw 'Remote typed bindings cannot be added to an ordinary run.'}
@@ -3992,7 +4014,7 @@ function Get-KhcStorageRunLocation {
         $relative = [IO.Path]::GetRelativePath($script:TaskArtifactsBase,$state)
         if ($relative -match '^([^\\]+)\\storage-lifecycle$' -and $Matches[1] -cnotmatch '^(?i:storage-lifecycle)$') {
             $taskId = $Matches[1]
-            if ($taskId -cnotmatch '^[a-z0-9][a-z0-9-]{0,63}$') { throw 'D:保全台帳のtask rootが安全なslugではありません。' }
+            if ($taskId -cnotmatch '^[a-z0-9][a-z0-9-]{0,63}$') { throw '保全台帳のtask rootが安全なslugではありません。' }
             $taskRoot = Assert-KhcPlainPath (Join-Path $script:WorkspaceBase $taskId)
             $tempRoot = Assert-KhcPlainPath (Join-Path $taskRoot 'temp')
         } else {
@@ -4006,7 +4028,7 @@ function Get-KhcStorageRun {
     param([Parameter(Mandatory)][string]$RunId)
     if ($RunId -cnotmatch '^[0-9a-f]{32}$') { throw 'run IDは小文字32桁のGUIDに限定します。' }
     $location = Get-KhcStorageRunLocation $RunId
-    if (-not $location.TaskRoot) { throw '旧C:または共有D: StateRootは読取専用の履歴です。新規task run以外の清掃・更新は行いません。' }
+    if (-not $location.TaskRoot) { throw '旧C:または共有 StateRootは読取専用の履歴です。新規task run以外の清掃・更新は行いません。' }
     $directory = $location.Directory
     $recordPath = $location.RecordPath
     $runProtocol=Get-KhcRecycleV6RunProtocol $location.StateRoot $RunId
@@ -4300,7 +4322,7 @@ function Recover-KhcUnstartedStorageRun {
     param([Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId)
     $location = Get-KhcStorageRunLocation $RunId
     $null=Get-KhcRecycleV6RunProtocol $location.StateRoot $RunId
-    if (-not $location.TaskRoot) { throw '旧C:または共有D: StateRootは読取専用の履歴です。未開始runを更新しません。' }
+    if (-not $location.TaskRoot) { throw '旧C:または共有 StateRootは読取専用の履歴です。未開始runを更新しません。' }
     $state = Assert-KhcPlainPath $location.StateRoot
     $workParent = Assert-KhcPlainPath $location.TaskRoot
     $directory = Assert-KhcPlainPath $location.Directory
@@ -4365,7 +4387,7 @@ function Recover-KhcAbandonedStorageRun {
     param([Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId)
     $location = Get-KhcStorageRunLocation $RunId
     $null=Get-KhcRecycleV6RunProtocol $location.StateRoot $RunId
-    if (-not $location.TaskRoot) { throw '旧C:または共有D: StateRootは読取専用の履歴です。放棄runを更新しません。' }
+    if (-not $location.TaskRoot) { throw '旧C:または共有 StateRootは読取専用の履歴です。放棄runを更新しません。' }
     $state = Assert-KhcPlainPath $location.StateRoot
     $workParent = Assert-KhcPlainPath $location.TaskRoot
     $directory = Assert-KhcPlainPath $location.Directory
@@ -4441,7 +4463,7 @@ function Recover-KhcAbandonedStorageRun {
         if($invocationScript -ceq $nativeWorker){
             $reserve=Get-KhcRecycleV6RunAnchor $state $RunId
             $native=Get-KhcMacNativeE2eRegistration $state $RunId $reserve -RequireInvocation
-            if($null -eq $native -or $record.max_bytes -ne 8MB -or $record.max_entries -ne 96 -or $invocation.parameters.Count -ne 3 -or @($invocation.parameters.Keys | Where-Object {$_ -cnotin @('WorkDirectory','ProtocolPath','ProtocolSha256')}).Count -or $invocation.parameters.ProtocolPath -cne 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json' -or $invocation.parameters.ProtocolSha256 -cne $native.Record.protocol_sha256){throw 'Recovered native invocation differs from its private registration.'}
+            if($null -eq $native -or $record.max_bytes -ne 8MB -or $record.max_entries -ne 96 -or $invocation.parameters.Count -ne 3 -or @($invocation.parameters.Keys | Where-Object {$_ -cnotin @('WorkDirectory','ProtocolPath','ProtocolSha256')}).Count -or $invocation.parameters.ProtocolPath -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-native-e2e-ps-free-protocol.json') -or $invocation.parameters.ProtocolSha256 -cne $native.Record.protocol_sha256){throw 'Recovered native invocation differs from its private registration.'}
         }
         if($invocationScript -ceq $candidateWorker){
             $reserve=Get-KhcRecycleV6RunAnchor $state $RunId
@@ -4452,7 +4474,7 @@ function Recover-KhcAbandonedStorageRun {
         }
         if($invocationScript -ceq $referenceWorker){
             $reserve=Get-KhcRecycleV6RunAnchor $state $RunId;$reference=Get-KhcMacReferenceRegistration $state $RunId $reserve -RequireInvocation
-            if($null -eq $reference -or $record.max_bytes -ne 8MB -or $record.max_entries -ne 96 -or $invocation.parameters.Count -ne 3 -or @($invocation.parameters.Keys | Where-Object {$_ -cnotin @('WorkDirectory','ProtocolPath','ProtocolSha256')}).Count -or $invocation.parameters.ProtocolPath -cne 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-reference-protocol.json' -or $invocation.parameters.ProtocolSha256 -cne $reference.Record.protocol_sha256){throw 'Recovered reference invocation differs from its private registration.'}
+            if($null -eq $reference -or $record.max_bytes -ne 8MB -or $record.max_entries -ne 96 -or $invocation.parameters.Count -ne 3 -or @($invocation.parameters.Keys | Where-Object {$_ -cnotin @('WorkDirectory','ProtocolPath','ProtocolSha256')}).Count -or $invocation.parameters.ProtocolPath -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-canterbury-reference-protocol.json') -or $invocation.parameters.ProtocolSha256 -cne $reference.Record.protocol_sha256){throw 'Recovered reference invocation differs from its private registration.'}
         }
         $portfolioProductScreen = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'portfolio-7zip-product-screen.ps1'))
         if ($invocationScript -ieq $portfolioProductScreen) {
@@ -4470,7 +4492,7 @@ function Recover-KhcAbandonedStorageRun {
                 $parameters['Round'] -isnot [int] -or [int]$parameters['Round'] -lt 0 -or [int]$parameters['Round'] -gt 9 -or
                 [string]$parameters['Strategy'] -cnotin @('portfolio-trial','7zip') -or
                 [IO.Path]::GetFullPath([string]$parameters['InputRecoveryZip']) -cne (Get-KhcPortfolioInputZipPath $profile) -or
-                [IO.Path]::GetFullPath([string]$parameters['KhcExecutable']) -cne 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe' -or
+                [IO.Path]::GetFullPath([string]$parameters['KhcExecutable']) -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe') -or
                 [IO.Path]::GetFullPath([string]$parameters['SevenZipPath']) -cne 'C:\Program Files\7-Zip\7z.exe') {
                 throw '放棄runのPortfolioTrial single-sample invocation schema/parameters do not match the fixed campaign.'
             }

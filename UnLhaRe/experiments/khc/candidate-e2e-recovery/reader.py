@@ -11,13 +11,37 @@ import os
 from pathlib import PureWindowsPath
 import re
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 
+
+def _khc_user_temp():
+    """作業・保全の基点となるユーザー既定の一時フォルダーを返す（旧Dドライブ固定の作業フォルダー運用は廃止）。
+
+    storage-lifecycle.psm1 と同じ規則にそろえる。親プロセスが子向けに TEMP/TMP を
+    task専用tempへ差し替えるため、tempfile.gettempdir() だけに頼ると基点がずれる。
+    そこでレジストリ上のユーザー環境変数TEMPを優先し、読めない環境だけ gettempdir() へ退避する。
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Environment') as key:
+            value, _kind = winreg.QueryValueEx(key, 'TEMP')
+        if value:
+            return os.path.expandvars(value)
+    except OSError:
+        pass
+    except ImportError:
+        pass
+    return tempfile.gettempdir()
+
+
+# 旧Dドライブ運用時の作業先・保全先に相当する兄弟フォルダー（work / TaskArtifacts）の親。
+KHC_STORAGE_ROOT=os.path.join(_khc_user_temp(), 'UnLhaRe')
 RUN_ID='8fd4b003ba9e406da5a21b9be5a37c56'
-STATE=r'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle'
-WORK=r'D:\Codex\UnLhaRe\goal-restore-20261019\run-3c4643267fbe4cf0952bb3e2c2545e2e'
+STATE=os.path.join(KHC_STORAGE_ROOT, r'TaskArtifacts\goal-restore-20261019\storage-lifecycle')
+WORK=os.path.join(KHC_STORAGE_ROOT, r'work\goal-restore-20261019\run-3c4643267fbe4cf0952bb3e2c2545e2e')
 WORKER=r'D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-cdf-candidate-e2e.ps1'
-PROTOCOL_PATH=r'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json'
+PROTOCOL_PATH=os.path.join(KHC_STORAGE_ROOT, r'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json')
 PROTOCOL_SHA='95b2fd0228cca0f440d4a45998d6d2ad709b0e6cf20a5e42db6a439eccf67d5c'
 RUN_DIRECTORY=STATE+'\\runs\\'+RUN_ID
 ANCHOR=STATE+'\\recycle-v6'

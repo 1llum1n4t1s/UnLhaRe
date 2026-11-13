@@ -74,9 +74,9 @@ jobs:
         env:
           CARGO_TARGET_DIR: build/cargo
         run: |
-          cargo run --locked --target '${{ matrix.target }}' --example khc_lz_probe -- --self-check
-          cargo run --locked --target '${{ matrix.target }}' --example khc_lz_lazy_probe -- --self-check
-          cargo run --locked --target '${{ matrix.target }}' --example khc_version_delta -- self-check
+          cargo run --locked --target '${{ matrix.target }}' --example lhc_lz_probe -- --self-check
+          cargo run --locked --target '${{ matrix.target }}' --example lhc_lz_lazy_probe -- --self-check
+          cargo run --locked --target '${{ matrix.target }}' --example lhc_version_delta -- self-check
       - name: Set up .NET
         if: matrix.os == 'windows'
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68

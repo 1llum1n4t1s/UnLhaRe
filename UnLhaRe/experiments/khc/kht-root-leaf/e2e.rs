@@ -66,8 +66,8 @@ fn run() -> Result<()> {
     if args.len() != 4 {
         return Err("legacy/record/corpus required".into());
     }
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
-    let record_entries = unlhare::khc::list_archive(Path::new(&args[2]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let record_entries = unlhare::lhc::list_archive(Path::new(&args[2]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     let record = std::fs::read(&args[2]).map_err(|e| e.to_string())?;
     if entries.len() != 11 || record_entries.len() != 11 || saved.len() != 466395 || record.len() != 457017 {
@@ -100,7 +100,7 @@ fn run() -> Result<()> {
         let old = next(&saved, &mut at)?;
         let rf = next(&record, &mut ra)?;
         let raw = std::fs::read(Path::new(&args[3]).join(&entry.name)).map_err(|e| e.to_string())?;
-        if unlhare::khc::decompress_block(old).map_err(|e| e.to_string())? != raw || unlhare::khc::decompress_block(rf).map_err(|e| e.to_string())? != raw {
+        if unlhare::lhc::decompress_block(old).map_err(|e| e.to_string())? != raw || unlhare::lhc::decompress_block(rf).map_err(|e| e.to_string())? != raw {
             return Err("public legacy/record bytes".into());
         }
         if old[10] == 1 {
@@ -168,8 +168,8 @@ fn run() -> Result<()> {
             return Err("stored full bytes".into());
         }
         drop(stored);
-        let old = unlhare::khc::compress_block(&raw).map_err(|e| e.to_string())?;
-        if unlhare::khc::decompress_block(&old).map_err(|e| e.to_string())? != raw {
+        let old = unlhare::lhc::compress_block(&raw).map_err(|e| e.to_string())?;
+        if unlhare::lhc::decompress_block(&old).map_err(|e| e.to_string())? != raw {
             return Err("synthetic legacy whole bytes".into());
         }
         let synthetic_caller =
@@ -289,7 +289,7 @@ fn timed_decode(rows: &[TimedRow<'_>], new: bool, caller: usize) -> Result<(f64,
             }
             out
         } else {
-            unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())?
+            unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())?
         };
         let ms = clock.elapsed().as_secs_f64() * 1000.0;
         if out != row.raw {
@@ -306,7 +306,7 @@ fn speed() -> Result<()> {
         return Err("paired args".into());
     }
     let reverse = args[4] == "reverse";
-    let entries = unlhare::khc::list_archive(Path::new(&args[2]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[2]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[2]).map_err(|e| e.to_string())?;
     if entries.len() != 11 || saved.len() != 457017 {
         return Err("speed fixed input".into());
@@ -319,7 +319,7 @@ fn speed() -> Result<()> {
         }
         let old = next(&saved, &mut at)?;
         let raw = std::fs::read(Path::new(&args[3]).join(&entry.name)).map_err(|e| e.to_string())?;
-        if unlhare::khc::decompress_block(old).map_err(|e| e.to_string())? != raw {
+        if unlhare::lhc::decompress_block(old).map_err(|e| e.to_string())? != raw {
             return Err("public saved bytes".into());
         }
         rows.push(TimedRow {

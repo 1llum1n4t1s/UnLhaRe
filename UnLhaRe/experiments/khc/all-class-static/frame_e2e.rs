@@ -19,7 +19,7 @@ mod model;
 mod packet;
 #[path = "../paid-code-tree/model.rs"]
 mod paid_model;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod range;
 #[path = "../packed-inverse/reference.rs"]
 mod reference;

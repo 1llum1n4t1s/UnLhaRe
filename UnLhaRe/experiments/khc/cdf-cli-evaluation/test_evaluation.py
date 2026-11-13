@@ -49,7 +49,7 @@ class EvaluationTests(unittest.TestCase):
         with self.assertRaises(e.InvalidRun):run({11:b'ab',12:b'abcd'})
         with self.assertRaises(e.InvalidRun):run({11:b'abcd',12:b'abcde'})
     def test_real_manifest_exact_hash_and_eleven_records(self):
-        path=Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-canterbury-input-manifest.json')
+        path=Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-canterbury-input-manifest.json')
         data=path.read_bytes();self.assertEqual(len(e.validate_manifest(data)['entries']),11)
         with self.assertRaises(ValueError):e.validate_manifest(data+b' ')
 
@@ -117,7 +117,7 @@ class EvaluationTests(unittest.TestCase):
             e.execute_trial(0,{},adapter)
 
     def test_preflight_then_22_fixed_trials_no_retry(self):
-        manifest=Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-canterbury-input-manifest.json').read_bytes()
+        manifest=Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-canterbury-input-manifest.json').read_bytes()
         adapter=mock.Mock();adapter.verify_preflight.return_value=True
         adapter.validate_closure.return_value=True;adapter.validate_host.return_value=True
         adapter.finish_campaign.return_value={'completed':True};adapter.validate_final_observation.return_value=True
@@ -144,7 +144,7 @@ class EvaluationTests(unittest.TestCase):
         adapter.invoke.assert_not_called()
 
     def test_unexpected_backend_failure_has_recordable_original_cause(self):
-        manifest=Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-canterbury-input-manifest.json').read_bytes()
+        manifest=Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-canterbury-input-manifest.json').read_bytes()
         adapter=mock.Mock();adapter.verify_preflight.return_value=True
         adapter.invoke.side_effect=RuntimeError('backend vanished')
         with mock.patch.object(e,'verify_tree',return_value=e.MANIFEST_CONTENT_SHA),self.assertRaises(e.InvalidRun) as caught:

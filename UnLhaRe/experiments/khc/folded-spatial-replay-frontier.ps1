@@ -11,7 +11,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$campaign='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\folded-zero-count-20261023'
+$campaign=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\folded-zero-count-20261023')
 $claimPath=Join-Path $campaign 'performance-claim.json'
 $stopPath=Join-Path $campaign 'performance-pre-registration-stop.json'
 $admissionMutexName='Local\KHC-Folded-Spatial-Replay-Admission-goal-restore-20261019'
@@ -72,10 +72,10 @@ $fixed=[ordered]@{
     scope='ptt5 development only; no holdout/general superiority; five rotations incompletely balance seven positions; no warmup; OS filesystem extraction; same-toolchain 1.98.1 / LLD 22.1.8 source representation ablation only; two-byte S2 unfolded versus two-byte S3 Count0 folded into Literal bit14; record cap 2N versus N; memory objective; wire and decoder unchanged; no rerun of closed S1/S2 timing campaigns'
 }
 $expectedPins=[ordered]@{
-    baseline=@('D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\compact-replay-20261020\compact-lld-unlhare-cli.exe','bfaf5d2149d6dd1393f1c17a80c796886a3d224dd478490705bf8a01a1586260',2578944)
+    baseline=@((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\compact-replay-20261020\compact-lld-unlhare-cli.exe'),'bfaf5d2149d6dd1393f1c17a80c796886a3d224dd478490705bf8a01a1586260',2578944)
     replay=@((Join-Path $campaign 'folded-lld-unlhare-cli.exe'),'a5081f1a8fd0beb4138f64ff2bcef768281c8f2a2901f4470b33475705017d34',2578944)
-    seven_zip=@('D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\folded-zero-count-20261023\sevenzip-26.05\x64\7za.exe','7ddf0a3bc451e166679296be630d6f0573eb386159c04184761c43020c484291',1334784)
-    input_zip=@('D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip','882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75',$null)
+    seven_zip=@((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\folded-zero-count-20261023\sevenzip-26.05\x64\7za.exe'),'7ddf0a3bc451e166679296be630d6f0573eb386159c04184761c43020c484291',1334784)
+    input_zip=@((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'),'882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75',$null)
     worker=@($PSCommandPath,$null,$null)
     runner=@((Join-Path $PSScriptRoot 'run-storage-experiment.ps1'),$null,$null)
     shared_module=@((Join-Path $PSScriptRoot 'storage-lifecycle.psm1'),$null,$null)

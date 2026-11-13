@@ -1,7 +1,7 @@
 //! 失敗契約はPLAN。private新識別子の全復元と、モデル再構築込みの復号比較を行う。
 #![allow(dead_code)]
 mod block;
-#[path = "../../../src/khc/block/mod.rs"]
+#[path = "../../../src/lhc/block/mod.rs"]
 mod original;
 use std::path::Path;
 type Result<T> = std::result::Result<T, String>;
@@ -52,7 +52,7 @@ fn wrap(old: &[u8], inner: &[u8]) -> Result<Vec<u8>> {
 fn decode(b: &[u8], caller: usize) -> Result<Vec<u8>> {
     ram(caller)?;
     if b.get(..8) != Some(&OUTER[..]) {
-        return unlhare::khc::decompress_block(b).map_err(|e| e.to_string());
+        return unlhare::lhc::decompress_block(b).map_err(|e| e.to_string());
     }
     if b.len() < 80 || b.len() > original::MAX_INPUT + 80 || b[8..10] != [1, 0] || b[10] != 2 || b[11] != 0 || b[32..40] != [0; 8] {
         return Err("dual wrapper header".into());
@@ -96,7 +96,7 @@ fn timed(rows: &[Row<'_>], new: bool, caller: usize) -> Result<Vec<f64>> {
         let out = if new {
             decode(row.candidate(), caller)?
         } else {
-            unlhare::khc::decompress_block(row.old).map_err(|e| e.to_string())?
+            unlhare::lhc::decompress_block(row.old).map_err(|e| e.to_string())?
         };
         let ms = clock.elapsed().as_secs_f64() * 1000.;
         if out != row.raw {
@@ -189,7 +189,7 @@ fn malformed(rows: &[Row<'_>], caller: usize) -> Result<(usize, usize)> {
             inner_seal(&mut bad);
             reject(bad, caller)?;
             semantic += 1;
-            if unlhare::khc::decompress_block(b).is_ok() || original::decode(&b[40..]).is_ok() {
+            if unlhare::lhc::decompress_block(b).is_ok() || original::decode(&b[40..]).is_ok() {
                 return Err("old decoder accepted new identifiers".into());
             }
             semantic += 2;
@@ -219,7 +219,7 @@ fn run() -> Result<()> {
     if args.len() != 4 || !matches!(args[3].as_str(), "e2e" | "normal" | "reverse") {
         return Err("archive corpus mode".into());
     }
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if saved.len() != 457017 || entries.len() != 11 {
         return Err("fixed archive".into());

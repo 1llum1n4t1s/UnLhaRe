@@ -1,7 +1,7 @@
 //! 全分割uniformと全可変Forestの独立wireを公開APIで復号するE2E。
 use super::{new, old};
 use crc_fast::{CrcAlgorithm, Digest};
-use unlhare::khc;
+use unlhare::lhc;
 fn bit(out: &mut Vec<u8>, position: &mut usize, value: u8) {
     if (*position).is_multiple_of(8) {
         out.push(0);

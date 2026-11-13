@@ -94,7 +94,7 @@ class EndpointTests(unittest.TestCase):
             with self.subTest(path=path),self.assertRaises(ValueError):endpoint.relative_path(path)
 
     def test_exact_api_inventory_and_conditional_partial(self):
-        path=Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-e2e-oracle.json')
+        path=Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-e2e-oracle.json')
         oracle=json.loads(path.read_bytes());required,optional,rows=endpoint.expected_api_files(oracle)
         records=[dict(path=p,bytes=1,sha256='a'*64) for p in sorted(required)]
         for row in records:

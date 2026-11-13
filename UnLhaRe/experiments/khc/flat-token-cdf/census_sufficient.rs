@@ -19,7 +19,7 @@ fn run() -> Result<()> {
     }
     let archive = Path::new(&args[1]);
     let corpus = Path::new(&args[2]);
-    let entries = unlhare::khc::list_archive(archive, &unlhare::Limits::default())
+    let entries = unlhare::lhc::list_archive(archive, &unlhare::Limits::default())
         .map_err(|e| e.to_string())?;
     if entries.len() != 11 {
         return Err("corpus entry coverage".into());
@@ -48,7 +48,7 @@ fn run() -> Result<()> {
         let raw = std::fs::read(corpus.join(&entry.name)).map_err(|e| e.to_string())?;
         let (decoded, s) = baseline_census::decode(frame)?;
         if decoded != raw
-            || unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())? != raw
+            || unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())? != raw
         {
             return Err("observed/public whole bytes".into());
         }

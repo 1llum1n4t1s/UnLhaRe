@@ -35,7 +35,7 @@ fn run() -> Result<()> {
     let normal=happy::run()?+if word_bwt { bwt_happy::run()? } else { 0 };
     let invalid=adversarial::run()?+if word_bwt { bwt_adversarial::run()? } else { 0 };
     ram(2 << 20)?;
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if saved.len() != 457017 || entries.len() != 11 {
         return Err("fixed archive".into());
@@ -81,7 +81,7 @@ fn run() -> Result<()> {
         }
         // native 出力の保持費も復号前に払う。辞書学習とは同時に保持しない。
         ram(caller + raw.len())?;
-        let recovered = unlhare::khc::decompress_block(old).map_err(|e| e.to_string())?;
+        let recovered = unlhare::lhc::decompress_block(old).map_err(|e| e.to_string())?;
         ram(caller + recovered.capacity())?;
         if recovered != raw {
             return Err("fixed native raw mismatch".into());

@@ -15,13 +15,13 @@ name = "unlhare-cli"
 path = "src/main.rs"
 
 [[example]]
-name = "khc_lab"
-path = "examples/khc_lab.rs"
+name = "lhc_lab"
+path = "examples/lhc_lab.rs"
 test = true
 
 [[example]]
-name = "khc_version_delta"
-path = "examples/khc_version_delta.rs"
+name = "lhc_version_delta"
+path = "examples/lhc_version_delta.rs"
 
 [dependencies]
 cap-primitives = "4.0.3"

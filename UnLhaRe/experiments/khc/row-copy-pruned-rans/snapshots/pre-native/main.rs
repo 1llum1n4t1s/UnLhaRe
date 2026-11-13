@@ -101,15 +101,15 @@ fn run(cli: Cli) -> unlhare::Result<()> {
             source,
             strategy,
         } => {
-            unlhare::khc::create_from_directory(
+            unlhare::lhc::create_from_directory(
                 &source,
                 &archive,
-                &unlhare::khc::CreateOptions {
+                &unlhare::lhc::CreateOptions {
                     limits,
                     block_strategy: match strategy {
-                        KhcStrategy::Mdl => unlhare::khc::BlockStrategy::Mdl,
-                        KhcStrategy::HybridTrial => unlhare::khc::BlockStrategy::HybridTrial,
-                        KhcStrategy::BinaryAdaptive => unlhare::khc::BlockStrategy::BinaryAdaptive,
+                        KhcStrategy::Mdl => unlhare::lhc::BlockStrategy::Mdl,
+                        KhcStrategy::HybridTrial => unlhare::lhc::BlockStrategy::HybridTrial,
+                        KhcStrategy::BinaryAdaptive => unlhare::lhc::BlockStrategy::BinaryAdaptive,
                     },
                     ..Default::default()
                 },
@@ -117,7 +117,7 @@ fn run(cli: Cli) -> unlhare::Result<()> {
             println!("Created KHC: {}", archive.display());
         }
         Command::KhcList { archive, json } => {
-            let entries = unlhare::khc::list_archive(&archive, &limits)?;
+            let entries = unlhare::lhc::list_archive(&archive, &limits)?;
             if json {
                 println!(
                     "{}",
@@ -134,14 +134,14 @@ fn run(cli: Cli) -> unlhare::Result<()> {
             }
         }
         Command::KhcTest { archive } => {
-            let s = unlhare::khc::verify_archive(&archive, &limits)?;
+            let s = unlhare::lhc::verify_archive(&archive, &limits)?;
             println!(
                 "OK KHC: {} files, {} entries, {} bytes",
                 s.files, s.entries, s.bytes
             );
         }
         Command::KhcExtract { archive, output } => {
-            let s = unlhare::khc::extract_archive(&archive, &output, &limits)?;
+            let s = unlhare::lhc::extract_archive(&archive, &output, &limits)?;
             println!("Extracted KHC: {} files, {} bytes", s.files, s.bytes);
         }
         Command::List { archive, json } => {

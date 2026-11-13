@@ -86,7 +86,7 @@ if ((Get-FileHash -LiteralPath $cli -Algorithm SHA256).Hash.ToLowerInvariant() -
     throw 'Current Release CLI SHA-256 mismatch.'
 }
 
-$recoveryZip = Get-PlainPath 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\e60b9d1bbec149d68208c27485165d9b\recovery.zip'
+$recoveryZip = Get-PlainPath (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\storage-lifecycle\runs\e60b9d1bbec149d68208c27485165d9b\recovery.zip')
 $expectedRecoverySha256 = 'e20d93ace231af1192153a4cadc0feb43a6922687d2e32a02dcb3ac608c97f28'
 if (-not (Test-Path -LiteralPath $recoveryZip -PathType Leaf) -or
     (Get-FileHash -LiteralPath $recoveryZip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedRecoverySha256) {

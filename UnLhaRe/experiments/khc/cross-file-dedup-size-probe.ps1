@@ -21,7 +21,7 @@ $probe=Plain $ProbeExecutable
 $probeRoot=[IO.Path]::GetFullPath($paths.CargoTargetRoot)+[IO.Path]::DirectorySeparatorChar
 if(-not $probe.StartsWith($probeRoot,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($probe) -cne 'khc_cross_file_dedup_probe.exe' -or -not(Test-Path -LiteralPath $probe -PathType Leaf)){throw 'Only the registered Cargo probe executable is allowed'}
 if(Test-Path -LiteralPath $work){throw 'WorkDirectory must be new'}
-$sourceZip=Plain 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\1547e376c0654f75baa4628242d672eb\recovery.zip'
+$sourceZip=Plain (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\1547e376c0654f75baa4628242d672eb\recovery.zip')
 $zipSha=Sha $sourceZip
 if((Get-Item -LiteralPath $sourceZip).Length -ne 8265238 -or $zipSha -cne 'defd57199689ea58e6c74afc1b1879eab35bc66ac9d15abb64ebca5f9a4b49a3'){throw 'Pinned recovery ZIP mismatch'}
 $names=@('plink-0.82.exe','plink-0.83.exe')

@@ -11,7 +11,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$campaign='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\kcs1-replay-20261020'
+$campaign=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\kcs1-replay-20261020')
 $claimPath=Join-Path $campaign 'performance-claim.json'
 $stopPath=Join-Path $campaign 'performance-pre-registration-stop.json'
 $admissionMutexName='Local\KHC-Spatial-Replay-Admission-goal-restore-20261019'
@@ -70,7 +70,7 @@ $expectedPins=[ordered]@{
     baseline=@((Join-Path $campaign 'baseline-unlhare-cli.exe'),'453b03419aa5d22a0702fba32ecb30187637044c196163039923ff5962d9b6dd',2583552)
     replay=@((Join-Path $campaign 'replay-msvc-unlhare-cli.exe'),'e13e110d491cac1a54ae340bca59f94f86ec55c951e65aab33a21daaea4b132e',2584576)
     seven_zip=@('C:\Program Files\7-Zip\7z.exe','95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53',$null)
-    input_zip=@('D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip','882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75',$null)
+    input_zip=@((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'),'882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75',$null)
     worker=@($PSCommandPath,$null,$null)
     runner=@((Join-Path $PSScriptRoot 'run-storage-experiment.ps1'),$null,$null)
     shared_module=@((Join-Path $PSScriptRoot 'storage-lifecycle.psm1'),$null,$null)

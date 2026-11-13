@@ -38,6 +38,6 @@ pwsh -NoProfile -File .\scripts\test.ps1
 
 ## Lessons
 
-- UnLhaReのKHC実験を実行するときは、[容量と清掃の実行入口](UnLhaRe/experiments/khc/STORAGE.md)に従い、比較は `run-storage-experiment.ps1`、Cargoは `run-serial-cargo.ps1` を通す。旧build・全Temp・保全を合算し、未完了清掃や固定枠超過を新root・別target・KEEP複製で回避しない。履歴の固定SHAは書き換えず、旧スクリプトの直接再実行を通常経路に戻さない。
+- UnLhaReのLHC実験を実行するときは、[容量と清掃の実行入口](UnLhaRe/experiments/khc/STORAGE.md)に従い、比較は `run-storage-experiment.ps1`、Cargoは `run-serial-cargo.ps1` を通す。旧build・全Temp・保全を合算し、未完了清掃や固定枠超過を新root・別target・KEEP複製で回避しない。履歴の固定SHAは書き換えず、旧スクリプトの直接再実行を通常経路に戻さない。
 
 - 利用者から確認の往復が目標達成を妨げると訂正されたときは、既に具体化された可逆な資源枠の拡大を確認待ちにせず適用し、その範囲で作業を続ける。

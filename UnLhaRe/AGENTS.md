@@ -11,7 +11,7 @@
 - 公開Rust API・C ABI・.NET APIは汎用ライブラリとして維持し、Lhamielなど特定の利用アプリやUIフレームワークへ依存させない。設定保存、UIへの進捗転送・間引き、上書き確認、関連付け、製品の更新処理は呼び出し側の責務とする。利用アプリの都合による上限値は公開APIの既定値へ混入させず、呼び出しごとの引数で指定する。
 - 設計はルートDESIGN.md、機能・制限・操作はこのREADME.mdを更新する。
 - 依存監視の対象は `../.github/dependabot.yml` を正本とする。Rust依存変更では `Cargo.lock` と第三者告知・ライセンス全文を照合・更新し、上記の `-Test` / `--test` と3環境のネイティブCIで検証する。NuGet依存変更ではWindowsのNative AOT ContractTestsも実行する。GitHub Actionsの更新では `../.github/workflows/modern.yml` のビルド・C API consumer・Native AOT検証を維持する。
-- バージョン、タグ、配布名、署名・公証、公開前後の確認は `RELEASING.md` を正本とし、3環境のネイティブCIを確認する。クロスOSのcargo checkだけで配布可と判断しない。
+- バージョン、タグ、配布名、署名・公証、公開前の検証と送信結果の記録は `RELEASING.md` を正本とし、3環境のネイティブCIを確認する。クロスOSのcargo checkだけで配布可と判断しない。
 - 生成物はartifacts/、中間生成物はbuild/。コミット・公開は明示依頼時のみ。
 
 WindowsでJSON連携APIまたは.NET APIを変更した場合は、次を実行する。

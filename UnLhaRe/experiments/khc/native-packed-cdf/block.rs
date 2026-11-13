@@ -1,36 +1,36 @@
 //! private native wire互換: packed-word CDF診断。encoder/defaultは元実装を参照する。
 #![allow(dead_code)]
-#[path = "../../../src/khc/block/mod.rs"]
+#[path = "../../../src/lhc/block/mod.rs"]
 mod original;
 pub(crate) use original::{HEADER, MAGIC, MAX_INPUT, SCRATCH_BOUND, Stats, crc32, encode_hybrid, revision_method_valid};
 pub(crate) type Result<T> = std::result::Result<T, String>;
-#[path = "../../../src/khc/block/bundle.rs"]
+#[path = "../../../src/lhc/block/bundle.rs"]
 mod bundle;
-#[path = "../../../src/khc/block/bwt.rs"]
+#[path = "../../../src/lhc/block/bwt.rs"]
 mod bwt;
-#[path = "../../../src/khc/block/codebook.rs"]
+#[path = "../../../src/lhc/block/codebook.rs"]
 mod codebook;
-#[path = "../../../src/khc/block/counts.rs"]
+#[path = "../../../src/lhc/block/counts.rs"]
 mod counts;
-#[path = "../../../src/khc/block/frontend.rs"]
+#[path = "../../../src/lhc/block/frontend.rs"]
 mod frontend;
-#[path = "../../../src/khc/block/grammar.rs"]
+#[path = "../../../src/lhc/block/grammar.rs"]
 mod grammar;
-#[path = "../../../src/khc/block/histogram.rs"]
+#[path = "../../../src/lhc/block/histogram.rs"]
 mod histogram;
-#[path = "../../../src/khc/block/lz.rs"]
+#[path = "../../../src/lhc/block/lz.rs"]
 mod lz;
-#[path = "../../../src/khc/block/model.rs"]
+#[path = "../../../src/lhc/block/model.rs"]
 mod model;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod multi_range;
-#[path = "../../../src/khc/block/packed.rs"]
+#[path = "../../../src/lhc/block/packed.rs"]
 mod packed;
 #[path = "packet.rs"]
 mod packet;
-#[path = "../../../src/khc/block/paid_model.rs"]
+#[path = "../../../src/lhc/block/paid_model.rs"]
 mod paid_model;
-#[path = "../../../src/khc/block/program.rs"]
+#[path = "../../../src/lhc/block/program.rs"]
 mod program;
 const MODEL_RESERVE: usize = 16 << 20;
 const MODEL_AUX: usize = 262144;

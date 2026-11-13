@@ -1,29 +1,29 @@
 //! 自己完結block。検証済みframeを製品内部namespaceへ移植する。
-#[path = "../../../src/khc/block/bundle.rs"]
+#[path = "../../../src/lhc/block/bundle.rs"]
 mod bundle;
-#[path = "../../../src/khc/block/bwt.rs"]
+#[path = "../../../src/lhc/block/bwt.rs"]
 mod bwt;
-#[path = "../../../src/khc/block/codebook.rs"]
+#[path = "../../../src/lhc/block/codebook.rs"]
 mod codebook;
-#[path = "../../../src/khc/block/counts.rs"]
+#[path = "../../../src/lhc/block/counts.rs"]
 mod counts;
-#[path = "../../../src/khc/block/frontend.rs"]
+#[path = "../../../src/lhc/block/frontend.rs"]
 mod frontend;
-#[path = "../../../src/khc/block/grammar.rs"]
+#[path = "../../../src/lhc/block/grammar.rs"]
 mod grammar;
-#[path = "../../../src/khc/block/histogram.rs"]
+#[path = "../../../src/lhc/block/histogram.rs"]
 mod histogram;
-#[path = "../../../src/khc/block/lz.rs"]
+#[path = "../../../src/lhc/block/lz.rs"]
 mod lz;
-#[path = "../../../src/khc/block/model.rs"]
+#[path = "../../../src/lhc/block/model.rs"]
 mod model;
 #[path = "choice_range_v2.rs"]
 mod multi_range;
-#[path = "../../../src/khc/block/packed.rs"]
+#[path = "../../../src/lhc/block/packed.rs"]
 mod packed;
-#[path = "../../../src/khc/block/packet.rs"]
+#[path = "../../../src/lhc/block/packet.rs"]
 mod packet;
-#[path = "../../../src/khc/block/paid_model.rs"]
+#[path = "../../../src/lhc/block/paid_model.rs"]
 mod paid_model;
 pub(crate) type Result<T> = std::result::Result<T, String>;
 pub(crate) const MAX_INPUT: usize = 1 << 20;

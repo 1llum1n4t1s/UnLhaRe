@@ -42,7 +42,7 @@ foreach($key in @('protocol','run_id','registration_sha256','protocol_sha256','p
 Reject 'seal ZIP swap' {$s=Copy-Data $seal;$s.proof_sha256='0'*64;Check-Seal $s}
 Reject 'seal unknown field' {$s=Copy-Data $seal;$s.extra=1;Check-Seal $s}
 foreach($pair in @(@($old.Worker,$old.ProtocolPath),@($new.Worker,$new.ProtocolPath))){
-    $inv=[pscustomobject]@{script=$pair[0];parameters=@{WorkDirectory=('D:\Codex\UnLhaRe\goal-restore-20261019\run-'+('a'*32));ProtocolPath=$pair[1];ProtocolSha256=('b'*64)}}
+    $inv=[pscustomobject]@{script=$pair[0];parameters=@{WorkDirectory=((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\run-')+('a'*32));ProtocolPath=$pair[1];ProtocolSha256=('b'*64)}}
     $raw=[Text.Encoding]::UTF8.GetBytes([Management.Automation.PSSerializer]::Serialize($inv));$sha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($raw)).ToLowerInvariant()
     Accept 'typed invocation fixed pair' {$null=ConvertFrom-KhcMacNativeInvocationSnapshot $raw $sha 'reference'}
     $inv.parameters.ProtocolPath=if($pair[1] -ceq $new.ProtocolPath){$old.ProtocolPath}else{$new.ProtocolPath}

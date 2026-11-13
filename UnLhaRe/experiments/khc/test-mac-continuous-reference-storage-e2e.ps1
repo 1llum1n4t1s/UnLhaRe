@@ -134,7 +134,7 @@ function Invoke-KhcMacContinuousRemote {param($Mode,$RunId,$ProtocolSha256)
     throw 'Unexpected SSH operation in storage E2E'
 }
 
-$taskRoot=Assert-KhcPlainPath 'D:\Codex\UnLhaRe\goal-restore-20261019';$script:TaskRoot=$taskRoot
+$taskRoot=Assert-KhcPlainPath (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019');$script:TaskRoot=$taskRoot
 if(-not [IO.Directory]::Exists($taskRoot)){throw 'Existing task work root required'}
 if($VerifyOnly -and -not $ResumeFixtureRoot){throw 'VerifyOnly requires an existing ResumeFixtureRoot'}
 if($ResumeFixtureRoot){
@@ -168,7 +168,7 @@ print(json.dumps(out,separators=(',',':')))
 $generated=& $python -I -B -c $generator $PSScriptRoot
 if($LASTEXITCODE -ne 0){throw 'Synthetic proof generator failed'}
 $data=ConvertFrom-Json -AsHashtable $generated
-$manifestBytes=[IO.File]::ReadAllBytes('D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-canterbury-input-manifest.json')
+$manifestBytes=[IO.File]::ReadAllBytes((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-canterbury-input-manifest.json'))
 if([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($manifestBytes)).ToLowerInvariant() -cne '458a2048459bbcae07a771c072d5e387af910c9916545919e42cbb3bcfbb87af'){throw 'Fixture manifest source pin'}
 }
 

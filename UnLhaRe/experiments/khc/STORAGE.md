@@ -5,13 +5,13 @@
 `causal-bayes-fast-bwt/compare.ps1`)、版間delta・shared-history・RecordFast screen・候補size probe、all-class-static frame E2E、製品pipeline E2E、storage E2E と `disk-budget.ps1` は、
 登録なしの直接実行を拒否する。
 Windowsでは呼出元が安全なslugを `$env:KHC_STORAGE_TASK_ID` に必ず設定する。
-モジュールは作業先を `D:\Codex\UnLhaRe\<task-id>`、保持先を
-`D:\Codex\TaskArtifacts\UnLhaRe\<task-id>` に解決する。作成・実行前に絶対パスと既存の親階層を検証し、
-reparse point、Dドライブ不在・書込み不可では停止する。Cドライブへfallbackしない。
+モジュールは作業先を `%TEMP%\UnLhaRe\work\<task-id>`、保持先を
+`%TEMP%\UnLhaRe\TaskArtifacts\<task-id>` に解決する。作成・実行前に絶対パスと既存の親階層を検証し、
+reparse point、基点ドライブ不在・書込み不可では停止する。`%TEMP%` はユーザー環境変数TEMP（`[Environment]::GetEnvironmentVariable('TEMP','User')`）を指し、wrapperが子プロセス向けに差し替えた `$env:TEMP` ではない。Cドライブ上でもよい。
 新しい `WorkDirectory`（`run-<GUID>`）と全子プロセスのTEMP/TMP・ログ・検証出力はタスク作業先以下、
 復元ZIP・台帳・receiptなどの保持証拠はタスク保持先以下へ置く。
-旧 `build/`、旧CドライブのTemp/TaskArtifacts、および既存の共有D保持root `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle` は読取専用の履歴として残し、容量計測には含める。新しい清掃台帳はtask別rootだけに登録する。
-以下の実行例は最初に設定した同じtask IDを引き継ぐ。新task IDや別rootを固定枠の回避に使わない。
+旧 `build/`、旧CドライブのTemp/TaskArtifactsは読取専用の履歴として残し、容量計測には含める。共有保持root（コード上は `%TEMP%\UnLhaRe\TaskArtifacts\storage-lifecycle` に解決される）も読取専用として扱う。基点変更前の記録は `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle` などの旧配置にあり、新しい基点へは移行していない。新しい清掃台帳はtask別rootだけに登録する。
+以下の実行例は最初に設定した同じtask IDと `$khcStorageRoot`（`%TEMP%\UnLhaRe`）を引き継ぐ。新task IDや別rootを固定枠の回避に使わない。
 
 `causal-row-copy-spatial-bits/run-e2e.ps1` は固定ptt5のcopy＋literal空間bit実験専用。
 `-MaxRunMiB 5 -TimeoutSeconds 300` で、standalone rustc・有限正常/悪性E2E・既存KRS2の
@@ -28,7 +28,9 @@ byte/SHA復元、破損拒否・既存出力保持、revision 1〜7の読込を�
 
 ```powershell
 $env:KHC_STORAGE_TASK_ID = 'khc-20261019-example'
-$taskWorkRoot = Join-Path 'D:\Codex\UnLhaRe' $env:KHC_STORAGE_TASK_ID
+# 作業・保全の基点。wrapperが差し替える $env:TEMP ではなく、ユーザー環境変数TEMPを使う。
+$khcStorageRoot = Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User')) 'UnLhaRe'
+$taskWorkRoot = Join-Path (Join-Path $khcStorageRoot 'work') $env:KHC_STORAGE_TASK_ID
 $cargoRoot = Join-Path $taskWorkRoot 'cargo'
 $parameters = @{
     LabPath = 'C:\path\khc_lab.exe'
@@ -45,7 +47,7 @@ $parameters = @{
 
 Revision 9 correctness is checked by `examples/khc_spatial_mdl_e2e.rs` through the registered
 `spatial-mdl-e2e.ps1` entry point. The fixed development fixture is the pinned `input/ptt5` member
-from recovery ZIP `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`
+from recovery ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`
 (ZIP SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`; member 513,216 B,
 SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`). The runner extracts
 only that member into its registered work directory. The direct block-choice matrix uses ptt5; the
@@ -75,7 +77,7 @@ $cli = Join-Path $cargoRoot 'x86_64-pc-windows-msvc\release\unlhare-cli.exe'
 $e2e = Join-Path $cargoRoot 'x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe'
 Get-FileHash -LiteralPath $cli,$e2e -Algorithm SHA256
 $parameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
     KhcExecutable = $cli
     KhcExecutableSha256 = '50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3'
     E2eExecutable = $e2e
@@ -93,21 +95,21 @@ current fixed capacity and new source/build pins are recorded in the revision-10
 
 | 対象 | 固定枠 |
 | --- | --- |
-| 既存の `build/` + 旧Cドライブの全 `Temp/Codex/UnLhaRe/`・全 `LocalAppData/Codex/TaskArtifacts/UnLhaRe/` + 全 `D:\Codex\UnLhaRe\`・全 `D:\Codex\TaskArtifacts\UnLhaRe\` | 合算30GiB |
+| 既存の `build/` + 旧Cドライブの全 `Temp/Codex/UnLhaRe/`・全 `LocalAppData/Codex/TaskArtifacts/UnLhaRe/` + 全 `%TEMP%\UnLhaRe\work\`・全 `%TEMP%\UnLhaRe\TaskArtifacts\` | 合算30GiB |
 | 上記の外部作業先・通常保全（Cargoと登録済み固定保管ZIPを除く、予約を含む） | 合算2GiB |
 | 2026-10-13に一度だけ登録した旧buildの保管ZIP | 登録時の実file長固定、30GiB枠の内数 |
-| 旧 `build/cargo/` + 全Dタスク作業先の `cargo/`（合算枠の内数） | 合算6GiB |
-| 旧Cの共有 `TaskArtifacts/UnLhaRe/storage-lifecycle/` + 既存共有Dの `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle` + 全Dタスク保持先の復元ZIP・台帳・実行記録（内数） | 合算1GiB |
+| 旧 `build/cargo/` + 全タスク作業先の `cargo/`（合算枠の内数） | 合算6GiB |
+| 旧Cの共有 `TaskArtifacts/UnLhaRe/storage-lifecycle/` + 共有の `%TEMP%\UnLhaRe\TaskArtifacts\storage-lifecycle` + 全タスク保持先の復元ZIP・台帳・実行記録（内数） | 合算1GiB |
 | 今回の一時物 | 1〜32MiB、既定32MiB |
 | 空き容量 | 5GiB + 今回の一時物/バックアップ予約 |
 
 既存量をbaselineとして除外せず、保全先へ移した分も容量削減として数えない。
-上記は重なる内数を示す。全体30GiBでは各fileを一度だけ数え、Dタスク作業先配下のCargoを
-通常外部2GiBへ重ねて加算しない。新しいtask IDを選んでも旧C・全Dタスクの使用量と予約は合算する。
+上記は重なる内数を示す。全体30GiBでは各fileを一度だけ数え、タスク作業先配下のCargoを
+通常外部2GiBへ重ねて加算しない。新しいtask IDを選んでも旧C・全タスクの使用量と予約は合算する。
 2026-10-13の明示依頼による旧buildの保管だけは、外部KeepRoot直下の
 `build-retirement-retention.json`（schema 1の単一登録、32KiB以下）で固定する。
 登録済みの `build-retirement-*/build-snapshot.zip` の実容量だけを通常外部2GiBと別に計測し、
-外部合計・全体30GiBには含める。判定は旧Cと全Dを合算した
+外部合計・全体30GiBには含める。判定は旧Cと全タスクを合算した
 `外部作業先（Cargo除外） + Keep + reserve <= 2GiB + 登録ZIP実容量`。
 登録容量は12GiB以下、正規絶対パス・リンクなし・SHA-256形式・実容量・更新時刻を確認し、
 不一致や増加は停止する。ZIPが存在しなければ保管使用量は0となり通常2GiBへ戻る。
@@ -182,7 +184,7 @@ Prunletの一時復元copyは今回の実験bytesを予約に加えて容量判�
 
 Cargoは `run-serial-cargo.ps1 -CargoArguments <array>` を使う。jobs=1、
 `CARGO_INCREMENTAL=0`、CLI `--target-dir` と環境変数を同じ
-`D:\Codex\UnLhaRe\<task-id>\cargo` へ固定し、中間成果物の `build-dir` も同じ場所へ固定する
+`%TEMP%\UnLhaRe\work\<task-id>\cargo` へ固定し、中間成果物の `build-dir` も同じ場所へ固定する
 （[Cargoの設定仕様](https://doc.rust-lang.org/cargo/reference/config.html#buildbuild-dir)）。
 子プロセスのTEMP/TMPも同じタスク作業先以下に限定する。利用者指定の `--config`・jobs・targetの上書きは拒否する。
 同じtask内ではCargoを共有し、runごとの別targetを作らない。旧 `build/cargo` へは書き込まない。
@@ -190,7 +192,7 @@ serial Cargoは従来のより小さい固定cap 6,175,228,536 bytesも維持し
 （既定14MiB、内2MiBはsamplingのreserve）。版間delta screenはthin-LTO release依存crateの
 初回buildが進行中で、単発増加133,920,639 bytesを観測し本体crateのcompile前だったため、
 512MiBを要求して2MiB reserve後の有効枠を510MiBとする。既定値や固定capは変更しない。
-固定capは旧Cargoと全DタスクのCargoを合算して適用し、別taskや別targetへ逃がさない。
+固定capは旧Cargoと全タスクのCargoを合算して適用し、別taskや別targetへ逃がさない。
 以後cacheが固定枠を占めて予約を確保できなければ停止し、共有cacheを自動削除しない。
 共有cacheは自動削除しないため固定枠到達時は停止する。
 
@@ -201,7 +203,7 @@ serial Cargoは従来のより小さい固定cap 6,175,228,536 bytesも維持し
 102,254ファイル・29,287,693,620 bytesをZIP復元データと全SHA-256で照合し、
 5,161,203,815 bytesの `build-snapshot.zip` を外部Keepへ一度だけ保管する。
 保管先の `archive-verified.json` を検証証拠とする。台帳の `archive_path` と同じディレクトリの
-`Restore-BuildSnapshot.ps1` へ `-ArchivePath`、検証済みDタスク作業先以下の新しい絶対パス
+`Restore-BuildSnapshot.ps1` へ `-ArchivePath`、検証済みタスク作業先以下の新しい絶対パス
 `-Destination`（親は既存）、`-ExpectedArchiveSha256` を指定する。
 通常は `-Prefix` に元buildからの相対パス配列を渡して必要な資料だけ復元する（省略時は全件）。
 清掃は共通手順の台帳・残存確認が完了してから通常の比較/Cargo入口を再開する。
@@ -223,7 +225,7 @@ runnerはこのboundを登録前に適用し、scriptもrun recordのentry/byte�
 固定1GiB台帳枠に96 entryと18MiBのwork bytesを同時予約できない場合、既存証拠の削除や実行ごとの一時的な上限変更で回避せず開始前に停止する。
 
 ```powershell
-$source = 'D:\Codex\UnLhaRe\<task-id>\canterbury-corpus-20261015\files'
+$source = (Join-Path $khcStorageRoot 'work\<task-id>\canterbury-corpus-20261015\files')
 & .\experiments\khc\run-serial-cargo.ps1 -TransientMiB 256 -CargoArguments @('build','--release','--target','x86_64-pc-windows-msvc','--bin','unlhare-cli','--example','khc_pipeline_e2e')
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\product-pipeline-e2e.ps1 `
@@ -262,7 +264,7 @@ encode計測から除外する。
 ```powershell
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\version-delta-screen.ps1 `
-    -ScriptParameters @{ Dataset = '7zr'; ToolCacheZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\<run-id>\recovery.zip' } `
+    -ScriptParameters @{ Dataset = '7zr'; ToolCacheZip = (Join-Path $khcStorageRoot 'TaskArtifacts\storage-lifecycle\runs\<run-id>\recovery.zip') } `
     -MaxRunMiB 7 -TimeoutSeconds 1800
 ```
 
@@ -291,14 +293,14 @@ KRS3 `RecordAdaptiveTrial` を既知Canterbury `ptt5` の同一513,216-byte bloc
 確認し、固定容量・入力hashのpreflight後、以下の完全一致で登録する。CPU gateが崩れた場合は同一負荷で再試行しない。
 記録済みRelease bench `build/cargo/release/examples/khc_record_fast_bench.exe` はRust 1.98.1でbuildされ、
 SHA-256 `abcf5cbd839f059a8f633634eb1bc2c0cc49fdef2bd6b3f39e5168a6be019bbb`。これは履歴の識別値であり、
-新しいbuild先はDタスク作業先のCargoとなる。screenは別hashを拒否する。
+新しいbuild先はタスク作業先のCargoとなる。screenは別hashを拒否する。
 
 ```powershell
 $cargoArguments = @('build', '--release', '--example', 'khc_record_fast_bench')
 & .\experiments\khc\run-serial-cargo.ps1 -CargoArguments $cargoArguments
 
 $runId = '8a849a3267954242bcd8424b93526176'
-$recovery = "D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\$runId\recovery.zip"
+$recovery = "$khcStorageRoot\TaskArtifacts\storage-lifecycle\runs\$runId\recovery.zip"
 $parameters = @{ InputRecoveryZip = $recovery; InputRecoveryZipSha256 = '882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75'; Rounds = 3 }
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\record-adaptive-screen.ps1 `
@@ -317,7 +319,7 @@ KHC revisionとKRS2 frame選択、7-Zipの実効method/dictionary、各書庫の
 `InputRecoveryMembers` を指定する。指定memberは登録work内へ直接展開し、未登録の一時コピーは作らない。
 
 ```powershell
-$inputs = @('D:\Codex\UnLhaRe\<task-id>\canterbury-corpus-20261015\files\ptt5')
+$inputs = @((Join-Path $khcStorageRoot 'work\<task-id>\canterbury-corpus-20261015\files\ptt5'))
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\record-fast-7zip-screen.ps1 `
     -ScriptParameters @{ InputFiles = $inputs; KhcExecutable = (Join-Path $cargoRoot 'x86_64-pc-windows-msvc\release\unlhare-cli.exe'); SevenZipPath = 'C:\Program Files\7-Zip\7z.exe' } `
@@ -328,7 +330,7 @@ KRS3の製品書庫比較は、先に`record-adaptive-screen.ps1`が同じptt5�
 
 ```powershell
 $runId = '8a849a3267954242bcd8424b93526176'
-$recovery = "D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\$runId\recovery.zip"
+$recovery = "$khcStorageRoot\TaskArtifacts\storage-lifecycle\runs\$runId\recovery.zip"
 $parameters = @{
     InputRecoveryZip = $recovery
     InputRecoveryZipSha256 = '882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75'
@@ -383,7 +385,7 @@ $inputs = @('C:\path\7zr-24.09.exe', 'C:\path\7zr-25.01.exe')
 
 ```powershell
 $runId = '995f90e914704cb79936b7013f0c2c0b'
-$run = "D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\$runId"
+$run = "$khcStorageRoot\TaskArtifacts\storage-lifecycle\runs\$runId"
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\greedy-entropy-bound-screen.ps1 `
     -ScriptParameters @{ RecoveryZip = (Join-Path $run 'recovery.zip'); RecoveryManifest = (Join-Path $run 'recovery.json'); ExpectedArchiveSha256 = 'd1aa7ebcd0206ff15081e3d4d00c7634accbe2f662e567e1484ec183c3fddcf6'; SourceRunId = $runId; LabExecutable = (Join-Path $cargoRoot 'release\examples\khc_lab.exe') } `
@@ -449,7 +451,7 @@ Get-FileHash -LiteralPath $probe -Algorithm SHA256
 ```powershell
 $parameters = @{
     ProbeExecutable = $probe
-    SourceArchive = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\0acc17d780a142dcafe88645a07205a5\recovery.zip'
+    SourceArchive = (Join-Path $khcStorageRoot 'TaskArtifacts\storage-lifecycle\runs\0acc17d780a142dcafe88645a07205a5\recovery.zip')
 }
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\html-span-size-probe.ps1 `
@@ -468,10 +470,10 @@ $parameters = @{
 ```powershell
 $runId = '8a849a3267954242bcd8424b93526176'
 $parameters = @{
-    InputRecoveryZip = "D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\$runId\recovery.zip"
+    InputRecoveryZip = "$khcStorageRoot\TaskArtifacts\storage-lifecycle\runs\$runId\recovery.zip"
     InputRecoveryZipSha256 = '882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75'
     InputRecoveryMembers = @('input/ptt5')
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\release\unlhare-cli.exe'
+    KhcExecutable = (Join-Path $khcStorageRoot 'work\goal-restore-20261019\cargo\release\unlhare-cli.exe')
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
     SpeedFrontierStudy = $true
     SevenZipLevels = @(1,3,5,7,9)
@@ -518,14 +520,14 @@ Pre-run pins (2026-10-19; re-hash all before registration):
 | `run-storage-experiment.ps1` | `6fe4460a23e0fca7539a73937a6ee54af8b2e9d3935c5d596975f21bc51af2ad` |
 | `storage-lifecycle.psm1` | `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3` |
 
-Fixed input/tool paths: `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`,
-`D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe`,
+Fixed input/tool paths: `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`,
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe`,
 and `C:\Program Files\7-Zip\7z.exe`.
 
 ```powershell
 $parameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     KhcExecutableSha256 = '50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3'
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
     SevenZipSha256 = '95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'
@@ -550,7 +552,7 @@ exact 11-file length/SHA manifest. The candidate advances only if its complete a
 size screen and does not establish speed, memory, general, or heldout superiority.
 
 The fixed input is `pipeline-e2e/canterbury/` inside
-`D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`
 (8,765,120 B, SHA-256 `b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb`). Its
 11 files total 2,810,784 B and have manifest SHA-256
 `bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438`; the source archive stays in
@@ -572,10 +574,10 @@ confirm no pending run and no target process, then invoke only through the regis
 ```powershell
 $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 $parameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
     InputRecoveryZipSha256 = 'b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb'
     ExpectedSourceManifestSha256 = 'bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438'
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     KhcExecutableSha256 = '50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3'
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
     SevenZipSha256 = '95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'
@@ -635,7 +637,7 @@ roundtrip, nondeterminism, baseline-size invariant failure, timeout, storage fai
 miss is a no-go for this fixed condition; do not retry it.
 
 The fixed input is the 11 members under `pipeline-e2e/canterbury/` from
-`D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`
 (8,765,120 B, SHA-256 `b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb`), with total
 2,810,784 B and source manifest SHA-256
 `bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438`. The exact revision-9 archive
@@ -647,7 +649,7 @@ Use only the registered `portfolio-size-pilot.ps1` entry with fixed run cap 32 M
 300 seconds. Extract only the pinned members inside registered work. Before Cargo, reconfirm the
 candidate sources, example, screen source, input, existing CLI/7-Zip, Cargo manifests, and build/
 storage helper pins below. Build the Release probe only through `run-serial-cargo.ps1`, with
-target-dir and TEMP/TMP under `D:\Codex\UnLhaRe\goal-restore-20261019\`. After the build, record
+target-dir and TEMP/TMP under `<作業フォルダー>\UnLhaRe\goal-restore-20261019\`. After the build, record
 the generated probe SHA and final runner SHA here and in `RESEARCH_SELECTION_20261005.md`; no
 candidate, input, budget, or decision condition may change. Invoke the pilot only through
 `run-storage-experiment.ps1` with `KHC_STORAGE_TASK_ID=goal-restore-20261019`. No other build,
@@ -687,7 +689,7 @@ The Release probe was built by the pinned command above with Cargo `--locked --o
 (recorded below), Cargo finished but the first wrapper call returned 1 because `VCTIP.exe` survived
 the drain grace; it exited naturally. One recovery invocation with unchanged source then completed
 with wrapper exit 0 in 0.94 s. The executable is 1,357,312 B at
-`D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe`.
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe`.
 
 Pre-registration invocation:
 
@@ -696,12 +698,12 @@ $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 Import-Module .\experiments\khc\storage-lifecycle.psm1 -Force
 $budget = Assert-KhcStorageBudget -ReserveBytes 72MB
 $parameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
     InputRecoveryZipSha256 = 'b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb'
     ExpectedSourceManifestSha256 = 'bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438'
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     KhcExecutableSha256 = '50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3'
-    ProbeExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe'
+    ProbeExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe'
     ProbeExecutableSha256 = 'fb595c1c8ab5b08135fa634c5d6b9e00ea6a2c7d3da8049f4d0aab06f52f6012'
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
     SevenZipSha256 = '95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'
@@ -727,7 +729,7 @@ The single registered run `b35233c621ef4f7fb8bf7651690cdc20` completed with deci
 `go-to-separate-revision-10-integration-and-performance-evaluation`. The report
 `portfolio-size-pilot.json` has SHA-256
 `cec9a17ddc5ed9929060371fa75bf09f780e4f68fb1cba9daa8a606e3549a128` and is retained in
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\b35233c621ef4f7fb8bf7651690cdc20\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\b35233c621ef4f7fb8bf7651690cdc20\recovery.zip`
 (1,667,875 B, SHA-256 `dabaf9fd5ab4792a95570cf8dea84a200bbec84576232772b2c231ba3f0c6324`). The paired
 recovery manifest SHA-256 is `9044ae1792e221ea4636fa5285635b9612a809a0f20b69639e4de2026bca605a`.
 
@@ -817,7 +819,7 @@ individual example and tool scripts remain directly inspectable.
 | `experiments/khc/storage-lifecycle.psm1` / `disk-budget.ps1` | `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3` / `506e4c68dc05734bc1a0c02bac6f81d4677e0bcffd9b9fa2b7bd67d53319bdcd` |
 | pinned ptt5 recovery ZIP / member | `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75` / 513,216 B, `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650` |
 
-Release output paths remain under `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\`;
+Release output paths remain under `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\`;
 the build uses Rust 1.98.1, `--locked --offline`, one Cargo job, and a 256 MiB transient
 reservation. Record `unlhare-cli.exe` and `examples\khc_spatial_mdl_e2e.exe` hashes after build
 and before the single 8 MiB / 96-entry / 300-second registration.
@@ -826,7 +828,7 @@ and before the single 8 MiB / 96-entry / 300-second registration.
 
 The offline Release build completed for `x86_64-pc-windows-msvc` after one bounded no-rebuild
 recovery from the known VCTIP drain condition. These executable hashes were captured before the
-registered run and must match the exact `D:\Codex` output paths above.
+registered run and must match the exact `<作業フォルダー>` output paths above.
 
 | 対象 | bytes | SHA-256 |
 | --- | ---: | --- |
@@ -839,7 +841,7 @@ Import-Module .\experiments\khc\storage-lifecycle.psm1 -Force
 $taskPaths = Get-KhcStorageTaskPaths
 $release = Join-Path $taskPaths.CargoTargetRoot 'x86_64-pc-windows-msvc\release'
 $parameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
     KhcExecutable = Join-Path $release 'unlhare-cli.exe'
     KhcExecutableSha256 = '4f9fa4e293404c82335ace434271fd646ed62468fb32365d6fcf3e1d0641a403'
     E2eExecutable = Join-Path $release 'examples\khc_spatial_mdl_e2e.exe'
@@ -936,7 +938,7 @@ Import-Module .\experiments\khc\storage-lifecycle.psm1 -Force
 $taskPaths = Get-KhcStorageTaskPaths
 $release = Join-Path $taskPaths.CargoTargetRoot 'x86_64-pc-windows-msvc\release'
 $parameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
     KhcExecutable = Join-Path $release 'unlhare-cli.exe'
     KhcExecutableSha256 = '4f9fa4e293404c82335ace434271fd646ed62468fb32365d6fcf3e1d0641a403'
     E2eExecutable = Join-Path $release 'examples\khc_spatial_mdl_e2e.exe'
@@ -966,7 +968,7 @@ expected a `KHCG32B` frame from `Gather32Trial` on a 1MiB zero block. The strate
 0–5 ran; the G32 and later API cases, CLI matrix, and legacy checks did not. This is a fixture
 selection error, not a format rejection or codec failure. The worktree was cleaned through staged
 Prunlet operation `a126462266f541aab1ed9f2c6b3e3527` (7,196,852 bytes before, 0 after). Recovery ZIP
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\1d844efed19145eb9e4029b46302202a\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\1d844efed19145eb9e4029b46302202a\recovery.zip`
 is retained with SHA-256 `bb55201dd11c634aaab16f2cadf7f87e3bdcfd4e1ff2252c49f790bc665bb034`; its
 manifest SHA-256 is `54d9d7ce54c736cab039cca83b6ac4eee48dc7411e74a7d855f5d68141012471`. There is no
 pending lifecycle run.
@@ -1300,8 +1302,8 @@ Register only through this exact command after the final pre-run budget and proc
 ```powershell
 $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 $screenParameters = @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
 }
 & .\experiments\khc\run-storage-experiment.ps1 `
@@ -1319,7 +1321,7 @@ is a distinct development-only input condition, not an independent holdout or ev
 superiority.
 
 The fixed input package is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\input.zip` (222,247 B,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\input.zip` (222,247 B,
 SHA-256 `9772d6af224028a70c2d50af8f64faebf03de9a487a08fee566de4c1128cb0b6`). Its only members are
 `input/bocchan.txt` (209,990 B, SHA-256
 `8b1087162da44dbf54705c15f5ba62c7c07db86bb6f38caacd4f5beb62e4618b`) and `input/lemon.txt`
@@ -1376,7 +1378,7 @@ This is a separate development screen on the fixed 100-file e-Gov law XML/CSV co
 of the Canterbury11 CPU-gate stop. The exact campaign is `a42eb7bfbedf4fa780c4d210385b24c6`, fixed
 to `2026-10-19T19:00:00Z` through `2026-10-19T19:30:00Z` (2026-10-20 04:00–04:30 JST). Its immutable
 `campaign-start.json` is at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\campaign-start.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\campaign-start.json`
 (SHA-256 `1ec16512fc8b342407c391c80693598e506136f7b76dfff5e67d24df96e95afe`). No registration is
 permitted before the fixed start and a fresh five-reading external `_Total` CPU gate at or below
 15%, sampled after one-second waits with `Get-CimInstance` for
@@ -1386,10 +1388,10 @@ budget/reserve, no-pending-run, process, absolute path and reparse-point checks.
 stops this campaign without retry or schedule rebase.
 
 The corpus is the exact extracted source tree
-`D:\Codex\TaskArtifacts\UnLhaRe\01a0b076-4e26-7a71-ac35-32ed9259a871\egov-law-xml-candidate-inputs-20261016\input`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\01a0b076-4e26-7a71-ac35-32ed9259a871\egov-law-xml-candidate-inputs-20261016\input`
 (100 files, 9,527,638 bytes; manifest SHA-256
 `332cb1043efa84127312da055bb8c03104b991cb8e0820195cb2aafa4bfefee3`), supplied to each run as
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip`
 (SHA-256 `861ce8956f8347b34223466d5fff93360d1901b6aa42cca1238965d590e73099`). The candidate is the
 revision-10 `portfolio-trial` strategy. Run exactly 20 samples serially: rounds 0–9 each have one
 `portfolio-trial` and one `7zip` sample; portfolio goes first on even rounds and 7-Zip first on odd
@@ -1431,9 +1433,9 @@ $screenParameters = @{
     CorpusProfile = 'eGovLawXml20261016'
     Round = 0
     Strategy = 'portfolio-trial'
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip'
 }
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\portfolio-7zip-product-screen.ps1 `
@@ -1447,7 +1449,7 @@ the actual UTC time after the final Prunlet finalize, and the initial gate's sta
 five CPU readings. It rejects early aggregation and checks all registrations across the entire
 immutable start-to-deadline window (not merely through a caller-supplied finish time), so any extra
 or failed in-window registration invalidates the set. Its result is written to
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\campaign-report.json`.
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\campaign-report.json`.
 This development-only screen is not an independent holdout result or GOAL completion evidence.
 
 #### e-Gov fixed product screen stopped before registration at the external CPU gate (2026-10-20)
@@ -1463,7 +1465,7 @@ condition or relax the CPU threshold.
 
 Preflight had passed the no-pending-run, 32 MiB budget-reserve, path/reparse, process, and all pinned
 artifact checks. The exact failed gate and budget snapshot are retained at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\pre-registration-stop.json`
 (SHA-256 `75a1cc84649bcfe5b9fb48039f0ed7f5fe9b693be4c9c09d2f4f9c28e1356f5b`).
 
 #### Schedule-replay Canterbury11 screen stopped before its first timed command (2026-10-20)
@@ -1598,7 +1600,7 @@ accurately described the state when it was written.
 The registered work tree was removed through the required staged Prunlet protocol (operation
 `de744027ac614c97ad0188b05597bcce`, 17 entries, 3,278,234 B before and 0 B after). Its recovery
 evidence remains at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\9df233fe994b4af08db05acbf666bfc9\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\9df233fe994b4af08db05acbf666bfc9\recovery.zip`
 (1,633,014 B, SHA-256 `8eebe511df28780e921666e5fb87f20649d9da7a5d6bd3c055da303b86d71575`); the recovery
 manifest SHA-256 is `9df79ded9e8f16282851aeb3f678e95ee3378c80b6dd0d95e3032271d99ec6f0`.
 
@@ -1643,13 +1645,13 @@ that holdout and general superiority were not evaluated. These warmup archives a
 performance evidence or a candidate decision. Do not retry this condition unchanged.
 
 The failed registered run is `039411b01e4c49f0a7c18b475b58f462`, with work directory
-`D:\Codex\UnLhaRe\goal-restore-20261019\run-0f414a07d8334115b653d6ea31d9a8b5`. Its report
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019\run-0f414a07d8334115b653d6ea31d9a8b5`. Its report
 is retained inside the recovery ZIP; report SHA-256 is
 `c69a0d26830f9a07bee0867bcb4735d85d9e5ed2f11eb7ac0466f97b99c8ff9d`. The 30-entry / 25-file
 inventory measured 6,595,431 B. Staged Prunlet delete-preview, delete, purge-preview and purge
 apply all passed (operation `19d09c148c68416eb518a302c006a57d`); `complete.json` records
 `BeforeBytes=6,595,431`, `AfterBytes=0`, and the work directory is absent. The recovery ZIP remains
-at `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\039411b01e4c49f0a7c18b475b58f462\recovery.zip`
+at `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\039411b01e4c49f0a7c18b475b58f462\recovery.zip`
 (3,299,468 B, SHA-256
 `34731667812c2fe8c5808071f10082b5e085aeae267e4d354ed05473a7012962`); `recovery.json` SHA-256
 is `79ac8ac216e5d1f10bf580bc69ab05f1936c6ea96fb9838b393672e6e225b2c0`.
@@ -1701,7 +1703,7 @@ The lifecycle cleanup request measured 89 entries / 5,453,097 B. Direct installe
 recursive delete and purge completed as operation `a3443ea3192944e1b398babe08af47a9`; the
 lifecycle record is complete with `BeforeBytes=5,453,097`, `AfterBytes=0`, and the work root absent.
 The recovery evidence is retained at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\734aac55e9064d22abe8de2d5b2553e8\`:
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\734aac55e9064d22abe8de2d5b2553e8\`:
 `recovery.zip` 746,804 B, SHA-256
 `8719fd8458ab3f2db3043aed34f4359b2f16cfc44bc59182dac76b6556f0ed41`; `recovery.json` 21,644 B,
 SHA-256 `6d66e96231a5dd4d565437a904d50d78f224ebb6c4d6d1ff075d802c5255a9c2`; report 7,162 B,
@@ -1754,7 +1756,7 @@ and compatibility only, not speed, memory usage or 7-Zip superiority.
 The lifecycle cleanup measured 89 entries / 5,453,097 B. Direct installed Prunlet delete and purge
 completed as operation `c69e6740df95451b938df9734f6d3ea8`; the lifecycle record is complete with
 `BeforeBytes=5,453,097`, `AfterBytes=0`, and the work root absent. Recovery evidence remains at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\0b371cf18d2f4165840a9995ef00f9ed\`:
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\0b371cf18d2f4165840a9995ef00f9ed\`:
 `recovery.zip` 746,812 B, SHA-256
 `ceb828d289d6d7b5bc955ab7e3ad4bb6eafe41116c01d4a240474526c166991b`; `recovery.json` 21,644 B,
 SHA-256 `aba3da2d9f98f0695150692ae3eb82c4d0ae3513d217040dc8c85a65b0f60106`; report
@@ -1858,7 +1860,7 @@ Release CLI and E2E binaries on the D-drive target were the older MDL-last artif
 Release CLI and E2E example through `run-serial-cargo.ps1` with `TransientMiB=256` and Cargo
 arguments `build --locked --offline --release --target x86_64-pc-windows-msvc --bin unlhare-cli
 --example khc_spatial_mdl_e2e`. Cargo target, TEMP/TMP and intermediate output remain under
-`D:\Codex\UnLhaRe\goal-restore-20261019`; no repo-local build output is part of this run.
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019`; no repo-local build output is part of this run.
 
 After verifying the new binary hashes and the unchanged source/build manifests, register exactly
 one `spatial-mdl-e2e.ps1` run with its pinned recovery ZIP and those D-drive Release binaries,
@@ -2015,7 +2017,7 @@ Before build, recheck these pins, process state, and the read-only Cargo storage
 Release CLI and E2E example through `run-serial-cargo.ps1` with `TransientMiB=256` and locked,
 offline Cargo arguments `build --locked --offline --release --target x86_64-pc-windows-msvc --bin
 unlhare-cli --example khc_spatial_mdl_e2e`. Target, TEMP/TMP, and intermediate output stay under
-`D:\Codex\UnLhaRe\goal-restore-20261019`. Pin both new executable hashes and the final
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019`. Pin both new executable hashes and the final
 `STORAGE.md` hash in the research selection before exactly one registered run through
 `run-storage-experiment.ps1` at 8 MiB / 96 entries / 300 seconds, with a 240-second child timeout
 and the pinned recovery ZIP. If build, registration, or E2E fails, preserve evidence and do not
@@ -2053,7 +2055,7 @@ archive totaling 513,225 B; `ptt5` was restored byte-for-byte. This is correctne
 evidence only, not a speed, memory, 7-Zip, holdout, or byte-identity result.
 
 The run evidence is retained under
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\abb76bfa2b254424be836b8c259561f6`.
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\abb76bfa2b254424be836b8c259561f6`.
 
 | Preserved result evidence | Bytes | SHA-256 |
 | --- | ---: | --- |
@@ -2205,7 +2207,7 @@ supports byte-identical encoded data after the timestamped manifest, but not byt
 archives. It provides no speed, memory, 7-Zip, holdout, or GOAL-completion evidence.
 
 The full result and lifecycle evidence are retained under
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f66bb7133a5e46888d54003e3b594ff4`.
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f66bb7133a5e46888d54003e3b594ff4`.
 
 | Preserved artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
@@ -2277,10 +2279,10 @@ $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 & 'D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\run-storage-experiment.ps1' `
   -ScriptPath 'D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\spatial-mdl-e2e.ps1' `
   -ScriptParameters @{
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     KhcExecutableSha256 = '3dd0e0503ed6ec11c90ad1ff9ee69b2e34c564f8710871ab182dd684f27b7b4b'
-    E2eExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe'
+    E2eExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe'
     E2eExecutableSha256 = '8e02b2bd126b058eaa1a1679456d572e736161894633f113a2be8643694b213e'
     ChildTimeoutSeconds = 240
   } `
@@ -2290,7 +2292,7 @@ $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 #### First schedule-replay correctness E2E stopped by live directory-scan race; cleanup completed (2026-10-20)
 
 The single registration `3e44744ddf604d959fc05b042f4694f6` used work directory
-`D:\Codex\UnLhaRe\goal-restore-20261019\run-8445434dc27047e68d1117e9e8c9b566`. The wrapper
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019\run-8445434dc27047e68d1117e9e8c9b566`. The wrapper
 returned 1 while `Get-KhcRunUsage` called `TreeCounter.Measure`: the accepted-output extraction
 created a `cap_tempfile::TempDir` under `api\accepted-all-output` and published files out of that
 directory. The live accounting scan tried to enumerate a GUID staging directory as it vanished
@@ -2441,9 +2443,9 @@ parameters are:
 ```powershell
 $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 $screenParameters = @{
-    KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    KhcExecutable = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
     SevenZipPath = 'C:\Program Files\7-Zip\7z.exe'
-    InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+    InputRecoveryZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
 }
 & .\experiments\khc\run-storage-experiment.ps1 `
     -ScriptPath .\experiments\khc\portfolio-7zip-product-screen.ps1 `
@@ -2453,7 +2455,7 @@ $screenParameters = @{
 ### Aozora development-only 7-Zip screen preregistration (2026-10-20)
 
 The immutable marker is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\campaign-start.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\campaign-start.json`
 (2,333 B, SHA-256 `1c2e4fb5f96a420a769ac255751deec64008e211968194d7557f1285a1adbaff`), campaign
 `f3d12bcb02bb4e3c97f6417062d6d5a7`, fixed to 2026-10-19 19:50–20:20 UTC. The lifecycle validator
 accepted the marker, all pins, and input profile before its start time. There are not yet any
@@ -2463,7 +2465,7 @@ retried. This is a distinct development-only input condition, not an independent
 evidence of 7-Zip superiority.
 
 The fixed input package is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\input.zip` (222,247 B,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\input.zip` (222,247 B,
 SHA-256 `9772d6af224028a70c2d50af8f64faebf03de9a487a08fee566de4c1128cb0b6`). Its members are
 `input/bocchan.txt` (209,990 B, SHA-256
 `8b1087162da44dbf54705c15f5ba62c7c07db86bb6f38caacd4f5beb62e4618b`) and `input/lemon.txt`
@@ -2513,8 +2515,8 @@ The worker command for each `(round,strategy)` pair is:
 ```powershell
 $env:KHC_STORAGE_TASK_ID = 'goal-restore-20261019'
 $campaignSha = '1c2e4fb5f96a420a769ac255751deec64008e211968194d7557f1285a1adbaff'
-$inputZip = 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\input.zip'
-$khc = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+$inputZip = '<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\input.zip'
+$khc = '<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
 $seven = 'C:\Program Files\7-Zip\7z.exe'
 $parameters = @{
     CorpusProfile = 'AozoraDevelopment20261020'; Round = $round; Strategy = $strategy
@@ -2560,7 +2562,7 @@ check passed and no cleanup was required. This source/input condition and fixed 
 do not retry, rebase, or relax the threshold. This is not a codec no-go or a performance result.
 
 The retained stop record is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\pre-registration-stop.json`
 (2,298 B, SHA-256 `4409ee3a6d5656293bcba320bdb341d077cb4230343ebab32da6ea3bda6c0821`). Its preflight
 snapshot, marker/tool/source/input pins, exact UTC readings, run-directory check, and procedure
 deviation are machine-readable there. The immutable campaign-start marker remains preserved.
@@ -2568,7 +2570,7 @@ deviation are machine-readable there. The immutable campaign-start marker remain
 #### JMA Tokyo daily independent holdout profile integration (2026-10-20)
 
 The fixed input is the single unmodified Tokyo daily weather CSV (2010-01-01 through 2025-12-31),
-stored at `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\` with
+stored at `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\` with
 an uncompressed one-member `input.zip`. The profile requires the recorded ZIP path, length, SHA-256,
 member name/length/SHA-256, and file-set manifest. It is `holdout-only`; `development_only`,
 `training_allowed`, and `tuning_allowed` are false. Preserve the JMA attribution and PDL 1.0 terms
@@ -2618,7 +2620,7 @@ was invoked, and there is no timing, size comparison, aggregate, or cleanup to p
 This closes the exact JMA source/input/candidate/threshold condition. Do not create a replacement
 time window or retry this condition. This is an environmental pre-registration stop, not a codec
 no-go. The machine-readable pre-registration record is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\pre-registration-stop.json`
 (2,910 B, SHA-256 `00848fe5204696ad6eff1db160a6a5fbfbe6958977f8b180878296ac68e79e34`).
 
 #### Tokyo resident-register independent holdout profile integration (2026-10-20)
@@ -2629,7 +2631,7 @@ Tokyo resident-register Table 5 CSV. The source member is 295,022 B, SHA-256
 295,202 B, SHA-256 `7c5fa47e7c58cc2512024c6491af4589837e9395b8171ce84dd3d0193757c511`, with profile
 file-set manifest `60964784dba36f8f7d3f63e71dda413aec4dbf501bf493dd19f9a1f85311159b`. The raw input
 and wrapper are preserved under
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-20261020\${bt} and
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-20261020\${bt} and
 `...\tokyo-population-holdout-campaign-20261020\${bt}. The payload is an independent, small structured
 administrative-data screen, not broad throughput evidence. It is holdout-only; development,
 training, and tuning are prohibited. The official catalog labels it CC BY without a version number;
@@ -2665,7 +2667,7 @@ preflight. The next external CPU start gate must be five consecutive one-second 
 #### Tokyo resident-register holdout immutable preregistration (2026-10-20)
 
 The immutable marker is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\campaign-start.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\campaign-start.json`
 (4,123 B, SHA-256 `903fa128a77e8dbfab2cd914bc391b79d26dd234ae04b6668642ebbc2f8e48d5`), campaign
 `130beb8a0bd84ac4a763b719457e421b`. Its fixed registration window is 2026-10-19
 21:00–21:30 UTC (2026-10-20 06:00–06:30 JST). The lifecycle validator accepted the complete marker,
@@ -2698,7 +2700,7 @@ for this source, input, profile, and window without retry. No lifecycle run was 
 compressor was invoked, and no command or performance measurement exists. The immutable start marker
 remains unchanged (SHA-256
 `903fa128a77e8dbfab2cd914bc391b79d26dd234ae04b6668642ebbc2f8e48d5`); the stop evidence is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\pre-registration-stop.json`
 (SHA-256 `c4fd8a647b9c84ebe718b5833663d0bf76a31c4705dfe75c4b0daf704e7e3ffd`). The prospective
 gate instructions above are historical; they do not authorize a retry or imply benchmark results.
 
@@ -2712,7 +2714,7 @@ modification, and name the category content providers. The local benchmark sampl
 licenses and article bytes; it is not published.
 
 The holdout-only stratified input is
-D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\input.zip:
+<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\input.zip:
 191 files / 629,588 raw B, 661,042 wrapper B, wrapper SHA-256
 e9d770628225650dd1b28a355f908cdf3c54b0ae68bf397776d6757cfc4a3209, file-set manifest SHA-256
 4c23d4dbdd312c4d7c9efa4199ccfff30c36a33671f53421e27a0578b57beec1. It contains 180 articles
@@ -2754,7 +2756,7 @@ holdout for training or tuning, and do not claim general superiority from this s
 
 The next Livedoor screen is fixed as campaign `e54b2fcd559640d583e3e89e631bca50`, with an immutable
 marker at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\campaign-start.json`.
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\campaign-start.json`.
 Its exact UTC window is 2026-10-19 21:40:00–22:10:00 UTC (2026-10-20 06:40:00–07:10:00 JST).
 The marker is written (5,299 bytes, SHA-256
 `5f53c86c7eb3c54cc33c9a08a71dbb5fdd46ff96767d6c9f1b2944476310ee2c`) and passed static lifecycle
@@ -2820,7 +2822,7 @@ operation `c568a0cf2caf489fa56d008a0b400657` (206 entries); lifecycle finalizati
 `BeforeBytes=710,459`, `AfterBytes=0`, `State=complete`. `Test-KhcStorageCompletedReceipts` passed;
 no candidate/7-Zip process or pending lifecycle run remains. The Prunlet backup was purged only
 after the recovery archive and receipts were verified. Evidence retained under
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\ca3ed67c85374757ae61ca5321d5bd04\`:
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\ca3ed67c85374757ae61ca5321d5bd04\`:
 
 | Artifact | Bytes | SHA-256 |
 |---|---:|---|
@@ -2910,14 +2912,14 @@ official category. The metadata-only selector sorts each category by SHA-256 of 
 relative path (ordinal path tie-break), then chooses one per category in ordinal category order for
 13 rounds. Total payload must remain at or below 32 MiB minus 128 KiB; no content-based reselection is
 allowed. The selected metadata manifest is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\selection-manifest.json`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\selection-manifest.json`,
 36,730 bytes, SHA-256 `c575b295d3afff9e057fc078688caf71b5d9edae849d1d9bc637fd2b4db73e09`. It contains only
 paths, category codes, path hashes, and sizes; it fixes 195 members / 5,236,133 payload bytes, with
 13 members in each of BDS, BLD, CLT, EPR, FML, GNM, HST, LTT, PNM, RLW, ROD, SAT, SCL, SNT, and TTL.
 The final packager verified this exact SHA and recomputed path/size set before reading selected member
 data. It created a deterministic `ZIP_STORED` wrapper with 1980-01-01 timestamps, no root prefix,
 comments, or extra fields. The wrapper is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\input.zip`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\input.zip`,
 5,257,215 bytes, SHA-256 `aee6335bc9f43f35e5c29c3944cb8067eefed618578c02c8faac4ff4112c5ecd`. Its 195 stored
 members / 5,236,133 payload bytes were independently matched to the selection and member manifests;
 all member SHA-256 values and ZIP metadata matched. The manifest-derived file-set SHA-256 is
@@ -2925,7 +2927,7 @@ all member SHA-256 values and ZIP metadata matched. The manifest-derived file-se
 `t -tzip -bb0 -bsp0 -bso0` on the wrapper and exited 0 (63 ms); this separate command supplied the
 ZIP CRC validation, while the preparer performs member SHA readback only.
 
-The work-only preparer is `D:\Codex\UnLhaRe\goal-restore-20261019\prepare-nict-holdout.ps1`,
+The work-only preparer is `<作業フォルダー>\UnLhaRe\goal-restore-20261019\prepare-nict-holdout.ps1`,
 SHA-256 `2070319bd1847534213febb30051d8d2a102124b758f692e2c8d764b802e9dc0`. Its metadata-only pass
 created and validated the frozen manifest without outputting article text. The acquisition record
 preserves the source archive, license, handling, and NICT-recommended attribution. The same NICT-theme
@@ -2994,7 +2996,7 @@ a holdout result.
 
 The wired NICT profile is preregistered as campaign `9dd033d334034bbeaa1861acd9b98e0f` with
 immutable marker
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\campaign-start.json`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\campaign-start.json`,
 5,291 bytes, SHA-256 `cbc2724fe152bf070ee46c8c58a5593cbbb81af4796008aff2a829731c622d8b`.
 The fixed window is `2026-10-19T22:50:00Z`–`2026-10-19T23:20:00Z` (2026-10-20 07:50–08:20 JST).
 The marker pins the NICT provenance metadata, all four profile scripts, Rust source manifest, CLI,
@@ -3023,7 +3025,7 @@ The external `_Total` CPU gate began at `2026-10-19T22:51:21.0017338Z`. Samples 
 stopped immediately at sample 4; no fifth reading, run registration, compression, extraction,
 aggregate, retry, or window rebase occurred. A post-stop check confirmed zero pending runs, zero
 relevant processes, and zero new run directories. The source/input/window condition is closed.
-Machine evidence is `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\pre-registration-stop.json`
+Machine evidence is `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\pre-registration-stop.json`
 (1,760 bytes, SHA-256 `efd25d722d716c47a0f90423b04aa96830fbd7681d87649bd446ad66f81fbfb4`).
 This is a resource-gate stop, not a performance result or a format-level no-go.
 
@@ -3036,7 +3038,7 @@ completed 2026-10-19 revision-9 run `e60b9d1bbec149d68208c27485165d9b`; it does 
 new candidate.
 
 The fixed input is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\e60b9d1bbec149d68208c27485165d9b\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\e60b9d1bbec149d68208c27485165d9b\recovery.zip`
 (453,632 B, SHA-256 `e20d93ace231af1192153a4cadc0feb43a6922687d2e32a02dcb3ac608c97f28`; archived
 manifest SHA-256 `b3ff388ab9a6eb73d289f36aeed11ab98a283b608d1c276cf0d959029de45bd5`). The prior run
 record pins its writer source as `src/khc/mod.rs` `c3335017f8905364f66d797f992f10ba54a50707116cb224304acc4470ec41fa`,
@@ -3106,7 +3108,7 @@ Prunlet operation `4e71e1f0d4b14e459450800080e48c18` passed the complete staged 
 flow. The 568,984-byte registered work tree was removed, its temporary Prunlet recovery copy was
 purged after receipt validation, and `complete.json` records `State=complete`, `BeforeBytes=568,984`,
 and `AfterBytes=0`. The work directory is absent; the pinned task recovery ZIP and lifecycle records
-remain under `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\0d9ce97e92ae49aeab852b57d6fd04ab`.
+remain under `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\0d9ce97e92ae49aeab852b57d6fd04ab`.
 
 This adds historical fixture coverage beyond same-writer round trips, but it is still a finite set
 of one archive per revision (revision 9 has two files); it does not prove compatibility with every
@@ -3190,7 +3192,7 @@ is timestamp-sensitive; the data-suffix match confirms byte identity for the enc
 fixed input, not speed, memory efficiency, 7-Zip, holdout, or broad compatibility.
 
 Prunlet direct-CMD cleanup deleted only the registered work tree
-`D:\Codex\UnLhaRe\goal-restore-20261019\run-50463dc66c2e45bfb2db341dd3777d87`. The 89-item preview
+`<作業フォルダー>\UnLhaRe\goal-restore-20261019\run-50463dc66c2e45bfb2db341dd3777d87`. The 89-item preview
 and delete receipts verified exactly 74 files / 5,453,097 B, no warnings, and no reparse points;
 the persisted Prunlet operation was `febe40864ef24397917b0834e93eb8f4`. Its purge preview and result
 verified 5,453,097 B purged with no warnings. The retained task recovery ZIP was independently
@@ -3234,7 +3236,7 @@ following inputs and outputs are fixed:
 | `Cargo.toml` / `Cargo.lock` | 1,414 / 30,555 B, `3b47e50b8e543a5af82617bee4d4bd48ec20fc795a333ba50cbc9e439e0c2fac` / `d8dab69b03805b559440c186ed04c2d0d0ee57eba922306cfa6827bf79985554` |
 | Release x64 MSVC `unlhare-cli.exe` | 2,581,504 B, `e1776bc7ca53109b77fa9f9f4215a2213f0fae28e7added9d6b9c1fdd9c77b7d` |
 | Release x64 MSVC `khc_spatial_mdl_e2e.exe` | 1,671,168 B, `bfec6d9b50e9036efe760df642b03d4063b6f52ba82d94699e61a0f616559fa8` |
-| Fixed input recovery ZIP | `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`, 769,634 B, SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75` |
+| Fixed input recovery ZIP | `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`, 769,634 B, SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75` |
 | Fixed ZIP member | `input/ptt5`, 513,216 B, SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650` |
 | Runner limits | 8 MiB / 96 entries / 300 seconds outer; 240 seconds per child |
 
@@ -3274,7 +3276,7 @@ read both values from the retained recovery ZIP. As before, the timestamp-sensit
 and fixed-input suffix equality do not establish speed, memory efficiency, 7-Zip superiority, or
 holdout performance.
 
-The registered work tree was `D:\Codex\UnLhaRe\goal-restore-20261019\run-87773170ca784bbba2066ff208269dac`.
+The registered work tree was `<作業フォルダー>\UnLhaRe\goal-restore-20261019\run-87773170ca784bbba2066ff208269dac`.
 Its recovery ZIP and manifest were independently checked against all 74 files before cleanup. The
 first direct-CMD delete operation `12491472ca174f358abde0fbab1a6dc8` was used to restore the exact
 verified tree after its first stdout was not captured; no build or E2E was repeated. A second
@@ -3286,7 +3288,7 @@ remains the restoration source. The registered run finalized with `State=complet
 `BeforeBytes=5,453,097`, `AfterBytes=0`; `Test-KhcStorageCompletedReceipts` passed with four primary
 receipts. The work tree and related processes are absent.
 
-| Retained artifact (under `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f7fc285670c848a49a16ee426aba380a`) | Bytes | SHA-256 |
+| Retained artifact (under `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f7fc285670c848a49a16ee426aba380a`) | Bytes | SHA-256 |
 | --- | ---: | --- |
 | `spatial-mdl-e2e.json` in recovery ZIP | 7,162 | `e259367714a3e87b4645316e13382f9d7b6d2db364dae18129d380e8ec7ad270` |
 | `cli-revision-10.khc` in recovery ZIP | 40,051 | `f10aef46aff210ce5918da841fa4414e6b60cd66ac603ebd74164911621f55ba` |
@@ -3310,7 +3312,7 @@ this screen cannot count as an independent holdout or establish general 7-Zip su
 comparison is limited to the fixed 11-file Canterbury set and the source/runtime pins below.
 
 The immutable campaign will use ID `1473558eb3cd40b584259586378602db`, marker
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\campaign-start.json`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\campaign-start.json`,
 4,475 B with SHA-256 `9c47f2eff1217a68e8d036f026d5b1679601f1f1c5f909695fbb1e563bbc45d5`,
 and the fixed UTC window `2026-10-20T01:30:00.0000000Z` through `2026-10-20T02:00:00.0000000Z`.
 The marker must pin these exact values and the final worker, runner, lifecycle and aggregator hashes;
@@ -3319,7 +3321,7 @@ budget, pending-run/process checks and the external CPU gate have passed.
 
 | Pin | Fixed value |
 | --- | --- |
-| Recovery ZIP | `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`, 8,765,120 B, SHA-256 `b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb` |
+| Recovery ZIP | `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`, 8,765,120 B, SHA-256 `b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb` |
 | Selected input | Prefix `pipeline-e2e/canterbury/`; 11 files / 2,810,784 B; file-set manifest SHA-256 `bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438` |
 | Rust source (`src/**/*.rs`, 37 files) | SHA-256 `2c0335cea83661ff72c81875c01d67bd4737fa2273117e8a5ac7dc9dbb9f3a21` |
 | KHC source (`src/khc/**/*.rs`, 27 files) | SHA-256 `16e8cd800b8696b92d2dc8e928cde73262779845157717d90a94075a650a1088` |
@@ -3375,7 +3377,7 @@ pre-registration stop, not a codec no-go or performance result. The fixed condit
 do not use the remainder of the window or retry it unchanged.
 
 Retained stop record:
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\pre-registration-stop.json`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\pre-registration-stop.json`,
 2,120 B, SHA-256 `49f321cc8123c74987dde4cf634d00ae6dd467f13f7554e92314021d63a3df49`.
 
 ### NICT KCS1 count-length holdout preregistration (2026-10-20)
@@ -3389,7 +3391,7 @@ provenance remains in the retained input metadata. This is holdout-only: develop
 tuning are all false. Its single source family cannot establish broad superiority by itself.
 
 The immutable campaign marker is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\campaign-start.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\campaign-start.json`
 (5,012 B, SHA-256 `136ee134727ced18f6c24314349180b1f87c3d3af9579b4e1b05d130550b151e`, campaign
 `5f4eae64b259422bb79f00055c789ace`). Its fixed window is `2026-10-20T02:30:00Z`–
 `2026-10-20T03:00:00Z`. The profile/source condition is
@@ -3448,7 +3450,7 @@ reached. This is an environmental pre-registration stop, not a codec no-go or pe
 fixed condition is closed; do not retry it unchanged or reuse the remainder of its window.
 
 Retained stop record:
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\pre-registration-stop.json`
 (2,864 B, SHA-256 `9f0caad00ee6d2ef707726742af31202add2fd2f182ae8bd359194023df071a7`).
 
 
@@ -3461,7 +3463,7 @@ superiority or final-GOAL claim. UciTabularDevelopment20261020 remains hard-disa
 metadata-only. NICT and Canterbury conditions are not reopened.
 
 Source/rights authority:
-D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\acquisition-lock.md,
+<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\acquisition-lock.md,
 SHA-256 4d1b0d8cbcec51cd9feb7107566865cc37bce39dee605f67dfdc847d78cb7393.
 UCI Dry Bean ID 602, dataset DOI 10.24432/C50S4B, M. Koklu and Ilker Ali Özkan (2020),
 is CC BY 4.0 with appropriate credit. Preserve that attribution and article DOI
@@ -3494,7 +3496,7 @@ dispatch. Immutable marker `campaign/campaign-start.json` is 4,847 B,
 SHA-256 `aeb22cb2ec810b9ca1ba8a09bec68c1ba75cbbede4ee2befdc848e2cd37cc284`,
 campaign ID `b4b82fe9e40c4c4ab0d659752a04cbb3`; its only fixed execution window is
 2026-10-20 03:30:00–04:00:00 UTC. Output directory:
-D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\campaign.
+<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\campaign.
 No registration, worker, or codec command has started; any failed admission gate closes
 this exact Dry Bean condition without retry or window change.
 
@@ -3539,7 +3541,7 @@ The exact condition is closed; do not retry, rebase the window or register a rep
 No lifecycle run registration or run directory, worker/aggregator invocation, codec or
 7-Zip command, build, timed command, member extraction/inspection or performance result
 exists. The retained stop record is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\pre-registration-stop.json`
 (1,753 B, SHA-256 `d7c878eaed02d39510642549cfd8a8177bb9d79506b6038045832f7227f34342`).
 The four PowerShell Parser checks, literal-profile schema and canonical manifest checks
 remain successful static evidence only; restoration, comparative performance and general
@@ -3557,7 +3559,7 @@ One correctness run is admitted through `run-storage-experiment.ps1` with the ex
 `spatial-mdl-e2e.ps1`, 8 MiB / 96 entries / 300 seconds outer and 240 seconds per child.
 The fixed ptt5 recovery ZIP is unchanged: 769,634 B, SHA-256
 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`, at
-`D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`.
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`.
 Its `input/ptt5` member remains 513,216 B, SHA-256
 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`.
 
@@ -3574,7 +3576,7 @@ Its `input/ptt5` member remains 513,216 B, SHA-256
 
 Acceptance requires all existing E2E checks and exact restored hashes. In addition, compare
 all 24 `.khc` members against the previous count-only KCS1 run's verified recovery ZIP
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f7fc285670c848a49a16ee426aba380a\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f7fc285670c848a49a16ee426aba380a\recovery.zip`
 (746,809 B, SHA-256 `faa27ce5f09f36631bc8e64286943a7fdcffcc8680307906b293cd05ee453ca7`).
 For each archive, the exact data suffix starts at 32 plus its little-endian u32 manifest
 length at offset 20. Sort member names ordinally and hash UTF-8 records of name, suffix
@@ -3605,7 +3607,7 @@ The CLI archive is 40,051 B (full SHA-256
 its timestamps differ from the prior run while the complete data suffix is identical.
 
 Retained evidence is at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\138e9e5ec2e04c6085a6e3ffefff700e`:
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\138e9e5ec2e04c6085a6e3ffefff700e`:
 `recovery.zip`, 746,804 B, SHA-256
 `448f2c9fff97489fda72731c5eb7be7ea8db321b05fc8366f8acc5287881f696`;
 `recovery.json`, SHA-256 `46cfdd09f45f4fe78af24d299057e5006a580fe4660b4e58656d5e541252f965`;
@@ -3669,7 +3671,7 @@ where actual KRS2 frame materialization traverses the single-seal implementation
 It is not a reopening of a closed Portfolio campaign merely because a source hash changed.
 All five `record-fast-trial` samples must contain exactly one actual KRS2 frame; fallback
 fails this condition. The sole immutable marker is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\krs2-single-seal-frontier-20261020\campaign-start.json`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\krs2-single-seal-frontier-20261020\campaign-start.json`,
 2,390 B, SHA-256 `9a3109f0b11f5f35b627982f494bd09888d3f070e47c17ee8329ea15d76aab77`,
 campaign `a424e51c266b492193c354ca6a40379b`, fixed UTC window
 `2026-10-20T04:45:00Z`–`2026-10-20T05:00:00Z`. It is single-use, development-only,

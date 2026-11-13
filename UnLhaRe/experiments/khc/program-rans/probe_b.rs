@@ -224,7 +224,7 @@ fn encoded(raw: &[u8], candidate: bool) -> Result<(Vec<u8>, Snapshot), String> {
 fn roundtrip(raw: &[u8], before: &[u8], after: &[u8]) -> Result<(), String> {
     if old::decode(before)?.0 != raw
         || new::decode(after)?.0 != raw
-        || unlhare::khc::decompress_block(before).map_err(|e| e.to_string())? != raw
+        || unlhare::lhc::decompress_block(before).map_err(|e| e.to_string())? != raw
     {
         return Err("self/public byte mismatch".into());
     }
@@ -236,7 +236,7 @@ fn roundtrip(raw: &[u8], before: &[u8], after: &[u8]) -> Result<(), String> {
     }
     if old::decode(after).is_ok()
         || new::decode(before).is_ok()
-        || unlhare::khc::decompress_block(after).is_ok()
+        || unlhare::lhc::decompress_block(after).is_ok()
     {
         return Err("cross-format accepted".into());
     }
@@ -442,9 +442,9 @@ fn execute() -> Result<(), String> {
     let (before, old_stats) = encoded(&raw, false)?;
     let (after, new_stats) = encoded(&raw, true)?;
     if before
-        != unlhare::khc::compress_block_with_strategy(
+        != unlhare::lhc::compress_block_with_strategy(
             &raw,
-            unlhare::khc::BlockStrategy::BinaryAdaptive,
+            unlhare::lhc::BlockStrategy::BinaryAdaptive,
         )
         .map_err(|e| e.to_string())?
     {

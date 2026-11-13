@@ -196,7 +196,7 @@ function Assert-ArchiveLimit([string]$Path, [string]$Label) {
 }
 
 $work = Get-PlainPath $WorkDirectory
-$expectedRecoveryPath = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+$expectedRecoveryPath = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip')
 $expectedFiles = @(
     [pscustomobject]@{ Name = 'alice29.txt'; Bytes = 152089L; Sha256 = '7467306ee0feed4971260f3c87421154a05be571d944e9cb021a5713700c38f0' },
     [pscustomobject]@{ Name = 'asyoulik.txt'; Bytes = 125179L; Sha256 = 'eaa3526fe53859f34ecdf255712f9ecf0b2c903451d4755b2edaa2e2599cb0fc' },

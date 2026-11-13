@@ -339,7 +339,7 @@ foreach($pair in @(@{ScriptPath='D:\arbitrary.ps1';ScriptParameters=@{}},@{MaxRu
 }
 $candidateKind=Get-KhcMacCandidateE2eKind
 # 固定worker/protocolと実run-GUID形だけを許すtyped invocation。ファイルには保存しない。
-$candidateInv=[pscustomobject]@{script=$candidateKind.Worker;parameters=@{WorkDirectory=('D:\Codex\UnLhaRe\goal-restore-20261019\run-'+('a'*32));ProtocolPath=$candidateKind.ProtocolPath;ProtocolSha256=('c'*64)}}
+$candidateInv=[pscustomobject]@{script=$candidateKind.Worker;parameters=@{WorkDirectory=((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\run-')+('a'*32));ProtocolPath=$candidateKind.ProtocolPath;ProtocolSha256=('c'*64)}}
 $converter=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'ConvertFrom-KhcMacNativeInvocationSnapshot'},$false).Extent.Text
 . ([scriptblock]::Create($converter))
 $invRaw=[Text.Encoding]::UTF8.GetBytes([Management.Automation.PSSerializer]::Serialize($candidateInv));$invSha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($invRaw)).ToLowerInvariant()
@@ -668,7 +668,7 @@ if($HistoricalLedger){
 if($CandidateE2eVerifier){
     Import-Module (Join-Path $PSScriptRoot 'storage-lifecycle.psm1') -Force -DisableNameChecking
     $e2eModule=Get-Module storage-lifecycle
-    $actual=& $e2eModule {Read-KhcMacCandidateE2eProtocol 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json' '95b2fd0228cca0f440d4a45998d6d2ad709b0e6cf20a5e42db6a439eccf67d5c'}
+    $actual=& $e2eModule {Read-KhcMacCandidateE2eProtocol (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json') '95b2fd0228cca0f440d4a45998d6d2ad709b0e6cf20a5e42db6a439eccf67d5c'}
     Accept 'registered candidate E2E real protocol bounded stdin produces one summary' {$out=@(& $e2eModule {param($p) Invoke-KhcMacCandidateE2eVerifier $p.Bytes '95b2fd0228cca0f440d4a45998d6d2ad709b0e6cf20a5e42db6a439eccf67d5c'} $actual);if($out.Count -ne 1 -or -not $out[0].verified){throw 'Candidate E2E protocol output shape'}}
     $code=@'
 import ast,base64,importlib.util,json,sys
@@ -716,7 +716,7 @@ if($CandidateVerifier){
     Import-Module (Join-Path $PSScriptRoot 'storage-lifecycle.psm1') -Force -DisableNameChecking
     $candidateModule=Get-Module storage-lifecycle
     $start=& $candidateModule {
-        $bytes=Read-KhcBoundedSnapshotBytes 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-build-protocol.json' 32768
+        $bytes=Read-KhcBoundedSnapshotBytes (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-build-protocol.json') 32768
         return @{protocol_sha256='8c6f4576d868e43158ade779ee176719bc6a7281d4420a4bfe3d371d25ab0082';protocol_base64=[Convert]::ToBase64String($bytes)}
     }
     Accept 'frozen candidate real protocol pure subprocess' {$null=& $candidateModule {param($s) Invoke-KhcMacCdfCandidateVerifier $s} $start}
@@ -804,7 +804,7 @@ if($LeafFilesystemProbe){
         foreach($handle in $lease){$handle.Dispose()}
     }
     if($null -eq ('Khc.Storage.VerifierDirectoryHandle' -as [type]).GetMethod('OpenLeaf')){throw 'Missing native no-follow leaf contract: OpenLeaf'}
-    $probe='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-verifier-leaf-probe-20261027'
+    $probe=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-verifier-leaf-probe-20261027')
     $probeParent=Split-Path $probe -Parent
     foreach($path in @($probeParent,$probe)){if((Test-Path -LiteralPath $path) -and ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Unsafe leaf probe parent'}}
     if(Test-Path -LiteralPath $probe){throw 'Leaf probe already exists; clean the previous dedicated probe before another creation.'}
@@ -829,7 +829,7 @@ if($RetryVerifier){
     Import-Module (Join-Path $PSScriptRoot 'storage-lifecycle.psm1') -Force -DisableNameChecking
     $retryModule=Get-Module storage-lifecycle
     $result=& $retryModule {
-        $path='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-decode-phase-retry-amendment.json'
+        $path=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-decode-phase-retry-amendment.json')
         $bytes=Read-KhcBoundedSnapshotBytes $path 32768
         $registration=@{amendment_sha256='f2a4979ed0f796b98876a324734998329eb40255b8593350ee439165873ae46e';amendment_base64=[Convert]::ToBase64String($bytes)}
         $summary=Invoke-KhcMacDecodeRetryVerifier $registration

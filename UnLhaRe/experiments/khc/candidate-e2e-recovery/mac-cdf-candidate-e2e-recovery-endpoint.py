@@ -42,8 +42,8 @@ RECOVERY_CONTRACT=dict(old_windows_run_id='8fd4b003ba9e406da5a21b9be5a37c56',
     old_endpoint_sha256='da6231a6f6fb61b04fd2c7833661a6a4467d3ee14db5d9fcf6e19ae2731b79ba',
     old_protocol_sha256='95b2fd0228cca0f440d4a45998d6d2ad709b0e6cf20a5e42db6a439eccf67d5c',
     old_worker_sha256='8868e4224d63376bbab2dda50e6f2fae3f6caf3fa8c22dec1bb7021234baa778',
-    reader_sha256='e8cd9f7b1147bed9bb69210a913404f380b6875df6d911becd8e2cf7fa9bc105',
-    transition_sha256='4df921ff66fbc3444af5334a92bb8b0aad5de3822e413346527cda798663df16',
+    reader_sha256='7165968774be9393bd7a77bc2bacd119b57d638ce0d6f83edd1a2f7b3c4f0d35',
+    transition_sha256='ce9acfc3eca4550ac628afcd55153f5b2407deaab02e62fb401b05097deccc5c',
     fence_controller_sha256='d0e055cab949bd9d22c1a329698a9a27f5f58bc994fff33b67182c6b65974c46',
     amendment_protocol='khc-candidate-e2e-recovery-amendment-v1',native_execution_enabled=False)
 
@@ -167,7 +167,7 @@ def validate_api_report(report,oracle):
 
 def load_oracle():
     path=(ROOT/'downloads/mac-native-e2e-oracle.json' if HERE==ROOT/'tools'
-          else (Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-e2e-oracle.json')
+          else (Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-e2e-oracle.json')
                 if HERE.name=='candidate-e2e-recovery' else HERE/'mac-native-e2e-oracle.json'))
     require(not path.is_symlink() and path.is_file() and path.stat().st_nlink==1 and
         path.stat().st_size<=MAX_JSON,'oracle type/bound')

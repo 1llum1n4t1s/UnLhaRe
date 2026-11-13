@@ -16,8 +16,8 @@ $ErrorActionPreference='Stop'
 if ($CorpusProfile -ieq 'UciTabularDevelopment20261020') { throw 'UCI development-only metadata is excluded from this screen/aggregate, blind holdout completeness and superiority thresholds; no runnable wrapper is admitted.' }
 
 $taskId='goal-restore-20261019'
-$workRoot='D:\Codex\UnLhaRe\goal-restore-20261019'
-$artifactRoot='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019'
+$workRoot=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019')
+$artifactRoot=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019')
 $runRoot=Join-Path $artifactRoot 'storage-lifecycle\runs'
 $campaignDirectory=Join-Path $artifactRoot 'egov-screen-20261020'
 $campaignManifestPath=Join-Path $campaignDirectory 'campaign-start.json'
@@ -30,11 +30,11 @@ $expectedWorkerSha='8789bad160e3dbdb1931267b80e4cd4da679cdc22d00f9b7e20f4417669e
 $expectedRunnerSha='aa981ad2dd416c10f14d6b2cc0b7e0d8b001de4e2ccfed7dc981ecd3b74e619b'
 $expectedLifecycleSha='e3953d42595b66aba8a40da393e13bfd32e269b75c7d443e207dbfc9a202ba0c'
 $expectedDiskBudgetSha='506e4c68dc05734bc1a0c02bac6f81d4677e0bcffd9b9fa2b7bd67d53319bdcd'
-$expectedCliPath='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+$expectedCliPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe')
 $expectedCliSha='3dd0e0503ed6ec11c90ad1ff9ee69b2e34c564f8710871ab182dd684f27b7b4b'
 $expectedSevenPath='C:\Program Files\7-Zip\7z.exe'
 $expectedSevenSha='95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'
-$expectedInputPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip'
+$expectedInputPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\egov-screen-20261020\input.zip')
 $expectedInputSha='861ce8956f8347b34223466d5fff93360d1901b6aa42cca1238965d590e73099'
 $expectedInputManifestSha='332cb1043efa84127312da055bb8c03104b991cb8e0820195cb2aafa4bfefee3'
 $expectedSourceManifestSha='0f549ab7f8c675b8ef241279d8ab29f90e9c7b7e32a5bc08c7effd0dc861c404'

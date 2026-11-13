@@ -287,7 +287,7 @@ category-level final holdoutにはraw-integerの独立familyを3件以上そろ�
 
 上記の「小惑星Ryugu観測画像」およびgateの`ONC/Ryugu`という説明は撤回する。2026-10-20に[公式PDS4 product label](https://data.darts.isas.jaxa.jp/pub/pds4/data/hyb2/hyb2_onc/data_raw/transfer/20151222/hyb2_onc_20151222_144007_tvf_l2a.xml)をmetadata-onlyで再取得した結果、`Target_Identification`には`Hayabusa2`／`Mission`と`Space`／`Calibration Field`があり、Ryuguを観測対象として示していなかった。取得・圧縮の前提ではこの正確なTarget_Identificationを固定し、解釈を追加しない。
 
-読み取り専用のprior-use/near-family監査はKHC metadata 1,858 file、`D:\Codex\TaskArtifacts\UnLhaRe` metadata 1,064 file、goal用TaskArtifacts metadata 22 file、計2,944 fileを検索し、監査時点で一致したのはこの選定台帳の6箇所のみだった。STORAGE、profile/runner、lifecycle/recovery、保持source manifestに一致せず、製品label XMLや取得manifestの保持物も見つからなかった。FIT/ZIP payload・member bytesは開いていない。archive内部、別名・変換・抜粋、除外directory、記録外利用、所在未確認の旧記録は漏れ得るため、hitなしは未使用性の証明ではない。
+読み取り専用のprior-use/near-family監査はKHC metadata 1,858 file、`<作業フォルダー>\TaskArtifacts\UnLhaRe` metadata 1,064 file、goal用TaskArtifacts metadata 22 file、計2,944 fileを検索し、監査時点で一致したのはこの選定台帳の6箇所のみだった。STORAGE、profile/runner、lifecycle/recovery、保持source manifestに一致せず、製品label XMLや取得manifestの保持物も見つからなかった。FIT/ZIP payload・member bytesは開いていない。archive内部、別名・変換・抜粋、除外directory、記録外利用、所在未確認の旧記録は漏れ得るため、hitなしは未使用性の証明ではない。
 
 同台帳のAkatsuki UVI候補とは異なるmission/instrumentだが、creatorのYamada Manabu／Kouyama ToruとDARTS／PDS4／FITS distributionを共有するため、ONCとUVIを独立familyとして数えない。Plumivox `scope=all` query `Hayabusa2 ONC 20151222 144007 product label Ryugu raw image`（2026-09-20〜2026-10-20 JST、終了排他）は0件・`completeSearch=false`で非網羅的。ONCのprior-use・近縁family・source-family独立性gateは未完了で、eligible family数は0のままとする。
 
@@ -636,13 +636,13 @@ run `0fb3acace494461085f887efdfe80017`はPrunlet direct-CMD preview/delete/previ
 
 元登録に記したrunner/lifecycle SHAは履歴値として変更しない。現行ファイルはrunner `05a2a825d95ce6791e66a46811b4fa018dd3d902a354e7531bc79cf94bd1f1c5`、lifecycle module `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3`で、原登録値と一致しない。これは現在のD-only task workspace / TEMP / Cargo / TaskArtifacts契約を反映する実行基盤差分であり、結果では元登録の完全なrunner/module hash再現と主張しない。計測対象のscreen script SHAは一致する。
 
-実行候補CLIは`D:\Codex\UnLhaRe\goal-restore-20261019\cargo\release\unlhare-cli.exe`、SHA-256 `81bb1f3d0e0aa592317be13e0cc6c4224f19579e51a1382077ace884bb87c732`、`--version`は`unlhare 1.0.4` / exit 0。`run-serial-cargo.ps1`（SHA-256 `053532f8fa0266b23a6dcc02e60bfb54e94d5d58d874a71692df51dec16a158f`）経由のoffline/locked Release buildはCargoが`Finished`したが、ラッパーは終了後Job内に一時的な`VCTIP.EXE`が残ったとしてexit 1を返した。停止後の照会ではCargo/rustc/link/VCTIPは残存せず、CLIを個別に実行してversionを確認した。これはラッパー成功とは数えず、実測reportにもこの状態を併記する。
+実行候補CLIは`<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\release\unlhare-cli.exe`、SHA-256 `81bb1f3d0e0aa592317be13e0cc6c4224f19579e51a1382077ace884bb87c732`、`--version`は`unlhare 1.0.4` / exit 0。`run-serial-cargo.ps1`（SHA-256 `053532f8fa0266b23a6dcc02e60bfb54e94d5d58d874a71692df51dec16a158f`）経由のoffline/locked Release buildはCargoが`Finished`したが、ラッパーは終了後Job内に一時的な`VCTIP.EXE`が残ったとしてexit 1を返した。停止後の照会ではCargo/rustc/link/VCTIPは残存せず、CLIを個別に実行してversionを確認した。これはラッパー成功とは数えず、実測reportにもこの状態を併記する。
 
 ## KCS1 ptt5製品screenの再実行結果 — 2026-10-19
 
 外部5×1秒`_Total` CPUは`[0,0,4,0,0]%`で15%以下だったが、screen内部gateはround 0のSpatialBits create前`3%`・verify/decode前`13%`に続き、RecordFast create前に`16%`を検出してfail-closedした。run `f92888cacc3d4d8b92032b614b1d7885`、report SHA-256 `cb15333a8fccb934164a95febd30bb9439d4c4d0f4e396ad1a42839423d0b44d`、status `failed`、`determinism_verified=false`。KCS1のround 0 warmup書庫1個（39,961 B、SHA-256 `4552eea92906347db1e2f0645dfdb87277902465289f9c700d68a38ec26de113`、KCS1 frame 39,889 B）は作成され、`khc-test`で入力513,216 Bを完全検証した。RecordFast/7-Zipの書庫作成とmeasured roundは実行されず、集計・比較性能値はない。このwarmupサイズを7-Zip優位性・採用判定へ転用しない。同条件の再試行は行わない。
 
-部分成果のrecovery ZIPは`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f92888cacc3d4d8b92032b614b1d7885\recovery.zip`（SHA-256 `b343305e490751b5442e2a75dd2653c350a993033f0bd35ea2f02db4273487e5`）、manifest SHA-256 `0e50d6cbd6847aff9116221f5eba843907f4ea42969bc4e93cea80dd599daa4a`。Prunlet direct-CMDのdelete/preview/purge/finalizeでoperationId `03b53eec078243b2865eb0d97dd67682`を完了し、work 571,710 B→0、Temp残り0、pending run 0を確認した。
+部分成果のrecovery ZIPは`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\f92888cacc3d4d8b92032b614b1d7885\recovery.zip`（SHA-256 `b343305e490751b5442e2a75dd2653c350a993033f0bd35ea2f02db4273487e5`）、manifest SHA-256 `0e50d6cbd6847aff9116221f5eba843907f4ea42969bc4e93cea80dd599daa4a`。Prunlet direct-CMDのdelete/preview/purge/finalizeでoperationId `03b53eec078243b2865eb0d97dd67682`を完了し、work 571,710 B→0、Temp残り0、pending run 0を確認した。
 
 ## Decoder active-rank rotationの製品E2E — 2026-10-16
 
@@ -717,13 +717,13 @@ Prunlet direct-CMD preview/delete/preview/purgeとfinalizeを検証し、Temp wo
 
 公式カードの著者・初出metadata（[No.424](https://www.aozora.gr.jp/cards/000074/card424.html): 梶井基次郎、1932-03-24没、初出1925年。[No.752](https://www.aozora.gr.jp/cards/000148/card752.html): 夏目漱石、1916-12-09没、初出1906年）と[文化庁Q&A問4](https://www.bunka.go.jp/seisaku/chosakuken/hokaisei/kantaiheiyo_chosakuken/1411890.html)の「2018-12-30前日に既に保護期間が切れた著作物は延長で復活しない」という説明を照らした結果、基礎作品は通常の著作者死後期間の単純計算では改正施行前に満了していたとみられる。[青空文庫の規準](https://www.aozora.gr.jp/guide/kijyunn.html)は著作権切れ作品に対応する個別ファイルの複製・再配布・形式変換を認める。これは低い権利懸念を支持する一次資料上の確認であり、個別底本の編集要素、第三者notice、本文中の別権利までは法的に確定しない。
 
-2026-10-20の読み取り専用照合は、現行UnLhaReリポジトリ、`D:\Codex\TaskArtifacts\UnLhaRe`、`D:\Codex\UnLhaRe\goal-restore-20261019`を対象に実施した。通常の文書・JSON・manifest・receipt等3,358ファイルでは候補名・全SHA・サイズの一致は既存の`manifest.json`と本選定記録だけで、記録本文検索の一致もこの2ファイルに限られた。外側ZIP 175個、メモリ上で再帰確認したZIP 1個の計3,071 entryを確認し、記録本文を含む354 entryも候補名・SHA・サイズで検索した。ZIP内一致は保全済みNo.424/752の元ZIPと各`.txt` member、およびそれらを記載するmanifest／本選定記録だけで、run JSON・receipt・計測reportに実験使用を示す一致はなかった。したがって、この照合範囲ではNo.424/752の圧縮・測定・training/tuning利用記録は見つからず、未使用の証明とは扱わない。
+2026-10-20の読み取り専用照合は、現行UnLhaReリポジトリ、`<作業フォルダー>\TaskArtifacts\UnLhaRe`、`<作業フォルダー>\UnLhaRe\goal-restore-20261019`を対象に実施した。通常の文書・JSON・manifest・receipt等3,358ファイルでは候補名・全SHA・サイズの一致は既存の`manifest.json`と本選定記録だけで、記録本文検索の一致もこの2ファイルに限られた。外側ZIP 175個、メモリ上で再帰確認したZIP 1個の計3,071 entryを確認し、記録本文を含む354 entryも候補名・SHA・サイズで検索した。ZIP内一致は保全済みNo.424/752の元ZIPと各`.txt` member、およびそれらを記載するmanifest／本選定記録だけで、run JSON・receipt・計測reportに実験使用を示す一致はなかった。したがって、この照合範囲ではNo.424/752の圧縮・測定・training/tuning利用記録は見つからず、未使用の証明とは扱わない。
 
 この結果によりNo.424/752を日本語textのdevelopment/tuning用候補として維持するが、本記録時点ではmanifest登録や本文の実験使用は開始していない。No.301の元ZIPは照合対象外、未取得のNo.2078/42206は対象外。20 recovery ZIP内のネストした7z 44個・zstd 2個、改名・抜粋・変換済み本文、記録されていない使用、作品familyの独立性は未確認である。候補本文・元ZIPに対する作成・変更・展開・圧縮・測定は行っていない。
 
 次段階のデータ分離方針として、取得済みNo.424/752は日本語textのdevelopment/training/tuning用に限定し、holdoutには転用しない。未取得の[No.2078『舞姫』](https://www.aozora.gr.jp/cards/000129/card2078.html)と[No.42206『初孫』](https://www.aozora.gr.jp/cards/000038/card42206.html)は、実装・調整の終了まで本文を取得・閲覧・処理せず、将来のholdout候補として分離する。両作品は同じ青空文庫配布・電子化familyのため、異なる作品でも独立したsource familyとは数えない。
 
-development入力packageを `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\` に固定した。`input.zip` は222,247 B、SHA-256 `9772d6af224028a70c2d50af8f64faebf03de9a487a08fee566de4c1128cb0b6`。package manifestは`e7ba78c324e97d677f1e1c9aa0371234666a643227fccfbab4c2d70db1204307`、展開後file-set digestは`4d9ded91fe0a2e7657cce870f7fd39a4c83c8b7fe5e26f7230ebd8e53c1d2ea6`、元候補manifestは`caa078a5053669dfd0fb90ebe9d3941b69a76a36600dec2579495f0de58c516d`。packageには`input/bocchan.txt`と`input/lemon.txt`のみを格納し、元の2 memberのbyte数・SHA-256との一致を確認した。現状は`development-only-input-frozen-campaign-preregistered`、`benchmarked=false`である。campaign-start markerは固定済みだが、start gate・run registration・圧縮・測定はまだ行っていない。
+development入力packageを `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\` に固定した。`input.zip` は222,247 B、SHA-256 `9772d6af224028a70c2d50af8f64faebf03de9a487a08fee566de4c1128cb0b6`。package manifestは`e7ba78c324e97d677f1e1c9aa0371234666a643227fccfbab4c2d70db1204307`、展開後file-set digestは`4d9ded91fe0a2e7657cce870f7fd39a4c83c8b7fe5e26f7230ebd8e53c1d2ea6`、元候補manifestは`caa078a5053669dfd0fb90ebe9d3941b69a76a36600dec2579495f0de58c516d`。packageには`input/bocchan.txt`と`input/lemon.txt`のみを格納し、元の2 memberのbyte数・SHA-256との一致を確認した。現状は`development-only-input-frozen-campaign-preregistered`、`benchmarked=false`である。campaign-start markerは固定済みだが、start gate・run registration・圧縮・測定はまだ行っていない。
 
 No.2078/42206の本文取得前の追加読み取り専用prior-use監査も2026-10-20に実施した。3対象rootでhidden/ignoredを含む通常ファイル11,455件の名前・サイズ、ソース・文書・JSON/receipt等4,059件の記録、外側ZIP176個とネストZIP1個の3,072 member名・サイズを確認した。指定ZIP名・card ID・作品名・作者名・想定member名・既知hashに合う使用記録はなく、記録参照の一致は本書のmetadata・選定に関する3行のみだった。No.42206 ZIPと同じ3,575 Bのreceipt JSONが1件あったが、これはサイズのみの一致で本文・ZIPではない。取得・変換・圧縮・測定・training/tuning利用を示す記録は検出しなかったが、未取得本文hashがないため未使用を証明しない。ネストした7z 44個・zstd 2個、任意本文TXT、改名・抜粋・変換済み本文、記録外利用は対象外である。同監査ではNo.2078/42206本文の閲覧・download・展開、build、benchmark、削除は行っていない。
 
@@ -777,7 +777,7 @@ No.2078/42206の本文取得前の追加読み取り専用prior-use監査も2026
 
 KRS2は4つの全体histogramから静的CDFを作る。既知ptt5の製品比較ではKRS2/RFT書庫46,274 B、7-Zip 26.04 LZMA2書庫42,199 Bであり、速度はKHC側が速い一方、書庫は4,075 B大きい。この候補はlocal frequency driftに対する実験であり、改善は未実証。KRS2を一切変更せず、明示的な `KRS3BLK\0` / frame version 3の試験形式を別経路で追加する。
 
-KRS3 block-onlyの次段screenは開発専用の既知Canterbury `ptt5` に限定し、未見holdoutへ一般化したとは扱わない。入力は保全ZIP `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）の`input/ptt5` memberだけを登録work内へstreamし、513,216 B / SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`を再確認する。Release `khc_record_fast_bench`でKRS2 `RecordFastTrial`とKRS3 `RecordAdaptiveTrial`を同一block API・同一rawで比較する。各processは3 warm-up後に3回のencodeとdecodeを計測し、3組のpaired batch（実行順KRS2→KRS3、KRS3→KRS2、KRS2→KRS3）から各9 sampleのmedianを出す。全batchでframe長とSHA-256が一致し、全encodeのdeterminism、decode byte/SHA復元を満たすこと。KRS2側は46,202 B / CRC32 `2710226762`であることを固定開発基準とし、KRS3がfallback・不正なidentity・run上限超過・process peak working set 64 MiB超過ならpromotion no-goとして記録する。7-Zip比較可能な採用前の強いsize gateはKRS3 block frame **42,127 B未満**とする（既知KRS2書庫の72 B outer overheadを据え置いた場合だけの上限推定）。このgate未達なら製品archiveへ進めない。gate達成でもそれはblock-only見込みにすぎず、revision 8以降の完全製品書庫・完全復元・実測時間/メモリを7-Zip 26.04と直接比較するまでは候補採用・優位性を主張しない。各screenの直前に5×1秒CPU sampleが全件15%以下であること、5 MiB / 64-entry / 300秒runの固定容量予約とhashが一致することを要求し、失敗ならそのrunを保存・清掃して同条件の再試行をしない。
+KRS3 block-onlyの次段screenは開発専用の既知Canterbury `ptt5` に限定し、未見holdoutへ一般化したとは扱わない。入力は保全ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）の`input/ptt5` memberだけを登録work内へstreamし、513,216 B / SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`を再確認する。Release `khc_record_fast_bench`でKRS2 `RecordFastTrial`とKRS3 `RecordAdaptiveTrial`を同一block API・同一rawで比較する。各processは3 warm-up後に3回のencodeとdecodeを計測し、3組のpaired batch（実行順KRS2→KRS3、KRS3→KRS2、KRS2→KRS3）から各9 sampleのmedianを出す。全batchでframe長とSHA-256が一致し、全encodeのdeterminism、decode byte/SHA復元を満たすこと。KRS2側は46,202 B / CRC32 `2710226762`であることを固定開発基準とし、KRS3がfallback・不正なidentity・run上限超過・process peak working set 64 MiB超過ならpromotion no-goとして記録する。7-Zip比較可能な採用前の強いsize gateはKRS3 block frame **42,127 B未満**とする（既知KRS2書庫の72 B outer overheadを据え置いた場合だけの上限推定）。このgate未達なら製品archiveへ進めない。gate達成でもそれはblock-only見込みにすぎず、revision 8以降の完全製品書庫・完全復元・実測時間/メモリを7-Zip 26.04と直接比較するまでは候補採用・優位性を主張しない。各screenの直前に5×1秒CPU sampleが全件15%以下であること、5 MiB / 64-entry / 300秒runの固定容量予約とhashが一致することを要求し、失敗ならそのrunを保存・清掃して同条件の再試行をしない。
 
 このscreen専用runnerと保全設定を追加した時点では性能測定は未実施で、当初のRelease `khc_record_fast_bench.exe`（`build/cargo/release/examples/`、Rust 1.98.1）は1,326,080 B、SHA-256 `337281256be17a9ed0f99f221d7bfee64c125294c0bc4a2a84b94ebc0a2ef5ee`をscript内pinとしていた。build初回はCargo compile完了後にMSVC `VCTIP.EXE` PID39132がJobに残りwrapper exit1（observed Cargo peak 1,042,856,898 B）。PID消失後の1回限定warm retryはexit0/0.98秒、deletions=0で、実行対象processは残っていない。x86_64 target配下の旧exampleは別SHA・旧timestampだったため使わず、host-targetのRelease pathを固定した。この当初のbinaryでbenchmarkやscreenは起動していない。
 
@@ -1265,7 +1265,7 @@ The Board of Audit fallback was identified from the [official FY2024 report cont
 
 ### KRS3 block-only screen結果 — 2026-10-19
 
-2026-10-19 05:55 JSTに測定前条件を満たした。関連processのprecheckは0件、外部5×約1秒総CPU sampleは`[2.1,0.5,2.8,2.1,1.2]%`（最大2.8%）。screen内部の5×1秒sampleも`[4.7,4.2,1.4,0.8,0.8]%`で全件15%以下だった。入力は既存D上の読み取り専用保全ZIP `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）をそのまま使用した。実行run `ae7e32c020e94a80ab0a50a0f331c6f8`、recovery ZIP SHA-256 `a248e121761082e2e5c5bb5a61a70e3291f4cb82aa819e4898c375d00eb0751f`、recovery manifest SHA-256 `c5d1d1f9fb941ade2bb38c96cae710b965ae9f16749ae44e54b1c8c1ba4f248c`。runはFinalized、登録workは削除済み（800,505 Bから0 B）。
+2026-10-19 05:55 JSTに測定前条件を満たした。関連processのprecheckは0件、外部5×約1秒総CPU sampleは`[2.1,0.5,2.8,2.1,1.2]%`（最大2.8%）。screen内部の5×1秒sampleも`[4.7,4.2,1.4,0.8,0.8]%`で全件15%以下だった。入力は既存D上の読み取り専用保全ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）をそのまま使用した。実行run `ae7e32c020e94a80ab0a50a0f331c6f8`、recovery ZIP SHA-256 `a248e121761082e2e5c5bb5a61a70e3291f4cb82aa819e4898c375d00eb0751f`、recovery manifest SHA-256 `c5d1d1f9fb941ade2bb38c96cae710b965ae9f16749ae44e54b1c8c1ba4f248c`。runはFinalized、登録workは削除済み（800,505 Bから0 B）。
 
 同一`ptt5` raw（513,216 B、CRC32 `1259857308`）で3組のpaired batchを完了し、全frame hashの反復一致とdecode後のbyte/SHA復元を確認した。KRS2は46,202 B / SHA-256 `ee12c4ce473615c7aa40c5786825ac79cb7cebd5e59680aa9e8e19df809d57be`、median encode 20,174,400 ns / decode 1,210,800 ns。KRS3は47,284 B / SHA-256 `48a3ecdce5ec345da3f74d2e650fd2828bb71bff4f4f6d7af82b494bc5dc8727`、median encode 20,479,100 ns / decode 1,786,500 ns。候補はKRS2より1,082 B（2.34%）大きく、encode 1.51%・decode 47.6%遅い。強いsize gateの42,127 B未満を5,157 B超過したため`block-size-no-go`であり、製品archiveへ進めない。
 
@@ -1303,7 +1303,7 @@ primary size gateは`20*C <= 19*A`（wrapper込み5%以上縮小）かつ`C < B`
 
 実装前のsystem/E2E失敗シナリオ: 空fileと極小tail、境界長511/512/8191/8192/8193、hash reset漏れとfile境界state共有、強制hash collision、同一chunkの複数候補から最小ID選択、基底file内重複、空・`.`・`..`・slash/backslash・重複name、unknown magic/version/mode/kind、header・descriptor・name・child/reference payload各切断、余剰tail、整数overflowとu32::MAX countのallocate前拒否、raw/chunk/archive上限超過、descriptor count・raw length合計・total rawの矛盾、511-byteの内部chunk、child frame破損とdecoded length mismatch、CRC mismatch、referenceのforward/out-of-range ID・別file由来・length違い・payload長違い・child payload混入、非reference modeでのreference、decoder再封印後も不正なwire構造、全byte/SHA不一致。固定synthetic bytesは、長さ`0,1,511,512,8191,8192,8193`で`byte[i]=(131*i+17) mod 256`の2 file fixture、`0x00..0xff`反復fixture、CDCで得た`0xa5`反復入力の最初のfull chunkを2回連結した基底と同chunkの新版、同長chunkの1 byteだけを変更したforced-collision対照に固定する。これらは固定pairを使う一つの登録E2E実行内だけで検証し、単独unit testを追加しない。測定前にalgorithm/layout・threshold・fixture・source hash・binary hashを固定し、結果を見て変更しない。
 
-実装・実行経路の事前pin: Rust probe `examples/khc_cross_file_dedup_probe.rs` SHA-256 `69eda7f701f829ce35f3d10f5aa8971a977bc5264b3ee14e000ed8ba0fde48df`、固定pair runner `experiments/khc/cross-file-dedup-size-probe.ps1` SHA-256 `a456cf61d7a5e1c141b3fa1b657ef4322716df06a21fcf24d5a21ff654ebfa19`、登録wrapper `experiments/khc/run-storage-experiment.ps1` SHA-256 `d0c552fbe139d2dc4a8130053d7f8f7236da329eb494d178b894fa9a178674bd`、lifecycle module SHA-256 `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3`、Cargo helper SHA-256 `053532f8fa0266b23a6dcc02e60bfb54e94d5d58d874a71692df51dec16a158f`、`Cargo.toml` SHA-256 `3b47e50b8e543a5af82617bee4d4bd48ec20fc795a333ba50cbc9e439e0c2fac`、`Cargo.lock` SHA-256 `d8dab69b03805b559440c186ed04c2d0d0ee57eba922306cfa6827bf79985554`。Rust `1.98.1 (48a229cea 2026-09-01)` / `x86_64-pc-windows-msvc` release buildに固定する。probe childは240秒、登録outer runnerは300秒の上限とする。build実行ファイル`D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_cross_file_dedup_probe.exe`は1,428,480 B、SHA-256 `f0376e23c15e5fda8b145ad7241abed7f7c97a504dd11bba325173155dc2b299`としてpilot実行前に固定済み。
+実装・実行経路の事前pin: Rust probe `examples/khc_cross_file_dedup_probe.rs` SHA-256 `69eda7f701f829ce35f3d10f5aa8971a977bc5264b3ee14e000ed8ba0fde48df`、固定pair runner `experiments/khc/cross-file-dedup-size-probe.ps1` SHA-256 `a456cf61d7a5e1c141b3fa1b657ef4322716df06a21fcf24d5a21ff654ebfa19`、登録wrapper `experiments/khc/run-storage-experiment.ps1` SHA-256 `d0c552fbe139d2dc4a8130053d7f8f7236da329eb494d178b894fa9a178674bd`、lifecycle module SHA-256 `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3`、Cargo helper SHA-256 `053532f8fa0266b23a6dcc02e60bfb54e94d5d58d874a71692df51dec16a158f`、`Cargo.toml` SHA-256 `3b47e50b8e543a5af82617bee4d4bd48ec20fc795a333ba50cbc9e439e0c2fac`、`Cargo.lock` SHA-256 `d8dab69b03805b559440c186ed04c2d0d0ee57eba922306cfa6827bf79985554`。Rust `1.98.1 (48a229cea 2026-09-01)` / `x86_64-pc-windows-msvc` release buildに固定する。probe childは240秒、登録outer runnerは300秒の上限とする。build実行ファイル`<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_cross_file_dedup_probe.exe`は1,428,480 B、SHA-256 `f0376e23c15e5fda8b145ad7241abed7f7c97a504dd11bba325173155dc2b299`としてpilot実行前に固定済み。
 
 ## 2026-10-19 candidate screen results
 
@@ -1337,9 +1337,9 @@ Primary metricは、同一Release executableの `BinaryAdaptive` で符号化し
 
 実装前から固定するE2Eは、empty/plain/no-tag、単純tag、quoted `>`、text中の`>`、隣接tag、tag内`<`、未終端`<`とunmatched quote、high-bit/arbitrary bytes、descriptorで1 MiB frame cap超過、決定性、完全往復を含む。子KHC blockを介したKHT1 parser negative casesとして、unknown magic/kind、zero/overlong span count、overflow/overrun、header/descriptor/stream切断、sum mismatch、trailing bytesを拒否し、corrupt/truncated child frameも拒否する。unknown versionはKHT1 magic不一致として拒否する。unit testは追加せず、登録probe一回のsystem/E2Eだけを行う。run budgetは3 MiB / 64 entries / 120秒（child 90秒）。source/runner/lifecycle/common runner hashesはコード固定後・測定前に追記し、probe executable SHAはbuild後かつrun前に追記する。
 
-実装凍結（2026-10-19、source・runner hashはbuild前、probe executable hashは唯一の登録run前に記録）：probe source `examples/khc_html_span_probe.rs` 15,193 B / SHA-256 `953ac75d18e14de57894a90615477d1f8e8d6259328e1f25570a86bccb47dfba`、実行script `experiments/khc/html-span-size-probe.ps1` 10,257 B / SHA-256 `973982ac7245b8035788e13c35b653a312b1d5087d505b938a05ae287bb032de`、登録runner `experiments/khc/run-storage-experiment.ps1` 13,544 B / SHA-256 `f1d6cbe277c21f3e780b6c76fb293039baaf8948f73cb2b4e52f57721e79acff`、lifecycle module `experiments/khc/storage-lifecycle.psm1` 73,285 B / SHA-256 `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3`、serial Cargo runner `experiments/khc/run-serial-cargo.ps1` 9,859 B / SHA-256 `053532f8fa0266b23a6dcc02e60bfb54e94d5d58d874a71692df51dec16a158f`。Release probe executable `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_html_span_probe.exe` は1,358,336 B / SHA-256 `18338e41b5fe7be919603e453b1bac3e60b31a5e3a5ee8d8d7e5888b1c20ed3b`。Cargoは13.91秒で`Finished`を報告したが直列runnerは終了2秒後も`VCTIP.EXE`子process 1件を検出してexit 1になった。そのPID 4504は事後確認時に終了済みで、成果物の実在・hash・3MiB未使用容量枠を確認したため同条件buildを再試行せず、このhashの成果物で唯一の登録runへ進む。
+実装凍結（2026-10-19、source・runner hashはbuild前、probe executable hashは唯一の登録run前に記録）：probe source `examples/khc_html_span_probe.rs` 15,193 B / SHA-256 `953ac75d18e14de57894a90615477d1f8e8d6259328e1f25570a86bccb47dfba`、実行script `experiments/khc/html-span-size-probe.ps1` 10,257 B / SHA-256 `973982ac7245b8035788e13c35b653a312b1d5087d505b938a05ae287bb032de`、登録runner `experiments/khc/run-storage-experiment.ps1` 13,544 B / SHA-256 `f1d6cbe277c21f3e780b6c76fb293039baaf8948f73cb2b4e52f57721e79acff`、lifecycle module `experiments/khc/storage-lifecycle.psm1` 73,285 B / SHA-256 `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3`、serial Cargo runner `experiments/khc/run-serial-cargo.ps1` 9,859 B / SHA-256 `053532f8fa0266b23a6dcc02e60bfb54e94d5d58d874a71692df51dec16a158f`。Release probe executable `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_html_span_probe.exe` は1,358,336 B / SHA-256 `18338e41b5fe7be919603e453b1bac3e60b31a5e3a5ee8d8d7e5888b1c20ed3b`。Cargoは13.91秒で`Finished`を報告したが直列runnerは終了2秒後も`VCTIP.EXE`子process 1件を検出してexit 1になった。そのPID 4504は事後確認時に終了済みで、成果物の実在・hash・3MiB未使用容量枠を確認したため同条件buildを再試行せず、このhashの成果物で唯一の登録runへ進む。
 
-固定run `005de05f0e234e2587866ae3f824f55a` は全29 E2E、決定性、完全roundtrip、SHA照合に成功したがno-go。raw cp.html 24,603 B（SHA-256 `e0cd21cef5b6c4069461e949be100080c3ce887de6f1dd8626c480528efaaf61`）に対しbaseline完全KHC frame `A=7,887 B`（SHA-256 `9953688992bb7d86e018d873def391e08d94baef7942ceb99a97e548da6df615`）、KHT1 transform 34,915 B（SHA-256 `647646491e8f7627796ef83ed044c47baabf9d7f1e737a26bcc7463289e87421`）、candidate完全KHC frame `C=9,620 B`（SHA-256 `25c9b82a83de28a962535fd874f1bd46a9e427025bdc210ce850625efbc1acd7`）、recognized tag bytes 14,340。`20*C <= 19*A` を満たさず同一入力の再試行はしない。これは既使用の開発入力一件だけのsize-only結果であり、holdout・速度・memory・7-Zip比較・製品性能・一般化を示さない。Prunlet清掃はoperation `55308015ce8341dfb64f5be3712cb7d0`で完了（31,388 B→0 B）。再検証に必要なfull `result.json` / `probe.json` / `cp.html` は lifecycle record `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\005de05f0e234e2587866ae3f824f55a` の `recovery.zip` 13,971 B / SHA-256 `f051f15d643d569ee4aaea75e931d08dcda4783648055667f1822c27aac66c64` と `recovery.json` SHA-256 `4763203cdcdd69731b51158ebaf3a7af0bef03874fab7060b9f0d27a6c6d3422` に保持する。復元時は新しい外部Tempへzip展開しmanifest記載file SHAを照合する。
+固定run `005de05f0e234e2587866ae3f824f55a` は全29 E2E、決定性、完全roundtrip、SHA照合に成功したがno-go。raw cp.html 24,603 B（SHA-256 `e0cd21cef5b6c4069461e949be100080c3ce887de6f1dd8626c480528efaaf61`）に対しbaseline完全KHC frame `A=7,887 B`（SHA-256 `9953688992bb7d86e018d873def391e08d94baef7942ceb99a97e548da6df615`）、KHT1 transform 34,915 B（SHA-256 `647646491e8f7627796ef83ed044c47baabf9d7f1e737a26bcc7463289e87421`）、candidate完全KHC frame `C=9,620 B`（SHA-256 `25c9b82a83de28a962535fd874f1bd46a9e427025bdc210ce850625efbc1acd7`）、recognized tag bytes 14,340。`20*C <= 19*A` を満たさず同一入力の再試行はしない。これは既使用の開発入力一件だけのsize-only結果であり、holdout・速度・memory・7-Zip比較・製品性能・一般化を示さない。Prunlet清掃はoperation `55308015ce8341dfb64f5be3712cb7d0`で完了（31,388 B→0 B）。再検証に必要なfull `result.json` / `probe.json` / `cp.html` は lifecycle record `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\005de05f0e234e2587866ae3f824f55a` の `recovery.zip` 13,971 B / SHA-256 `f051f15d643d569ee4aaea75e931d08dcda4783648055667f1822c27aac66c64` と `recovery.json` SHA-256 `4763203cdcdd69731b51158ebaf3a7af0bef03874fab7060b9f0d27a6c6d3422` に保持する。復元時は新しい外部Tempへzip展開しmanifest記載file SHAを照合する。
 
 ### 2026-10-19最新の古典的圧縮手法 screen
 
@@ -1366,7 +1366,7 @@ ratioは入力／出力なのでSilesiaではWZIPの出力が約3.9%大きく、
 
 既知Canterbury `ptt5` の前回製品書庫screenでは、KRS2は7-Zip 26.04 `-mx=9` より書庫が9.66%大きい一方、起動・I/O込みencode中央値が90.1851 ms対164.1892 ms、extract中央値が66.0387 ms対81.9857 msだった。`-mx=9` だけとの比較では、速度優先条件（同等以上の圧縮サイズ）でのKRS2優位を判定できない。そこでKRS2の候補選択は変更せず、既知 `ptt5` 上で7-Zip側の速度・サイズPareto frontierを一度だけ較正する。この開発用screenは未見評価ではなく、結果を一般化せず、後続7-Zip優位判定にも使わない。
 
-固定入力は保全ZIP `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（769,634 B、SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）の `input/ptt5`（513,216 B、SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`）。KHCは同一Release CLI（SHA-256 `81bb1f3d0e0aa592317be13e0cc6c4224f19579e51a1382077ace884bb87c732`）で `binary-adaptive` を対照、`record-fast-trial` / revision 6・KRS2を候補とする。7-Zipは公式配布ページが示す26.04 x64（2026-10-05、実体SHA-256 `95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53`）を使い、`.7z` / LZMA2、要求辞書64 MiB、1 thread、solid on、`-mqs=off`、時刻metadata無効を固定し、`-mx=1,3,5,7,9` の5点を記録する。各点の `-slt` 実効method/dictionaryを保存し、要求辞書と実効辞書を混同しない。[公式配布ページ](https://www.7-zip.org/?dl=1)。2026-10-19にGrok X検索した過去30日は圧縮levelの速度・サイズ比較投稿0件。翻訳者の自己申告をする@7zipは2026-10-06に「7-Zip 26.04 released」と投稿したが、測定はない（[投稿](https://x.com/7zip/status/2107407009817780657)）。
+固定入力は保全ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（769,634 B、SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）の `input/ptt5`（513,216 B、SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`）。KHCは同一Release CLI（SHA-256 `81bb1f3d0e0aa592317be13e0cc6c4224f19579e51a1382077ace884bb87c732`）で `binary-adaptive` を対照、`record-fast-trial` / revision 6・KRS2を候補とする。7-Zipは公式配布ページが示す26.04 x64（2026-10-05、実体SHA-256 `95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53`）を使い、`.7z` / LZMA2、要求辞書64 MiB、1 thread、solid on、`-mqs=off`、時刻metadata無効を固定し、`-mx=1,3,5,7,9` の5点を記録する。各点の `-slt` 実効method/dictionaryを保存し、要求辞書と実効辞書を混同しない。[公式配布ページ](https://www.7-zip.org/?dl=1)。2026-10-19にGrok X検索した過去30日は圧縮levelの速度・サイズ比較投稿0件。翻訳者の自己申告をする@7zipは2026-10-06に「7-Zip 26.04 released」と投稿したが、測定はない（[投稿](https://x.com/7zip/status/2107407009817780657)）。
 
 全7方式（BinaryAdaptive、KRS2、7-Zip 5 levels）を5 round順序回転し、各書庫をtest後、展開物のファイル名・全byte・SHA-256を入力と照合する。同方式の書庫hash/sizeの決定性を確認する。各方式のencode/extract起動込みwall timeを計測し、最大WorkingSet/paged memoryも記録する。speed-priorityのscreen passは、(a) 書庫サイズがKRS2以上の7-Zip設定のうちencode+extract median合計が最小の設定を基準とし、KRS2書庫がそれより大きくなく、(b) KRS2の5 round encode・extract中央値が双方5%以上速く、最大WorkingSet・最大paged memoryも双方以下、かつ(c) 7-Zip 5設定のいずれにも「書庫サイズがKRS2以下でencode/extract時間と両memory peakもKRS2以下」というKRS2を支配する点がない場合だけとする。基準は7-Zipの5設定すべてを開示したうえで機械的に選び、結果を見た後の設定選択をしない。これを満たさない場合はKRS2のspeed frontier no-goとし、同条件を再実行しない。CPU gateはrun前および各round開始前の `_Total` 5×1秒sampleすべて15%以下。gate失敗、時間・容量超過、非決定性、復元不一致、計測不能が一つでもあればrunを失敗/no-goにし、同じ条件でretryしない。
 
@@ -1382,7 +1382,7 @@ Runは既存 `run-storage-experiment.ps1` のみで登録し、固定上限は28
 
 候補がblock sizeをMDLより増やさないこと以外は未立証であり、追加encode時間・memoryはあり得る。 correctness E2Eが通っても性能候補としての採用・既定化・AITDCC I–Pへのアクセスは自動承認されない。KRS2 speed-frontierの未達条件を成功扱いせず、未見評価へ進むには別の全category事前登録が必要である。
 
-revision 9のfallbackは既定`Mdl`が生成する内側revision 1 / method 0または1のKHC1BLKに限定する。revision 2のLZ frameを「MDL fallback」と誤認しない。実行はWindows x64 Release、`rustc 1.98.1 (48a229cea 2026-09-01)` / `cargo 1.98.1 (797e8a9bc 2026-08-05)`、offline、5MiB / 64 entries / 300秒の登録E2Eで、性能測定ではない。入力はrecovery ZIP `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（769,634 B、SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）内の`input/ptt5`（513,216 B、SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`）のみ。`I`〜`P` heldoutにはアクセスしない。
+revision 9のfallbackは既定`Mdl`が生成する内側revision 1 / method 0または1のKHC1BLKに限定する。revision 2のLZ frameを「MDL fallback」と誤認しない。実行はWindows x64 Release、`rustc 1.98.1 (48a229cea 2026-09-01)` / `cargo 1.98.1 (797e8a9bc 2026-08-05)`、offline、5MiB / 64 entries / 300秒の登録E2Eで、性能測定ではない。入力はrecovery ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`（769,634 B、SHA-256 `882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75`）内の`input/ptt5`（513,216 B、SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`）のみ。`I`〜`P` heldoutにはアクセスしない。
 
 最初のbuild前に、実装・検証入口と容量管理の以下のSHA-256を固定する。いずれかが違う場合はbuildまたはE2Eを開始せず、本登録を追記修正する。
 
@@ -1418,8 +1418,8 @@ Build前の`cargo fmt --check`およびPowerShell AST parseは成功済み。bui
 
 | Release executable | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe` | 2,557,952 | `50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3` |
-| `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe` | 1,602,560 | `c1c63ffc96967def1d87f46fbc26dbae4d7d4f9d9c7ef501a73dd4ff2d8fc73e` |
+| `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe` | 2,557,952 | `50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3` |
+| `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe` | 1,602,560 | `c1c63ffc96967def1d87f46fbc26dbae4d7d4f9d9c7ef501a73dd4ff2d8fc73e` |
 
 The E2E command in `STORAGE.md` now contains these hashes; its pre-run SHA-256 is `697c06e74c2c1961c31f194623157bc55db29170d24ee092ec1547a02255254e`, superseding only the earlier documentation hash. No executable or candidate-source pin changed after build.
 
@@ -1438,8 +1438,8 @@ The E2E command in `STORAGE.md` now contains these hashes; its pre-run SHA-256 i
 
 | Release executable | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe` | 2,557,952 | `50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3` |
-| `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe` | 1,601,536 | `d3a70fdfbedc9017e7a1c65f880b6f593c277f0eb423d59634ce26a84aff3c2f` |
+| `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe` | 2,557,952 | `50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3` |
+| `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_spatial_mdl_e2e.exe` | 1,601,536 | `d3a70fdfbedc9017e7a1c65f880b6f593c277f0eb423d59634ce26a84aff3c2f` |
 
 `STORAGE.md` now carries these binary pins and has pre-E2E SHA-256 `e5b4f33f6daf25bca98453cc6534c4ea8383c66336c5f524c525d1005daffad5`, superseding earlier documentation-only hashes. At this pre-run checkpoint, no E2E or performance sample had been started.
 
@@ -1448,7 +1448,7 @@ The E2E command in `STORAGE.md` now contains these hashes; its pre-run SHA-256 i
 - Run `e60b9d1bbec149d68208c27485165d9b`; API E2E exited 0 with four frames, both `KCS1BLK` and `KHC1BLK` selected, seven malformed archives rejected, legacy revisions 1–8 read, the codec-memory gate enforced, and a 33,153-byte synthetic archive. API corruption checks included corrupt KCS1/MDL frames and verified no publication over a sentinel.
 - CLI create/list/test/extract and exact byte/SHA roundtrip exited 0. The CLI archive SHA-256 is `4abe41073bd9a3098b5cde58585d4f54c434c04e1514c72d533de61972f45fe6`; roundtrip SHA-256 values are ptt5 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650` and short.bin `073f8a6663fc49fd74e1e6dfd4d18d0bffb6e9a2af848e7adfbd4a567fbf732c`. Existing-destination create/extract and foreign-frame rejection also returned the expected nonzero status without replacing the sentinel.
 - Scope caveat: the JSON check named `cli-rejects-corrupt-extract` used the same `api/bad.khc` fixture as `cli-rejects-foreign-frame`; the example writes that fixture after substituting a `KRS1BLK` foreign frame. Its observed error was `revision 9 fallback is not default MDL`. Count it only as another foreign-frame rejection, not as CLI corruption coverage. Corruption and sentinel-preservation coverage was provided by the API example. A distinct CLI corrupt-frame extraction case remains untested.
-- Lifecycle run is complete; the 3,825,146-byte work tree was removed through the direct Prunlet CLI procedure and its temporary Prunlet recovery copy purged after receipt validation. The task recovery ZIP remains at `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\e60b9d1bbec149d68208c27485165d9b\recovery.zip` (453,632 B, SHA-256 `e20d93ace231af1192153a4cadc0feb43a6922687d2e32a02dcb3ac608c97f28`); manifest SHA-256 `b3ff388ab9a6eb73d289f36aeed11ab98a283b608d1c276cf0d959029de45bd5`. Prunlet operation ID: `bd0f390a01c0461687d5c37ad0a1bd76`.
+- Lifecycle run is complete; the 3,825,146-byte work tree was removed through the direct Prunlet CLI procedure and its temporary Prunlet recovery copy purged after receipt validation. The task recovery ZIP remains at `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\e60b9d1bbec149d68208c27485165d9b\recovery.zip` (453,632 B, SHA-256 `e20d93ace231af1192153a4cadc0feb43a6922687d2e32a02dcb3ac608c97f28`); manifest SHA-256 `b3ff388ab9a6eb73d289f36aeed11ab98a283b608d1c276cf0d959029de45bd5`. Prunlet operation ID: `bd0f390a01c0461687d5c37ad0a1bd76`.
 
 ## 2026-10-19: revision 9のptt5製品screen（事前登録・開発用）
 
@@ -1474,7 +1474,7 @@ candidateはRust API/CLIの`SpatialMdlTrial`（archive revision 9）に固定し
 | `run-storage-experiment.ps1` | `6fe4460a23e0fca7539a73937a6ee54af8b2e9d3935c5d596975f21bc51af2ad` |
 | `storage-lifecycle.psm1` | `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3` |
 
-CLI path: `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe`; 7-Zip path: `C:\Program Files\7-Zip\7z.exe`; fixture path: `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`.
+CLI path: `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe`; 7-Zip path: `C:\Program Files\7-Zip\7z.exe`; fixture path: `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip`.
 
 ### 実行結果 — CPU gateで測定開始前に中止（2026-10-19）
 
@@ -1482,13 +1482,13 @@ CLI path: `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\r
 
 report `spatial-mdl-7zip-product-screen.json`（17,655 B、SHA-256 `9d268797881538b0ea0c77b14804239baa45816af4608037e32149165c878fce`）は次の復元ZIP内に保持した。入力は事前登録どおり `input/ptt5`（513,216 B、SHA-256 `0ec3a75089bb52342813496b17e51377bc9eba3cb519a444d67025354841d650`）、7-Zipは26.04 x64。復元ZIPは87,691 B、SHA-256 `f8915a9710f92d037494a8a9c37c5aa08571ef9f37b0b0ec65aa8e6f4bdbd837`。
 
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\0f3d5e93ba2b42a8985bebad500e6a00\recovery.zip` は中断結果・復元に必要な保持物である。Prunlet direct-CMD lifecycleは`complete`し、work treeは530,871 Bから0 Bへ清掃した。未測定なのでこのscreenは7-Zip優位の成立・不成立いずれも示さず、heldout評価へ進む条件も満たしていない。
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\0f3d5e93ba2b42a8985bebad500e6a00\recovery.zip` は中断結果・復元に必要な保持物である。Prunlet direct-CMD lifecycleは`complete`し、work treeは530,871 Bから0 Bへ清掃した。未測定なのでこのscreenは7-Zip優位の成立・不成立いずれも示さず、heldout評価へ進む条件も満たしていない。
 
 ## SpatialMdlTrial Canterbury11 size-only screen（事前登録・2026-10-19）
 
 前項のrevision-9 `ptt5` performance screenは候補archiveを作成する前にCPU gateで中止したため、サイズ・速度のどちらも未測定である。その登録条件は再実行しない。別条件の次候補として、既に開発・調整へ使用した標準Canterbury11 corpus全体で、revision-9 `spatial-mdl-trial` と7-Zip 26.04 x64のarchive size・決定性・完全復元だけを比較する。これは未見評価ではなく、計時・memory・CPU比較も行わない。結果から性能優位・一般化・既定化を主張しない。
 
-入力は保存済み復元ZIP `D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`（8,765,120 B、SHA-256 `b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb`）の`pipeline-e2e/canterbury/`直下の11ファイルのみ。実行前のZIP member stream検査で、総2,810,784 B、ordinal filename orderのmanifest SHA-256 `bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438`を確認済み。個別memberは次の通り。
+入力は保存済み復元ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip`（8,765,120 B、SHA-256 `b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb`）の`pipeline-e2e/canterbury/`直下の11ファイルのみ。実行前のZIP member stream検査で、総2,810,784 B、ordinal filename orderのmanifest SHA-256 `bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438`を確認済み。個別memberは次の通り。
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
@@ -1527,7 +1527,7 @@ report `spatial-mdl-7zip-product-screen.json`（17,655 B、SHA-256 `9d2687978815
 | `experiments/khc/storage-lifecycle.psm1` / `disk-budget.ps1` | `511ac35885416d0ee7deb6367f2f210d6bda3e71ced3001a590dd90426962ac3` / `506e4c68dc05734bc1a0c02bac6f81d4677e0bcffd9b9fa2b7bd67d53319bdcd` |
 | `experiments/khc/STORAGE.md` | `2cc46e8d5afe4301c3976c358328b0746cffb65f349031cf154a3f629455576a` |
 
-The executable paths are `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe`, `C:\Program Files\7-Zip\7z.exe`, and the input ZIP path listed above. The same fixed values and runner policy appear in `STORAGE.md`.
+The executable paths are `<作業フォルダー>\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe`, `C:\Program Files\7-Zip\7z.exe`, and the input ZIP path listed above. The same fixed values and runner policy appear in `STORAGE.md`.
 
 実行登録前の照合で`src/khc/mod.rs`のSHA-256転記に1文字の誤りが見つかったため、実ファイル値`c3335017f8905364f66d797f992f10ba54a50707116cb224304acc4470ec41fa`へ訂正し、screen・runner・両登録表のpinを再計算した。Canterbury11のrun登録・candidate process起動前の修正である。
 
@@ -1537,7 +1537,7 @@ The executable paths are `D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc
 - 対象は開発用Canterbury11の11 files・2,810,784 B、input manifest SHA-256 `bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438`。KHC archiveは両roundとも484,829 B / SHA-256 `648f04505ac91aa1e4e96d82ed26bb85a6ebafcd318bf00273e53ee5fc75cea9`、7-Zipは483,599 B / SHA-256 `ea8b4b785c245001ab0efb5aa0a21d0339cdf74d8d62d5ccdee75b5f1b8e4299`。
 - 11-file完全復元と全4 restore manifest一致、両方式の2 round決定性、15 commandのexit code 0を確認。KHCは7-Zipより1,230 B（0.2543%）大きく、`candidate*100 <= 7zip*95`の事前登録gateは不成立。決定はこのCanterbury11 size screenに限ったno-go。
 - このscreenはサイズ・決定性・復元のみで、時間・CPU・memoryを測定していない。Canterbury11は開発corpusであり、heldout・一般化・性能優位性の証拠ではない。
-- Report SHA-256 `8468136309e434e719390d1186251411203b2b7b47e5d4f6725b0e883a18a099`。Recovery ZIP `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\480164ae489b426d811db8fb03cc15cf\recovery.zip` は7,816,293 B / SHA-256 `531716f5ac879073834328d9a40aad103372b32a30b93de81ac4e337fe7e2ebc`、manifest SHA-256 `026ecae64dca7ab839da5900513d96f307ff37ba0c3a710dfb91dfab4856e46a`。Prunlet staged cleanupはoperation `ceeaddfbf00346758e340e7b36a486fe`で完了し、work 16,021,887 Bを0 Bにした。
+- Report SHA-256 `8468136309e434e719390d1186251411203b2b7b47e5d4f6725b0e883a18a099`。Recovery ZIP `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\480164ae489b426d811db8fb03cc15cf\recovery.zip` は7,816,293 B / SHA-256 `531716f5ac879073834328d9a40aad103372b32a30b93de81ac4e337fe7e2ebc`、manifest SHA-256 `026ecae64dca7ab839da5900513d96f307ff37ba0c3a710dfb91dfab4856e46a`。Prunlet staged cleanupはoperation `ceeaddfbf00346758e340e7b36a486fe`で完了し、work 16,021,887 Bを0 Bにした。
 
 ## 2026-10-19 追加研究と次候補
 
@@ -1604,7 +1604,7 @@ final registered-runner SHA, and final `STORAGE.md` SHA are pinned below before 
 The one registered run `b35233c621ef4f7fb8bf7651690cdc20` completed with decision
 `go-to-separate-revision-10-integration-and-performance-evaluation`. Its report SHA-256 is
 `cec9a17ddc5ed9929060371fa75bf09f780e4f68fb1cba9daa8a606e3549a128`; it is retained inside
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\b35233c621ef4f7fb8bf7651690cdc20\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\b35233c621ef4f7fb8bf7651690cdc20\recovery.zip`
 (1,667,875 B, SHA-256 `dabaf9fd5ab4792a95570cf8dea84a200bbec84576232772b2c231ba3f0c6324`). Its recovery
 manifest SHA-256 is `9044ae1792e221ea4636fa5285635b9612a809a0f20b69639e4de2026bca605a`.
 
@@ -2118,7 +2118,7 @@ exact condition; do not retry it unchanged, and do not treat it as a candidate n
 
 The run report SHA-256 is `c69a0d26830f9a07bee0867bcb4735d85d9e5ed2f11eb7ac0466f97b99c8ff9d`.
 Its recovery ZIP remains at
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\039411b01e4c49f0a7c18b475b58f462\recovery.zip`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\storage-lifecycle\runs\039411b01e4c49f0a7c18b475b58f462\recovery.zip`
 (3,299,468 B, SHA-256 `34731667812c2fe8c5808071f10082b5e085aeae267e4d354ed05473a7012962`); the
 recovery manifest SHA-256 is `79ac8ac216e5d1f10bf580bc69ab05f1936c6ea96fb9838b393672e6e225b2c0`.
 Staged Prunlet cleanup completed with operation
@@ -2245,7 +2245,7 @@ entry in `STORAGE.md`.
 
 Build only the Release CLI and E2E example through the pinned `run-serial-cargo.ps1`, with the
 fixed `x86_64-pc-windows-msvc` target, `--locked --offline`, 256 MiB transient reservation, and
-all target/temp outputs under `D:\Codex\UnLhaRe\goal-restore-20261019`. Before one registration,
+all target/temp outputs under `<作業フォルダー>\UnLhaRe\goal-restore-20261019`. Before one registration,
 verify the new CLI/example hashes, all current source/build/script/input pins, no pending lifecycle
 run or target process, and the storage budget. Then run `spatial-mdl-e2e.ps1` with the pinned
 recovery ZIP, D-drive binaries, `ChildTimeoutSeconds=240`, and its fixed 8 MiB / 96-entry / 300
@@ -2474,7 +2474,7 @@ The required fresh external `_Total` CPU gate failed on sample 4: readings were 
 were zero lifecycle registrations in the campaign window, no candidate or 7-Zip execution, and no
 performance result. No cleanup was needed. This is not a codec no-go, and this exact e-Gov source/input
 condition must not be retried or have its threshold relaxed. The preflight and failed-gate record is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\pre-registration-stop.json`
 (SHA-256 `75a1cc84649bcfe5b9fb48039f0ed7f5fe9b693be4c9c09d2f4f9c28e1356f5b`); details and budget
 snapshot are in `STORAGE.md`.
 
@@ -2503,7 +2503,7 @@ samples after the first reading failed; this procedure deviation is recorded. No
 registration, profile-specific build, timed compression/extraction, cleanup, or aggregate exists.
 This exact Aozora source/input condition and fixed window are closed; do not retry, rebase, or
 relax the threshold. The retained stop record is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\aozora-dev-20261020\pre-registration-stop.json`
 (SHA-256 `4409ee3a6d5656293bcba320bdb341d077cb4230343ebab32da6ea3bda6c0821`). Complete pins,
 preflight snapshot, and protocol are in `STORAGE.md` (SHA-256
 `04c24d5fd947752797f2d5df391bce90d26a86973d082ceafea07430efd542e0`). The e-Gov screen's earlier
@@ -2519,7 +2519,7 @@ Profile ID `JmaTokyoDaily2010_2025Holdout20261020` を未見holdoutとして事�
 
 気象庁ホームページの利用条件では、権利表示がないコンテンツは公共データ利用規約（第1.0版）に従い、出典表示と、編集・加工時の明記を求めている。過去データのページも掲載値を遡って修正する可能性を明示する。現行候補・7-Zip・screen/runner/lifecycleのhashはAozora開発campaign markerで固定済みと照合した後、2026-10-19 20:10:43.8894586Z〜20:10:45.2373298Z（JST 2026-10-20 05:10:43.8894586〜05:10:45.2373298）に公式出力を一度だけ取得した。HTTP 200、Content-Type `application/octet-stream`、Content-Disposition `attachment; filename="data.csv"`、raw CSV 169,060 bytes、SHA-256 `a17d1a8cca49f958ce417624a77416e04113da412bf42f68c559c96745d37885`。8 MiB admissionをサイズだけで通過した。出典・条件・取得時刻・長さ・hashをこのmanifestに記録し、候補実装のチューニングには使用しない。
 
-この事前manifestの固定範囲はsource family・地点・期間・項目・CSVオプション・無加工入力の役割までである。raw CSVは `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\jma-tokyo-daily-2010-2025.csv` に保全した。評価用wrapper `input.zip` は同じdirectoryの `input.zip`、169,228 bytes、SHA-256 `bf89c170af85418f9911be0b2a547fae2029755ef06091b4209ca446841805f8`、無圧縮で単一member `input/jma-tokyo-daily-2010-2025.csv` を含む。member bytes/hashがraw CSVと一致し、basename順の `name<TAB>bytes<TAB>sha256` file-set SHA-256は `36d982b198c5557acb383b3fbe4df2aa74d08336705005916e25138973000dab`。このfixed snapshotのみを使い、上限超過を理由に期間・項目を縮めて再定義しない。利用時は出典とPDL 1.0の要求を保持し、仮にmemberを加工した場合は本manifestを無効とする。出典表示は「気象庁『過去の気象データ・ダウンロード』（地点：東京、期間：2010-01-01〜2025-12-31、日別値、2026-10-20以降取得）」とする。
+この事前manifestの固定範囲はsource family・地点・期間・項目・CSVオプション・無加工入力の役割までである。raw CSVは `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\jma-tokyo-daily-2010-2025.csv` に保全した。評価用wrapper `input.zip` は同じdirectoryの `input.zip`、169,228 bytes、SHA-256 `bf89c170af85418f9911be0b2a547fae2029755ef06091b4209ca446841805f8`、無圧縮で単一member `input/jma-tokyo-daily-2010-2025.csv` を含む。member bytes/hashがraw CSVと一致し、basename順の `name<TAB>bytes<TAB>sha256` file-set SHA-256は `36d982b198c5557acb383b3fbe4df2aa74d08336705005916e25138973000dab`。このfixed snapshotのみを使い、上限超過を理由に期間・項目を縮めて再定義しない。利用時は出典とPDL 1.0の要求を保持し、仮にmemberを加工した場合は本manifestを無効とする。出典表示は「気象庁『過去の気象データ・ダウンロード』（地点：東京、期間：2010-01-01〜2025-12-31、日別値、2026-10-20以降取得）」とする。
 
 観測データ・CSV本文は受信stream上でサイズ上限を適用しつつ保存・SHA-256計算をしただけで、閲覧・parse・変換・圧縮測定には使用していない。ZIP wrapper作成時もraw memberを無圧縮で転送し、memberのSHA-256で完全一致を確認した。出典・CSVオプション・形式metadataは取得前に公式資料とフロントエンドから確認済み。実行前に別のimmutable JMA campaign markerと現行storage admissionを固定し、5回CPU gateを全通過させる。過去に閉じたe-Gov/Aozora条件は再実行しない。
 
@@ -2533,7 +2533,7 @@ JMA専用markerでは7-Zipの要求上限を `maximum_effective_dictionary_bytes
 
 #### JMA独立holdoutは登録前CPUゲートで停止（2026-10-20）
 
-完全な事前確認は通過したが、新規の外部CPUゲートは1件目で37.49%となり、固定上限15%を超えたため直ちに停止した。5件中残り4件は取得せず、campaign marker・run登録・候補/7-Zip実行・時間/サイズ測定・集計は一切行っていない。これはコーデックの評価結果ではなく、今回のJMA入力・候補・閾値条件は再試行しない。記録は `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\pre-registration-stop.json`（2,910 B、SHA-256 `00848fe5204696ad6eff1db160a6a5fbfbe6958977f8b180878296ac68e79e34`）。当該データの内容は未閲覧・未parse・未圧縮のまま保全する。
+完全な事前確認は通過したが、新規の外部CPUゲートは1件目で37.49%となり、固定上限15%を超えたため直ちに停止した。5件中残り4件は取得せず、campaign marker・run登録・候補/7-Zip実行・時間/サイズ測定・集計は一切行っていない。これはコーデックの評価結果ではなく、今回のJMA入力・候補・閾値条件は再試行しない。記録は `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\jma-holdout-20261020\pre-registration-stop.json`（2,910 B、SHA-256 `00848fe5204696ad6eff1db160a6a5fbfbe6958977f8b180878296ac68e79e34`）。当該データの内容は未閲覧・未parse・未圧縮のまま保全する。
 
 #### 次の独立holdout候補の調査（2026-10-20）
 
@@ -2543,7 +2543,7 @@ JMA専用markerでは7-Zipの要求上限を `maximum_effective_dictionary_bytes
 | livedoorニュースコーパス（通常テキスト） | 提供元は2012年収集の9カテゴリ記事を配布し、記事ファイルにCC BY-ND、カテゴリ別の`LICENSE.txt`にcredit条件があると説明する（[提供元配布・条件](https://www.rondhuit.com/download.html#ldcc)、[CC BY-ND 2.1 JP](https://creativecommons.org/licenses/by-nd/2.1/jp/)）。通常テキストの固定URLは `https://www.rondhuit.com/download/ldcc-20140209.tar.gz`。HEADは200、Last-Modifiedは`2014-02-09 03:03:33 GMT`だがContent-Lengthは返らず、ETag `"871e96-4f1f077e84b40"`をbytes/hashと解釈できない。自然文の別family候補。 | member一覧・件数・raw bytes・展開総量・全カテゴリのLICENSE/creditは未確認で、payloadは未取得。KHC内1,857ファイルの識別子検索では過去の圧縮・調整・測定記録を検出しなかったが、全履歴の非使用を証明する監査ではない。CC BY-NDは無改変の再配布まで一律禁止する条件ではない一方、改変物の頒布を制限する。現在のscreen workerは32 MiB/512 entriesを厳密要求するため、その枠内で偏りの少ない固定subsetを作れるか、内容を読む前にmemberとLICENSEを確認して採否を決める。 |
 | デジタル庁・町字マスター | 公式CSVとPDL 1.0の利用条件が候補となる。 | 固定版・取得URL・member・raw bytes/hashを特定できず、今回は保留。 |
 
-東京都の実CSV URLへのHTTP HEADは400、Web閲覧機能は `text/csv` 非対応だったが、後続のサイズ上限付きGETは成功した。保存先は `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-20261020\`。`acquisition-record.json` に出典、ライセンス表示、bytes/hash、stored ZIP memberを記録する。CC BYの版番号は推測しない。
+東京都の実CSV URLへのHTTP HEADは400、Web閲覧機能は `text/csv` 非対応だったが、後続のサイズ上限付きGETは成功した。保存先は `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-20261020\`。`acquisition-record.json` に出典、ライセンス表示、bytes/hash、stored ZIP memberを記録する。CC BYの版番号は推測しない。
 
 Plumivox X検索では `livedoor ニュースコーパス` が5投稿返却（続きあり）、東京都町丁人口・町字マスターは各0件かつ `completeSearch=false`。これは法的条件・全利用履歴・適格性の証拠ではない。livedoor payloadは未取得。関連調査でKHCの記録済みソース/文書を候補識別子検索した結果は0件だったが、未記録の過去利用を排除する監査ではない。
 
@@ -2583,7 +2583,7 @@ selected article byte, use ZIP stored entries, and pin all member timestamps to 
 | topic-news | 770 | 19 |
 
 The fixed input is
-D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\input.zip:
+<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\input.zip:
 191 files, 629,588 raw bytes, 661,042 wrapper bytes, SHA-256
 e9d770628225650dd1b28a355f908cdf3c54b0ae68bf397776d6757cfc4a3209. Its KHC file-set manifest
 SHA-256 is 4c23d4dbdd312c4d7c9efa4199ccfff30c36a33671f53421e27a0578b57beec1. All 191 entries,
@@ -2624,7 +2624,7 @@ The full all-history audit remains incomplete.
 #### Tokyo holdout campaign preregistration (2026-10-20)
 
 The immutable marker is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\campaign-start.json`,
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\campaign-start.json`,
 campaign `130beb8a0bd84ac4a763b719457e421b`, SHA-256
 `903fa128a77e8dbfab2cd914bc391b79d26dd234ae04b6668642ebbc2f8e48d5`. It fixes the
 registration window to 2026-10-19 21:00–21:30 UTC / 2026-10-20 06:00–06:30 JST and was accepted by
@@ -2644,7 +2644,7 @@ for this exact source/input/profile/window without retry. No run was registered,
 was invoked, and there are no performance measurements. The immutable start marker remains
 unchanged (SHA-256 `903fa128a77e8dbfab2cd914bc391b79d26dd234ae04b6668642ebbc2f8e48d5`); immutable
 stop evidence is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\tokyo-population-holdout-campaign-20261020\pre-registration-stop.json`
 (SHA-256 `c4fd8a647b9c84ebe718b5833663d0bf76a31c4705dfe75c4b0daf704e7e3ffd`). The prospective
 gate instructions above are historical, not a pending run or a result.
 
@@ -2674,7 +2674,7 @@ Campaign `e54b2fcd559640d583e3e89e631bca50` is fixed for 2026-10-19 21:40:00–2
 manifest, Release CLI, 7-Zip 26.04, and four script pins recorded in `STORAGE.md` (current SHA-256
 `5e46c17b6939d0dd45e2e36eae577108d3a805a8ff3a325583509fb51bcf304a`).
 The marker path is
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\campaign-start.json`;
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\livedoor-holdout-20261020\campaign-start.json`;
 its SHA-256 is `5f53c86c7eb3c54cc33c9a08a71dbb5fdd46ff96767d6c9f1b2944476310ee2c` (5,299 bytes),
 and the marker passed static lifecycle validation before campaign start. No run is registered yet.
 The 20-run schedule warms both methods in round 0; even rounds candidate-first and odd rounds
@@ -2735,8 +2735,8 @@ implementation pins; the current storage reference is recorded in the latest sec
 ハッシュのみを記録する。
 
 既存の同テーマPlumivox検索 `日本語 コーパス オープンデータ` は0件・
-`completeSearch=false`で、非網羅であり不在の根拠ではない。`D:\Codex\TaskArtifacts\UnLhaRe`、
-`D:\Codex\UnLhaRe`および本書・STORAGE.mdの読み取り専用検索では同コーパス／Wikipediaの
+`completeSearch=false`で、非網羅であり不在の根拠ではない。`<作業フォルダー>\TaskArtifacts\UnLhaRe`、
+`<作業フォルダー>\UnLhaRe`および本書・STORAGE.mdの読み取り専用検索では同コーパス／Wikipediaの
 過去入力記録が見つからなかったが、全履歴の独立性監査は未完了。NDL国会会議録API案は
 会議録・発言の検索取得APIで、API仕様に固定データ版/配布hashの入力項目はなく、これは
 再取得時にsnapshot差が起き得るという推定である。またNDLのAPI条件では、NDL職員発言と
@@ -2762,7 +2762,7 @@ DBを除く発言の著作権は各発言者に帰属し、原則許諾が必要
 選択metadata manifest、member SHA manifest、wrapper SHAをTaskArtifactsに保存し、repoへ
 データをコピーしない。選択metadata manifestは選定bytesを開く前に生成・hash固定し、最終
 packagerはそのhashとpath/size集合を再照合してから選定bytesを読む。metadata-only passで
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\selection-manifest.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\selection-manifest.json`
 を生成した。195件・5,236,133 payload bytes・各category 13件、36,730 bytes、SHA-256
 `c575b295d3afff9e057fc078688caf71b5d9edae849d1d9bc637fd2b4db73e09`。内容はpath・category・
 path SHA・sizeのみ。最終packagerはこのmanifest SHAを必須入力とし、source archiveから再計算した
@@ -2819,7 +2819,7 @@ Profile実装pin: `storage-lifecycle.psm1` SHA-256
 
 profile、権利・出典provenance、匿名化出力、比較設定を固定し、campaign
 `9dd033d334034bbeaa1861acd9b98e0f`を作成した。immutable markerは
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\campaign-start.json`、
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\campaign-start.json`、
 5,291 bytes、SHA-256 `cbc2724fe152bf070ee46c8c58a5593cbbb81af4796008aff2a829731c622d8b`。
 実行可能時間は `2026-10-19T22:50:00Z`–`2026-10-19T23:20:00Z`（JST 07:50–08:20）。
 
@@ -2848,7 +2848,7 @@ no pending run, relevant process, or run directory had been created. The externa
 returned 10%, 14%, 13%, then 19% at `2026-10-19T22:51:28.7369312Z`, above the fixed 15% cap. It
 stopped at sample 4 without collecting sample 5. No run registered and no compression, extraction, or
 payload evaluation occurred; the condition will not be retried or rebased. Machine record:
-`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\pre-registration-stop.json`
+`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-holdout-20261020-195-entry\pre-registration-stop.json`
 (1,760 bytes, SHA-256 `efd25d722d716c47a0f90423b04aa96830fbd7681d87649bd446ad66f81fbfb4`). This is
 an environmental-gate stop, neither a performance result nor a codec no-go. NICT remains a single
 Japanese Wikipedia-derived stratified family with incomplete member-level overlap audit; it cannot
@@ -2887,7 +2887,7 @@ CLI/API完全復元とmalformed拒否も確認した。CLI archive data suffix 3
 
 ### Count-only KCS1 Canterbury 7-Zip development screen（事前登録）
 
-KCS1候補長のcount-only化後に、以前のschedule-replay CPU停止とは異なる固定source conditionで製品書庫を比較する。入力は既使用のCanterbury 11件（2,810,784 B、固定member manifest）で、開発・調整用のみ。holdoutや一般的な7-Zip優位判定には使わない。campaign `1473558eb3cd40b584259586378602db`、immutable marker `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\campaign-start.json` は4,475 B、SHA-256 `9c47f2eff1217a68e8d036f026d5b1679601f1f1c5f909695fbb1e563bbc45d5`、固定windowは`2026-10-20T01:30:00Z`–`02:00:00Z`。登録前にmarker/source/tool/input hash、input再照合、資源・pending/process/path preflightと5×1秒CPU gate（各値≤15%）を通す。
+KCS1候補長のcount-only化後に、以前のschedule-replay CPU停止とは異なる固定source conditionで製品書庫を比較する。入力は既使用のCanterbury 11件（2,810,784 B、固定member manifest）で、開発・調整用のみ。holdoutや一般的な7-Zip優位判定には使わない。campaign `1473558eb3cd40b584259586378602db`、immutable marker `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\campaign-start.json` は4,475 B、SHA-256 `9c47f2eff1217a68e8d036f026d5b1679601f1f1c5f909695fbb1e563bbc45d5`、固定windowは`2026-10-20T01:30:00Z`–`02:00:00Z`。登録前にmarker/source/tool/input hash、input再照合、資源・pending/process/path preflightと5×1秒CPU gate（各値≤15%）を通す。
 
 20件のserial one-sample registrationでround 0をwarmup、1–9を測定し、round parityでstrategy先行順を交替する。7-Zip 26.04 solid 7z/LZMA2 level 9・64 MiB dictionary、create 1 thread、extract 4 threads。合格基準は候補complete archive size≤7-Zipの95%、候補create/extract中央値がともに7-Zip以下。各run 32 MiB／512 entries／300秒、各child 60秒／160 MiB、総計1,800秒。timed childの5点CPU gateも各点≤15%、最初の超過・失敗で停止し、retryや閾値緩和はしない。KHCがfile mtimeを保存するため、workerは固定入力ZIPの更新時刻を復元しrun間書庫SHAを安定化する。7-Zipは`-mtm=off`のためKHC側がtimestamp metadata分を負担する保守的なサイズ比較で、同一metadata条件の方式比較ではない。
 
@@ -2900,13 +2900,13 @@ KCS1候補長のcount-only化後に、以前のschedule-replay CPU停止とは�
 
 registration、run directory、timed candidate/7-Zip command、性能測定はいずれも0。input validationでは固定された11件のpayload hashを照合したが、候補・7-Zipの性能評価や7-Zip優位/no-go判定は行っていない。環境gate停止であり、候補性能の結論ではない。
 
-停止記録は `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\pre-registration-stop.json`（2,120 B、SHA-256 `49f321cc8123c74987dde4cf634d00ae6dd467f13f7554e92314021d63a3df49`）。結果・資源・停止条件は[`STORAGE.md`](STORAGE.md) SHA-256 `946d7a17b2b22a9362a4029a539fe3d83b160399b495a2a7bb7febdad687da11`（265,408 B）へ追記した。
+停止記録は `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\canterbury-development-kcs1-count-length-20261020\pre-registration-stop.json`（2,120 B、SHA-256 `49f321cc8123c74987dde4cf634d00ae6dd467f13f7554e92314021d63a3df49`）。結果・資源・停止条件は[`STORAGE.md`](STORAGE.md) SHA-256 `946d7a17b2b22a9362a4029a539fe3d83b160399b495a2a7bb7febdad687da11`（265,408 B）へ追記した。
 
 #### Count-only KCS1 NICT single-family holdout preregistration（2026-10-20）
 
 Canterburyの外部CPU gate停止とは別の、新しい固定NICT holdout conditionを事前登録した。195ファイル・5,236,133 Bの既存入力を変更・複製せず、holdout-only（development/training/tuning不可）で評価する。旧NICT campaignや旧profileの再開・時間窓変更ではない。profile/source conditionは`NictWikiCorpusKcs1CountLengthHoldout20261020`。
 
-markerは`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\campaign-start.json`（5,012 B、SHA-256 `136ee134727ced18f6c24314349180b1f87c3d3af9579b4e1b05d130550b151e`、campaign `5f4eae64b259422bb79f00055c789ace`）、固定windowは`2026-10-20T02:30:00Z`–`2026-10-20T03:00:00Z`。実験は未開始で、性能結果・優位判定はない。開始時と各timed command前に5点すべて15%以下のCPU gateを要求し、失敗時は即停止・再試行なし。合格条件はcomplete archive sizeが7-Zipの95%以下、かつcreate/extractの両medianが7-Zip以下。7-Zipは26.04 solid 7z/LZMA2 level 9、64 MiB dictionary、create 1 thread、extract 4 threads。
+markerは`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\campaign-start.json`（5,012 B、SHA-256 `136ee134727ced18f6c24314349180b1f87c3d3af9579b4e1b05d130550b151e`、campaign `5f4eae64b259422bb79f00055c789ace`）、固定windowは`2026-10-20T02:30:00Z`–`2026-10-20T03:00:00Z`。実験は未開始で、性能結果・優位判定はない。開始時と各timed command前に5点すべて15%以下のCPU gateを要求し、失敗時は即停止・再試行なし。合格条件はcomplete archive sizeが7-Zipの95%以下、かつcreate/extractの両medianが7-Zip以下。7-Zipは26.04 solid 7z/LZMA2 level 9、64 MiB dictionary、create 1 thread、extract 4 threads。
 
 新markerと固定入力metadataのprofile validatorは`2026-10-20T01:52:25Z`に通過した。Rust source manifest `2c0335cea83661ff72c81875c01d67bd4737fa2273117e8a5ac7dc9dbb9f3a21`、KHC source manifest `16e8cd800b8696b92d2dc8e928cde73262779845157717d90a94075a650a1088`、CLI `e1776bc7ca53109b77fa9f9f4215a2213f0fae28e7added9d6b9c1fdd9c77b7d`を固定した。前段のmarker schema不足は登録前に検出され、旧marker・stop receiptとも保全済み。全source/script/input pins、資源上限、失敗記録は[`STORAGE.md`](STORAGE.md) SHA-256 `7c2e77d800f6fc661e49de7029b733bff5db5dc4e3d4469415259960a22176e1`（271,130 B）に記録した。NICT単一source familyだけでは一般的優位性を主張しない。
 
@@ -2914,13 +2914,13 @@ markerは`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-co
 
 固定window内のmarker、provenance metadata、source/script/tool pin、290 MiB storage予約、pending-run/process/reparse/output-root確認は通過した。しかし開始CPU gate第1標本は`16.9474%`（`2026-10-20T02:30:32.5890533Z`）で15%上限を超え、残り4標本を取らず停止した。登録、run directory、候補/7-Zip timed command、性能測定はすべて0。runnerの入力検証へ達していないため、このwindowでは入力ZIP/member payload hash検証も行っていない。環境gate停止であり候補性能の結論ではない。同一conditionは閉鎖し、再試行しない。
 
-停止記録は`D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\pre-registration-stop.json`（2,864 B、SHA-256 `9f0caad00ee6d2ef707726742af31202add2fd2f182ae8bd359194023df071a7`）。
+停止記録は`<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\nict-wiki-kcs1-count-length-holdout-20261020-v2\pre-registration-stop.json`（2,864 B、SHA-256 `9f0caad00ee6d2ef707726742af31202add2fd2f182ae8bd359194023df071a7`）。
 
 ### UCI Dry Bean: dedicated one-family holdout screen integration (2026-10-20)
 
 UciDryBeanHoldout20261020 adds only a separate conditional single-family screen of the
 frozen count-only KCS1 candidate against 7-Zip 26.04. The acquisition lock is preserved at
-D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\acquisition-lock.md
+<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\acquisition-lock.md
 (SHA-256 4d1b0d8cbcec51cd9feb7107566865cc37bce39dee605f67dfdc847d78cb7393).
 
 Use UCI Dry Bean ID 602, DOI 10.24432/C50S4B, M. Koklu and Ilker Ali Özkan (2020),
@@ -2938,7 +2938,7 @@ roots. At 03:30:23.9118654 UTC the open-window marker validation, 290 MiB storag
 115 completed lifecycle-record check, process check and non-reparse path check passed. The
 fresh external CPU gate then stopped on sample 3 at 18% (`2026-10-20T03:30:38.5320346+00:00`),
 above the fixed 15% limit. The condition is closed with no retry or window rebase. The retained
-stop record is `D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\pre-registration-stop.json`
+stop record is `<作業フォルダー>\TaskArtifacts\UnLhaRe\goal-restore-20261019\uci-dry-bean-holdout-20261020\pre-registration-stop.json`
 (1,753 B, SHA-256 `d7c878eaed02d39510642549cfd8a8177bb9d79506b6038045832f7227f34342`).
 
 This is holdout-only with no development/training/tuning, parsing, normalization, feature

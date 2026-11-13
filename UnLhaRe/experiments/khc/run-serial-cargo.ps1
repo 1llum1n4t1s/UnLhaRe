@@ -63,7 +63,8 @@ $taskStorage=Assert-KhcStorageBudget -CargoReserveBytes ($TransientMiB*1MB)
 $taskStart=Usage
 $taskLimit=[math]::Min($taskCap,$taskStart+$TransientMiB*1048576L)
 if($taskCap-$taskStart -lt $TransientMiB*1048576L){throw 'insufficient temporary budget before cargo'}
-if([IO.DriveInfo]::new('D:\').AvailableFreeSpace -lt 5368709120L+$TransientMiB*1048576L){throw 'free space budget'}
+# 空き容量はCargo出力先（ユーザー既定TEMP配下のtask cargo）があるドライブで測る。旧D:固定は廃止。
+if([IO.DriveInfo]::new([IO.Path]::GetPathRoot($taskTarget)).AvailableFreeSpace -lt 5368709120L+$TransientMiB*1048576L){throw 'free space budget'}
 $taskInfo=[Diagnostics.ProcessStartInfo]::new()
 $taskInfo.FileName=$taskCargo
 $taskInfo.WorkingDirectory=$taskProjectRoot
@@ -128,7 +129,7 @@ try {
         }
         $taskUsed=Usage;$taskPeak=[math]::Max($taskPeak,$taskUsed)
         if($taskUsed -gt $taskLimit-2097152L){throw 'cargo temporary budget guard (2MiB reserve)'}
-        if([IO.DriveInfo]::new('D:\').AvailableFreeSpace -lt 5368709120L){throw 'free space guard'}
+        if([IO.DriveInfo]::new([IO.Path]::GetPathRoot($taskTarget)).AvailableFreeSpace -lt 5368709120L){throw 'free space guard'}
         if($taskTimer.Elapsed.TotalSeconds -gt 180){throw 'cargo deadline'}
         if($taskProcess.HasExited -and $taskDone[0] -and $taskDone[1]){
             # wrapper終了直後のJob集計遅延だけを許容し、子は同じJob内で最大2秒待つ。

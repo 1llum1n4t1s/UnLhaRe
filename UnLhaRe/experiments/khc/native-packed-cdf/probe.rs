@@ -1,7 +1,7 @@
 //! 同wireのprivate decoderを全raw復元・CDF oracle・破損後回復・両順pairedで検証する。
 #![allow(dead_code)]
 mod block;
-#[path = "../../../src/khc/record.rs"]
+#[path = "../../../src/lhc/record.rs"]
 mod record;
 use std::path::Path;
 type Result<T> = std::result::Result<T, String>;
@@ -99,7 +99,7 @@ fn timed(rows: &[Row<'_>], new: bool, caller: usize) -> Result<Vec<f64>> {
             }
             v
         } else {
-            unlhare::khc::decompress_block(row.frame).map_err(|e| e.to_string())?
+            unlhare::lhc::decompress_block(row.frame).map_err(|e| e.to_string())?
         };
         let ms = clock.elapsed().as_secs_f64() * 1000.;
         if output != row.raw {
@@ -120,7 +120,7 @@ fn run() -> Result<()> {
     if args.len() != 4 || !matches!(args[3].as_str(), "e2e" | "normal" | "reverse") {
         return Err("args archive corpus mode".into());
     }
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if saved.len() != 457017 || entries.len() != 11 {
         return Err("fixed archive".into());
@@ -190,7 +190,7 @@ fn run() -> Result<()> {
             ram(caller + 3 * (n + 40))?;
             let raw: Vec<_> = (0..n).map(|i| (i as u8).wrapping_mul(53)).collect();
             let frame = record::pack(&raw, &[], &raw, 0)?;
-            if record::decode(&frame)?.0 != raw || unlhare::khc::decompress_block(&frame).map_err(|e| e.to_string())? != raw {
+            if record::decode(&frame)?.0 != raw || unlhare::lhc::decompress_block(&frame).map_err(|e| e.to_string())? != raw {
                 return Err("stored boundary".into());
             }
             synthetic += 1;
@@ -247,7 +247,7 @@ fn main() {
     }
 }
 
-// recordの軽量validatorが要求する親関数。原src/khc/mod.rsの検査を省略せず再現する。
+// recordの軽量validatorが要求する親関数。原src/lhc/mod.rsの検査を省略せず再現する。
 fn validate_legacy_frame(frame: &[u8], expected: usize, archive_revision: u8) -> unlhare::Result<()> {
     use unlhare::Error;
     if expected > block::MAX_INPUT || frame.len() < block::HEADER || frame.len() > expected + block::HEADER {

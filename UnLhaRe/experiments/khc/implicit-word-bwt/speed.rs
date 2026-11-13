@@ -27,7 +27,7 @@ fn decode(row: &Row<'_>, candidate: bool, caller: usize) -> Result<Vec<u8>> {
     if candidate && !row.selected.is_empty() {
         implicit::decode(&row.selected, caller).map(|x| x.0)
     } else {
-        unlhare::khc::decompress_block(row.old).map_err(|e| e.to_string())
+        unlhare::lhc::decompress_block(row.old).map_err(|e| e.to_string())
     }
 }
 fn timed(row: &Row<'_>, candidate: bool, caller: usize) -> Result<f64> {
@@ -48,7 +48,7 @@ fn run() -> Result<()> {
         return Err("archive corpus order".into());
     }
     let reverse = args[3] == "reverse";
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if saved.len() != 457017 || entries.len() != 11 {
         return Err("fixed source archive".into());

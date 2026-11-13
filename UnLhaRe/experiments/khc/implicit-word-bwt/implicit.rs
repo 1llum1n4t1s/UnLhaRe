@@ -439,7 +439,7 @@ pub fn encode(raw: &[u8], caller: usize) -> Result<(Vec<u8>, Stats)> {
     let stream_len = stream.len();
     let inner_bound = stream_len.checked_add(HEADER).ok_or("native frame bound overflow")?;
     budget.native(stream.capacity(), inner_bound)?;
-    let inner = unlhare::khc::compress_block(&stream).map_err(|error| format!("native encode: {error}"))?;
+    let inner = unlhare::lhc::compress_block(&stream).map_err(|error| format!("native encode: {error}"))?;
     budget.native(stream.capacity(), inner.capacity())?;
     if inner.len() < HEADER || inner.len() > inner_bound || inner.get(..8) != Some(NATIVE_MAGIC.as_slice()) || get32(&inner, 12)? != stream_len {
         return Err("native encoder frame invariant".into());
@@ -515,7 +515,7 @@ pub fn decode(frame: &[u8], caller: usize) -> Result<(Vec<u8>, Stats)> {
     }
     // Inner revision/flags/method/exact extent/CRCは変更していないnative decoderが検査する。
     budget.native(0, stream_len)?;
-    let stream = unlhare::khc::decompress_block(body).map_err(|error| format!("native decode: {error}"))?;
+    let stream = unlhare::lhc::decompress_block(body).map_err(|error| format!("native decode: {error}"))?;
     budget.native(0, stream.capacity())?;
     if stream.len() != stream_len {
         return Err("native decoded stream length".into());

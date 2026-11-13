@@ -8,7 +8,7 @@ $module=Get-Module storage-lifecycle
 $snapshot=& $module {
     param($sha)
     Assert-KhcVerifierQuarantineClear
-    $path='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-build-protocol.json'
+    $path=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-build-protocol.json')
     $bytes=Read-KhcBoundedSnapshotBytes $path 32768
     $protocol=ConvertFrom-KhcBoundedJsonSnapshot $bytes $sha 32768
     Assert-KhcMacCdfCandidateProtocol $protocol

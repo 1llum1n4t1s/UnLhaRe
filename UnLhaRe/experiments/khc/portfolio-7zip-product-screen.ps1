@@ -5,9 +5,9 @@ param(
     [Parameter(Mandatory)][ValidateSet('eGovLawXml20261016','AozoraDevelopment20261020','CanterburyDevelopmentKcs1CountLength20261020','JmaTokyoDaily2010_2025Holdout20261020','TokyoResidentRegister202101Holdout20261020','LivedoorNews2012Holdout20261020','NictWikiCorpusHoldout20261020','NictWikiCorpusKcs1CountLengthHoldout20261020','UciDryBeanHoldout20261020','UciTabularDevelopment20261020')][string]$CorpusProfile,
     [Parameter(Mandatory)][ValidateRange(0,9)][int]$Round,
     [Parameter(Mandatory)][ValidateSet('portfolio-trial','7zip')][string]$Strategy,
-    [string]$KhcExecutable = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe',
+    [string]$KhcExecutable = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'),
     [string]$SevenZipPath = 'C:\Program Files\7-Zip\7z.exe',
-    [string]$InputRecoveryZip = 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip',
+    [string]$InputRecoveryZip = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\egov-screen-20261020\input.zip'),
     [string]$CampaignManifestSha256
 )
 Set-StrictMode -Version Latest
@@ -370,9 +370,9 @@ $workerSha=Hash $PSCommandPath
 $registration=Get-Content -LiteralPath (Plain $env:KHC_STORAGE_RUN_RECORD) -Raw | ConvertFrom-Json
 $runId=[string]$registration.run_id
 $pins=@(
-    @{ path=$KhcExecutable; expected_path='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'; sha='3dd0e0503ed6ec11c90ad1ff9ee69b2e34c564f8710871ab182dd684f27b7b4b' },
+    @{ path=$KhcExecutable; expected_path=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'); sha='3dd0e0503ed6ec11c90ad1ff9ee69b2e34c564f8710871ab182dd684f27b7b4b' },
     @{ path=$SevenZipPath; expected_path='C:\Program Files\7-Zip\7z.exe'; sha='95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53' },
-    @{ path=$InputRecoveryZip; expected_path='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip'; sha='861ce8956f8347b34223466d5fff93360d1901b6aa42cca1238965d590e73099' },
+    @{ path=$InputRecoveryZip; expected_path=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\egov-screen-20261020\input.zip'); sha='861ce8956f8347b34223466d5fff93360d1901b6aa42cca1238965d590e73099' },
     @{ path=(Join-Path $PSScriptRoot 'storage-lifecycle.psm1'); expected_path='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\storage-lifecycle.psm1'; sha='e3953d42595b66aba8a40da393e13bfd32e269b75c7d443e207dbfc9a202ba0c' },
     @{ path=(Join-Path $PSScriptRoot 'disk-budget.ps1'); expected_path='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\disk-budget.ps1'; sha='506e4c68dc05734bc1a0c02bac6f81d4677e0bcffd9b9fa2b7bd67d53319bdcd' }
 )

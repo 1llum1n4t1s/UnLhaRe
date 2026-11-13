@@ -9,21 +9,21 @@ use std::{fs::File, io::Read};
 fn encoded(raw: &[u8]) -> Result<(Vec<u8>, Vec<u8>, u64), String> {
     let before = old::encode_hybrid(raw, true)?.0;
     let after = new::encode_hybrid(raw, true)?.0;
-    let public = unlhare::khc::compress_block_with_strategy(
+    let public = unlhare::lhc::compress_block_with_strategy(
         raw,
-        unlhare::khc::BlockStrategy::BinaryAdaptive,
+        unlhare::lhc::BlockStrategy::BinaryAdaptive,
     )
     .map_err(|e| e.to_string())?;
     if public != before
         || old::decode(&before)?.0 != raw
         || new::decode(&after)?.0 != raw
-        || unlhare::khc::decompress_block(&before).map_err(|e| e.to_string())? != raw
+        || unlhare::lhc::decompress_block(&before).map_err(|e| e.to_string())? != raw
     {
         return Err("public baseline/frame restore".into());
     }
     if new::decode(&before).is_ok()
         || old::decode(&after).is_ok()
-        || unlhare::khc::decompress_block(&after).is_ok()
+        || unlhare::lhc::decompress_block(&after).is_ok()
     {
         return Err("cross format accepted".into());
     }

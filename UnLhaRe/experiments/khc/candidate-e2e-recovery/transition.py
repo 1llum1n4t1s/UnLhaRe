@@ -10,7 +10,7 @@ import time
 import types
 
 HERE=Path(__file__).absolute().parent
-READER_SHA='e8cd9f7b1147bed9bb69210a913404f380b6875df6d911becd8e2cf7fa9bc105'
+READER_SHA='7165968774be9393bd7a77bc2bacd119b57d638ce0d6f83edd1a2f7b3c4f0d35'
 FENCE_SHA='d0e055cab949bd9d22c1a329698a9a27f5f58bc994fff33b67182c6b65974c46'
 MIN_REMAINING_NS=330_000_000_000
 MISSING_INTEGRATIONS=('authenticated-windows-mac-live-bridge','native-lifecycle-and-cargo-locks',

@@ -22,7 +22,7 @@ fn run() -> Result<()> {
     if args.len() != 3 {
         return Err("archive/corpus required".into());
     }
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
         .map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if entries.len() != 11 || saved.len() != 466395 {
@@ -46,7 +46,7 @@ fn run() -> Result<()> {
         at += len + 4;
         let raw =
             std::fs::read(Path::new(&args[2]).join(&entry.name)).map_err(|e| e.to_string())?;
-        if unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())? != raw {
+        if unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())? != raw {
             return Err("public full bytes".into());
         }
         if frame[10] != 1 {
@@ -87,7 +87,7 @@ fn run() -> Result<()> {
                 phases[i].push(*value);
             }
             let clock = Instant::now();
-            let native = unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())?;
+            let native = unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())?;
             public_ms.push(clock.elapsed().as_secs_f64() * 1000.0);
             if native != raw {
                 return Err("paired public bytes".into());

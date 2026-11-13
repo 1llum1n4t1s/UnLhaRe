@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 開発中の独自形式KHCをLHC（LHA High Compression、拡張子`.lhc`）へ改名。Rust APIは`unlhare::lhc`、CLIは`lhc-create`/`lhc-list`/`lhc-test`/`lhc-extract`、仕様は`LHC_FORMAT.md`。書庫・frameのmagicも`KHC*`から`LHC*`へ変更したため、改名前に作成した開発版書庫は読めない。LHAの圧縮方式ではなく、既存LHAツールとの互換性はない。
+
 - ABI 1のAPI level 6としてLH4作成と、LH4/LH5/LH6/LH7の明示的な高圧縮オプションをRust・C JSON・CLI・.NETへ追加。標準と2パス最適化の本文サイズを比較して小さい方を採用し、LH0は無圧縮を維持する。既定の標準圧縮と公開版1.0.4は変更しない。高圧縮は追加の時間・入力サイズ比例の作業メモリを必要とする。
 
 ## 1.0.4 - 2026-09-18

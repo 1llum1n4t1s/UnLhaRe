@@ -1,7 +1,7 @@
 //! 複数入力をまとめて計測するための、メモリ内専用 manifest。
 //! 製品の永続形式ではなく、ファイルシステムへ展開する機能も持たない。
 
-use crate::khc::{Error, MAX_INPUT};
+use crate::lhc::{Error, MAX_INPUT};
 
 const MAGIC_V0: &[u8; 8] = b"KHSGRP0\0";
 const MAGIC_V1: &[u8; 8] = b"KHSGRP1\0";
@@ -193,7 +193,7 @@ pub(crate) fn parse(input: &[u8]) -> Result<Vec<Entry<'_>>, Error> {
 #[cfg(test)]
 mod tests {
     use super::{Entry, MAX_ENTRIES, parse};
-    use crate::khc::{Algorithm, Error, MAX_INPUT, Options, decode, encode};
+    use crate::lhc::{Algorithm, Error, MAX_INPUT, Options, decode, encode};
 
     fn fixture(entries: &[(&[u8], &[u8])]) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -353,7 +353,7 @@ mod tests {
             let options = Options {
                 algorithm,
                 beam_width: 2,
-                beam_matches: crate::khc::BeamMatches::Bt4,
+                beam_matches: crate::lhc::BeamMatches::Bt4,
                 ..Options::default()
             };
             // entry別の往復ではなく、名前・境界表を含むgroup全体を1回で符号化する。

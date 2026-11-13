@@ -9,7 +9,7 @@ fn allocate<T: Clone>(n: usize, value: T) -> Result<Vec<T>> {
     Ok(out)
 }
 mod candidate;
-#[path = "../../../src/khc/block/packed.rs"]
+#[path = "../../../src/lhc/block/packed.rs"]
 mod original;
 fn check(
     last: &[u16],

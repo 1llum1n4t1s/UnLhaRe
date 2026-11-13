@@ -1,30 +1,30 @@
 //! private KHT1: 固定MDL treeの意味tokenを局所整数区間へ投影する。
 #![allow(dead_code)]
-#[path = "../../../src/khc/block/bundle.rs"]
+#[path = "../../../src/lhc/block/bundle.rs"]
 mod bundle;
-#[path = "../../../src/khc/block/bwt.rs"]
+#[path = "../../../src/lhc/block/bwt.rs"]
 mod bwt;
-#[path = "../../../src/khc/block/codebook.rs"]
+#[path = "../../../src/lhc/block/codebook.rs"]
 mod codebook;
-#[path = "../../../src/khc/block/counts.rs"]
+#[path = "../../../src/lhc/block/counts.rs"]
 mod counts;
 #[path = "../flat-token-ans/entropy.rs"]
 mod entropy;
-#[path = "../../../src/khc/block/frontend.rs"]
+#[path = "../../../src/lhc/block/frontend.rs"]
 mod frontend;
-#[path = "../../../src/khc/block/grammar.rs"]
+#[path = "../../../src/lhc/block/grammar.rs"]
 mod grammar;
-#[path = "../../../src/khc/block/histogram.rs"]
+#[path = "../../../src/lhc/block/histogram.rs"]
 mod histogram;
-#[path = "../../../src/khc/block/model.rs"]
+#[path = "../../../src/lhc/block/model.rs"]
 mod model;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod multi_range;
-#[path = "../../../src/khc/block/packed.rs"]
+#[path = "../../../src/lhc/block/packed.rs"]
 mod packed;
-#[path = "../../../src/khc/block/packet.rs"]
+#[path = "../../../src/lhc/block/packet.rs"]
 mod packet;
-#[path = "../../../src/khc/block/paid_model.rs"]
+#[path = "../../../src/lhc/block/paid_model.rs"]
 mod paid_model;
 #[path = "../tree-span-compiled/program.rs"]
 mod program;
@@ -389,7 +389,7 @@ pub fn encode_from_legacy(raw: &[u8], legacy: &[u8]) -> Result<Option<(Vec<u8>, 
             ..Stats::default()
         };
         gate(&mut s, 12 * MAX_INPUT)?;
-        if unlhare::khc::decompress_block(legacy).map_err(|e| e.to_string())? != raw {
+        if unlhare::lhc::decompress_block(legacy).map_err(|e| e.to_string())? != raw {
             return Err("non-MDL legacy raw mismatch".into());
         }
         return Ok(None);

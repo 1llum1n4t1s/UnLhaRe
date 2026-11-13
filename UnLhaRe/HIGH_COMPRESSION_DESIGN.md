@@ -1,24 +1,24 @@
-# 独自高圧縮方式 KHC — 設計案 0
+# 独自高圧縮方式 LHC — 設計案 0
 
-状態: **LZ改良・適応rANSと直接文脈の試作あり・性能目標未達成・製品形式未凍結**。KHC（Kagayoi High Compression）は作業上の仮称で、登録済み形式名ではない。[実験仕様と操作](experiments/khc/README.md)は本設計全体の完成版ではない。[固定した開発/holdout集合](experiments/khc/CORPORA.md)を使い、局所的な改善を全体目標の達成へ読み替えない。
+状態: **LZ改良・適応rANSと直接文脈の試作あり・性能目標未達成・製品形式未凍結**。LHC（LHA High Compression）はLHAの後継を意図した独自形式の名称で、旧称はKHC。LHAの圧縮方式（LH4〜LH7の高圧縮オプションを含む）ではなく、既存LHAツールでは展開できない。`experiments/khc/` は旧称時代の研究記録として名前とパスをそのまま残す。[実験仕様と操作](experiments/khc/README.md)は本設計全体の完成版ではない。[固定した開発/holdout集合](experiments/khc/CORPORA.md)を使い、局所的な改善を全体目標の達成へ読み替えない。
 
 2026-09-30の独立BWT/next-use binary rank-run＋4予測器混合試作は、固定Canterbury groupで505,046 bytesとなり、483,599-byteの開発screen上限を21,447 bytes超えたため不採用。42回CLI E2E・28チェックと独立artifact照合を通ったが、時間/holdoutは評価していない。外部libbscが同入力の参考screenで閾値を通ることと、独自codecの達成は別である。不採用sourceは再現専用経路へ隔離し、出力を変えない予測損失観測で次の設計仮説を反証している。文字別多値rank文法は診断上の符号長が既存rank処理を上回り、7決定種類の混合器状態分離も推定501,769 bytesで上限を18,170 bytes超えるため、新codecには進めない。既存32-bit context keyのslot alias除去は混合器分離と併用せず、推定504,165 bytesで上限を20,566 bytes超過したため同様に不採用。係数違いのsweep、製品codec/default変更、総合目標の縮小はしていない。再現経路・hash・採否は[開発記録](experiments/khc/DEVELOPMENT.md)を参照。
 
 2026-09-26には、適応確率のjournalを約512KiBごとのplan境界で逆順rANS符号化する研究backendを追加した。固定Canterbury groupは483,197 bytes。Rangeとの内部codec比較を各順序7対行い、復号はpairごとの相対差中央値で25.31〜26.28%短縮した。圧縮時間の差は−1.76〜+1.62%と順序で反転し、圧縮の高速化は確認できない。journalの上限は18.25MiB、別の5反復でprocess private bytes中央値は約51.84MiB（Range約35.84MiB）。既定はRangeのまま。詳細は[開発記録](experiments/khc/DEVELOPMENT.md)を参照し、この内部比較時間を以下の起動・I/O込み7-Zip測定と直接比較しない。
 
-同日の現行Release実体と7-Zip 26.03を起動・I/O込みnative-solidで各5反復比較した結果は、KHC/7-Zipが483,197/483,599 bytes、圧縮1,084.7545/626.2071 ms、復号44.4644/41.3077 msだった。11 fileの本文・名前・長さ・決定性を照合した。KHCは402 bytes小さいが圧縮約1.73倍、復号約7.64%遅く、圧縮時private memoryも53,747,712/37,044,224 bytesと多い。総合目標は未達であり、次の性能課題はBT/Beamの圧縮計算量とencoder memoryである。
+同日の現行Release実体と7-Zip 26.03を起動・I/O込みnative-solidで各5反復比較した結果は、LHC/7-Zipが483,197/483,599 bytes、圧縮1,084.7545/626.2071 ms、復号44.4644/41.3077 msだった。11 fileの本文・名前・長さ・決定性を照合した。LHCは402 bytes小さいが圧縮約1.73倍、復号約7.64%遅く、圧縮時private memoryも53,747,712/37,044,224 bytesと多い。総合目標は未達であり、次の性能課題はBT/Beamの圧縮計算量とencoder memoryである。
 
 Windowsの連続仮想領域・需要commit journalも評価したが、最終ビルドの逆順paired測定で復号が3.21%遅くなり、事前の2%基準を超えたため撤去した。private bytes約15.15MiB削減と通常/取消/panic後の全域解放は確認できたものの、採用の再現性は不足している。初回の速度gate通過だけを採用結果として扱わず、現行sourceは従来のVec journalである。同処方は再開せず、記録は[開発比較](experiments/khc/DEVELOPMENT.md)へ残す。
 
 適応更新順とLZ tokenを変えず、eventを4個のrANS stateへ交互に割り当てる固定候補も評価した。独立実装照合を含む164件CLI E2Eと483,259-byteのsize gateは通過したが、同一Release exeの1state対4state・両順序各7対で復号は10.61〜11.33%遅化した。事前の復号10%以上短縮条件を満たさないため候補を撤去し、元source/通常exeのSHA一致を確認した。4state一般の否定ではないが、同じ逐bitモデルへlaneだけを足す構成は採用しない。native-solid/holdout測定は行わず、通常の1state rANSと既定Rangeは変えていない。
 
-研究用の単一group入口（`experiments/khc/solid.rs` / `khc_lab group-bench`）では、平坦な名前・長さ表と本文を1ストリームへまとめ、ファイル間の履歴共有と全内容の復元を検証する。製品用solid group・索引・資源契約の完成ではなく、現在のcodec入力上限64 MiB内の段階実装である。
+研究用の単一group入口（`experiments/khc/solid.rs` / `lhc_lab group-bench`）では、平坦な名前・長さ表と本文を1ストリームへまとめ、ファイル間の履歴共有と全内容の復元を検証する。製品用solid group・索引・資源契約の完成ではなく、現在のcodec入力上限64 MiB内の段階実装である。
 
-`group-encode` / `group-list` / `group-decode`と`experiments/khc/compare-solid.ps1`で、7-Zip自身の11ファイル単一solid blockとの名前・長さ・本文比較も行う。2026-09-24時点の研究線はBT5/Blended/W2/B8192/depth48で、通常Match最安親限定、境界外第2親省略、非境界Rep3省略、Literal payloadのblock共有、距離footer価格の4-bit部分和、`extend_match`のinline化、BT5内側ループの不変条件hoist、range encoder・decoderのchecked/unchecked分離、branchless確率更新など、出力同値または個別に測定した近似を使用する。最新のcurrent sourceから作ったRelease実体によるnative-solid 5反復ではKHC 483,130 bytes・圧縮中央値964.1873 ms・復号48.9495 ms、7-Zip 26.03 x64は483,599 bytes・545.7255 ms・38.8625 ms。KHCは469 bytes小さいが圧縮は約1.77倍、復号は約1.26倍遅く、総合目標は未達。比較reportは[開発記録](experiments/khc/DEVELOPMENT.md)に記録した。これは固定開発11入力の比較であり、属性・ディレクトリ・選択展開・同一hard memory上限を備えた実用書庫や未使用holdoutの結果ではない。
+`group-encode` / `group-list` / `group-decode`と`experiments/khc/compare-solid.ps1`で、7-Zip自身の11ファイル単一solid blockとの名前・長さ・本文比較も行う。2026-09-24時点の研究線はBT5/Blended/W2/B8192/depth48で、通常Match最安親限定、境界外第2親省略、非境界Rep3省略、Literal payloadのblock共有、距離footer価格の4-bit部分和、`extend_match`のinline化、BT5内側ループの不変条件hoist、range encoder・decoderのchecked/unchecked分離、branchless確率更新など、出力同値または個別に測定した近似を使用する。最新のcurrent sourceから作ったRelease実体によるnative-solid 5反復ではLHC 483,130 bytes・圧縮中央値964.1873 ms・復号48.9495 ms、7-Zip 26.03 x64は483,599 bytes・545.7255 ms・38.8625 ms。LHCは469 bytes小さいが圧縮は約1.77倍、復号は約1.26倍遅く、総合目標は未達。比較reportは[開発記録](experiments/khc/DEVELOPMENT.md)に記録した。これは固定開発11入力の比較であり、属性・ディレクトリ・選択展開・同一hard memory上限を備えた実用書庫や未使用holdoutの結果ではない。
 
 2026-09-24の幅探索更新では、同じRelease exeを使ったCanterbury開発11件の5反復で、速度重視W2 controlが483,312 bytes／圧縮985.3388 ms／展開52.7822 ms、W3境界親制限候補が481,746 bytes／1,380.7704 ms／50.8899 msだった。7-Zip 26.03は各runで483,599 bytes、W2比較時552.1021 ms／46.0403 ms、W3比較時547.6577 ms／41.9660 ms。W3は開発集合で7-Zipより0.383%小さいが圧縮2.521倍・展開1.213倍遅く、採用しない。幅2/3の詳細は[開発記録](experiments/khc/DEVELOPMENT.md)に記録した。これは小さな固定開発集合の候補比較であり、評価集合・全カテゴリ・ピークメモリ・未使用holdoutを含む目標達成ではない。
 
-追加した共有phrase表＋独立KHC block候補は、1 MiB/2 MiBとも固定Canterbury groupのframeサイズが連続KHC基準より6.9〜11.6 KiB大きく、phraseなしblock候補よりさらに300〜837 bytes悪化したため撤去した。詳細は[開発記録](experiments/khc/DEVELOPMENT.md)を参照。独立block化やphrase辞書の有効性を示す結果ではなく、総合性能目標は引き続き未達である。
+追加した共有phrase表＋独立LHC block候補は、1 MiB/2 MiBとも固定Canterbury groupのframeサイズが連続LHC基準より6.9〜11.6 KiB大きく、phraseなしblock候補よりさらに300〜837 bytes悪化したため撤去した。詳細は[開発記録](experiments/khc/DEVELOPMENT.md)を参照。独立block化やphrase辞書の有効性を示す結果ではなく、総合性能目標は引き続き未達である。
 
 ## XOR前の意味context診断 — 2026-09-30
 
@@ -56,7 +56,7 @@ minimal PDBのnearest-public名による誤帰属を訂正し、全frame一致�
 
 ## 直近の復号最適化 — 2026-09-24
 
-LZ matchの復号をbyte単位の重複コピーから、最大4 KiBごとの安全なoverlap copyへ変更した。対照・候補の各Release実体で同一483,312-byte frame（SHA-256 `EA3FD394E9F3F277293939C497A79A17AE110CDA22A6289979C0AE3E3DFDCA42`、復元2,811,006 bytes）を7対・各100回測定し、KHC decoder中央値は29.404827 msから28.679377 msへ2.47%短縮した。全11入力のencoder frame hash 22件も対照と一致した。統合solid 5反復ではKHC 483,312 bytes / 972.7697 ms encode / 46.7769 ms decode、7-Zip 26.03は483,599 bytes / 530.4491 ms / 37.9431 msで、KHCは0.059%小さい一方、encodeは約1.83倍、decodeは約1.23倍遅い。したがって局所的なdecoder改善であり、7-Zip超えではない。測定根拠・実行ファイルhash・pair値は[開発記録](experiments/khc/DEVELOPMENT.md)を参照。holdoutは未使用。
+LZ matchの復号をbyte単位の重複コピーから、最大4 KiBごとの安全なoverlap copyへ変更した。対照・候補の各Release実体で同一483,312-byte frame（SHA-256 `EA3FD394E9F3F277293939C497A79A17AE110CDA22A6289979C0AE3E3DFDCA42`、復元2,811,006 bytes）を7対・各100回測定し、LHC decoder中央値は29.404827 msから28.679377 msへ2.47%短縮した。全11入力のencoder frame hash 22件も対照と一致した。統合solid 5反復ではLHC 483,312 bytes / 972.7697 ms encode / 46.7769 ms decode、7-Zip 26.03は483,599 bytes / 530.4491 ms / 37.9431 msで、LHCは0.059%小さい一方、encodeは約1.83倍、decodeは約1.23倍遅い。したがって局所的なdecoder改善であり、7-Zip超えではない。測定根拠・実行ファイルhash・pair値は[開発記録](experiments/khc/DEVELOPMENT.md)を参照。holdoutは未使用。
 
 ## 1. 目的と達成条件
 
@@ -193,7 +193,7 @@ M_total = M_input_cache + M_manifest + M_output_queues
 
 ## 5. 保存形式と既存LZHの境界
 
-KHCは別コンテナ・別magicとし、`-lhx-`、LH10、LH4〜7の識別子を流用しない。拡張子は未予約の仮称`.khc`とする。既存LHAデコーダーでの展開互換性はない。UnLhaReへの統合時はcodecと書庫形式の選択を別にする。
+LHCは別コンテナ・別magicとし、`-lhx-`、LH10、LH4〜7の識別子を流用しない。拡張子は`.lhc`とする（2026-11-13にfileinfo.com・file-extensions.orgで未登録を確認。公的な予約ではない）。既存LHAデコーダーでの展開互換性はない。UnLhaReへの統合時はcodecと書庫形式の選択を別にする。
 
 初期フレーム案:
 
@@ -219,12 +219,12 @@ coding blockのstored切替でも履歴は入力バイトで更新する。確�
 
 実行ファイルの版・SHA-256、OS、CPU、物理core数、ISA、RAM、電源設定、コンパイラー、git SHA、コマンド、スレッド数、辞書、solid設定、メモリ予算を記録する。`-mx=9`だけでは辞書・並列化の条件を固定できないため、実際の設定を記録する。
 
-基準は当日確認できる安定版7-Zipを固定し、途中で更新しない。基本は7z/LZMA2、最高圧縮、辞書64/256/1024 MiB、1/2/物理core数スレッドのうち同一メモリ予算で実行可能な組合せ。KHCだけに大きな辞書や追加時間を与えた比較は別枠にする。
+基準は当日確認できる安定版7-Zipを固定し、途中で更新しない。基本は7z/LZMA2、最高圧縮、辞書64/256/1024 MiB、1/2/物理core数スレッドのうち同一メモリ予算で実行可能な組合せ。LHCだけに大きな辞書や追加時間を与えた比較は別枠にする。
 
 比較は2系統に分ける。
 
 1. **codec比較**: 同じバイト列・同じ境界・変換なし。形式ヘッダー込みとpayloadのみを両方報告する。
-2. **実用書庫比較**: 同じファイル集合・メタデータ要件。双方に並べ替え・solid・標準フィルターを許可し、最終書庫サイズで比較する。KHCだけsolidにする比較は不可。
+2. **実用書庫比較**: 同じファイル集合・メタデータ要件。双方に並べ替え・solid・標準フィルターを許可し、最終書庫サイズで比較する。LHCだけsolidにする比較は不可。
 
 7-Zip側の探索候補は事前登録し、入力ごとの最小サイズを基準にする場合は候補探索の全時間も同条件で集計する。単一設定同士の速度と、複数試行から選んだ最小サイズを一つの結果として混ぜない。LZMA2に勝っても7-Zip全方式に勝ったとは言わず、テキストでは7z/PPMdも補助比較する。
 
@@ -244,7 +244,7 @@ coding blockのstored切替でも履歴は入力バイトで更新する。確�
 
 各条件はwarm-up後に最低5回、実行順を交互化して測定する。wall time、CPU time、圧縮／展開のMiB/s、peak RSS、commit、退避I/O量を保存する。長い実行は温度とclock低下を記録し、同時に他の高負荷試験を走らせない。
 
-同等の入力で圧縮サイズ、圧縮時間、展開時間の比を`KHC / reference`として記録する。空ファイルなど分母が0になるpayload指標は別扱いとし、最終書庫サイズでは必ず計上する。カテゴリ別、全体、中央値、幾何平均、最大の悪化を報告し、良い結果だけを抜き出さない。
+同等の入力で圧縮サイズ、圧縮時間、展開時間の比を`LHC / reference`として記録する。空ファイルなど分母が0になるpayload指標は別扱いとし、最終書庫サイズでは必ず計上する。カテゴリ別、全体、中央値、幾何平均、最大の悪化を報告し、良い結果だけを抜き出さない。
 
 元のSHA-256と展開結果が全件一致しなければ性能評価を無効とする。異常終了・メモリ超過・timeoutを結果から黙って除外しない。圧縮率の判定と速度・メモリの判定を分け、全項目を通過した場合だけ総合性能目標の達成を宣言する。
 
@@ -262,7 +262,7 @@ coding blockのstored切替でも履歴は入力バイトで更新する。確�
 | F | 7-Zipとのholdout比較、保存仕様1の凍結 | 目標未達なら研究版のまま。実測に応じて設計を変更 |
 | G | Rust/C/.NETと製品への統合 | 旧形式との識別、上限・途中失敗・公開契約、移行案内を検証 |
 
-実装予定の責務は`codec/khc/{matchfinder,parser,model,range,encoder,decoder}`と専用container層に分離する。初期は実験用の別入口を使い、既存LHAの`Method`に仮番号を追加しない。現行のAPI level 6や配布版1.0.4へ未完成codecを混入させない。
+実装予定の責務は`codec/lhc/{matchfinder,parser,model,range,encoder,decoder}`と専用container層に分離する。初期は実験用の別入口を使い、既存LHAの`Method`に仮番号を追加しない。現行のAPI level 6や配布版1.0.4へ未完成codecを混入させない。
 
 サイズ改善が僅かでCPU負担が大きい機能、特定コーパスだけで勝つ機能、メモリを増やすだけで勝つ機能は採用を再検討する。LZ経路が基準を越えられない場合は直接文脈方式を評価し、双方が未達なら未達と報告する。
 
@@ -272,7 +272,7 @@ coding blockのstored切替でも履歴は入力バイトで更新する。確�
 
 同長一致について近距離と推定価格優先を比較する研究設定も追加した。価格優先は合計サイズをさらに766 bytes縮めた一方、価格再利用後でも同時期の近距離優先比で圧縮時間が約13%長い。これは状態別のrep4や将来予測を含まない局所近似である。比較候補としてのみ保持し、既定の候補保持方針や保存形式は変更しない。
 
-続く区間計測では状態展開と一致探索の負担が大きかった。保持候補が満杯で新候補の費用が現存の最大費用以上なら、同一状態の更新にも別状態の置換にもならないため、状態比較前に除外する。この出力不変の早期除外は旧処理との全フィールド照合と全11 frameのhash一致を通過し、KHC内部時間を約13%削減した。旧処理でも不採用となる候補だけを省くもので、探索幅や候補集合の削減ではない。研究用計測のinclusive時間と7-Zip比較のCLI時間は分離する。
+続く区間計測では状態展開と一致探索の負担が大きかった。保持候補が満杯で新候補の費用が現存の最大費用以上なら、同一状態の更新にも別状態の置換にもならないため、状態比較前に除外する。この出力不変の早期除外は旧処理との全フィールド照合と全11 frameのhash一致を通過し、LHC内部時間を約13%削減した。旧処理でも不採用となる候補だけを省くもので、探索幅や候補集合の削減ではない。研究用計測のinclusive時間と7-Zip比較のCLI時間は分離する。
 
 さらに8 byte一致比較の不一致位置をLE整数のXORと末尾ゼロbit数で取得し、byte単位の再走査を省いた。論理比較予算・callback位置・候補列はscalar参照と一致し、通常CLIのLz/Nearest/PricedTieの全11出力も旧候補と同一。内部圧縮時間は観測した開発集合で約5.6〜6.8%短縮したが、通常CLIでの7z比はまだ約9.77倍であり、全体目標の合格ではない。
 
@@ -324,9 +324,9 @@ Q32の可変分母除算を、binary64商推定とchecked整数補正・残余�
 
 wide推定を非inline helperへ分離した次候補は、旧数値56191件の商/flags同bytesと独立監査を通過し、実codecでもsmall側がwide変換を実行しない生成構造を確認した。codec71 checks/130 CLI、旧版との全frame一致・相互復号と独立raw/pins監査も通過、全書庫483469Bを維持する。ただし正常比較は開始前5観測を通過後、round3候補の起動前CPU17%で拒否された。全9回未完のため速度・採用は未判定、部分値から改善率を算出しない。固定gateとSAIS Q48研究基準を維持し、次はpredict/update間の重複計算の厳密な省略可能性を調査する。総合7-Zip超過、4環境、holdout、製品統合は未達である。
 
-- [7-Zip LZMA SDK](https://www.7-zip.org/sdk.html): 比較対象のLZMA/LZMA2、辞書、整数演算の復号についての一次資料。KHCの優位性を示す資料ではない。
+- [7-Zip LZMA SDK](https://www.7-zip.org/sdk.html): 比較対象のLZMA/LZMA2、辞書、整数演算の復号についての一次資料。LHCの優位性を示す資料ではない。
 - [7z形式](https://www.7-zip.org/7z.html): 複数方式とコンテナの区別の参照。
-- [ANS原論文](https://arxiv.org/abs/1311.2540): エントロピー符号化候補の原理。rANSの採否やKHCの速度は未検証。
+- [ANS原論文](https://arxiv.org/abs/1311.2540): エントロピー符号化候補の原理。rANSの採否やLHCの速度は未検証。
 - [ZPAQ原作者の資料](https://mattmahoney.net/dc/zpaq.html): 文脈方式やsolid以外の設計を比較する参照。コードやVMを採用する決定ではない。
 - [lzbench](https://github.com/inikep/lzbench): 圧縮／展開とサイズを同時に測る参考実装。書庫I/O・メタデータの実測は別途必要。
 

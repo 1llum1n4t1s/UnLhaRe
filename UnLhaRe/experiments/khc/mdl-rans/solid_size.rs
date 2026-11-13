@@ -1,6 +1,6 @@
 //! 固定順の跨file packing。全復元・sizeだけを調べ、native速度を主張しない。
 use std::{fs::File, io::Read};
-use unlhare::khc::{BLOCK_BYTES, BlockStrategy, compress_block_with_strategy, decompress_block};
+use unlhare::lhc::{BLOCK_BYTES, BlockStrategy, compress_block_with_strategy, decompress_block};
 fn check(raw: &[u8], strategy: BlockStrategy) -> Result<(usize, u8), String> {
     let frame = compress_block_with_strategy(raw, strategy).map_err(|e| e.to_string())?;
     if frame.len() > raw.len() + 40 || frame.len() < 40 {

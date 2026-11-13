@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'storage-lifecycle.psm1') -Force
 Assert-KhcStorageContext -WorkDirectory $WorkDirectory
 
-$expectedZip = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'
+$expectedZip = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip')
 $expectedZipSha256 = '882e7108870c3de5d20de6e87ffc89f390c5d34630930aef73baed9171557f75'
 $expectedMember = 'input/ptt5'
 $expectedMemberBytes = 513216

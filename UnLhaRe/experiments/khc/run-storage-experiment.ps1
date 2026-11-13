@@ -16,7 +16,7 @@ if($PSCmdlet.ParameterSetName -ceq 'MacCdfCandidateE2e'){
     $candidateEnvelopeTimer=[Diagnostics.Stopwatch]::StartNew()
     if(-not $MacCdfCandidateE2e){throw 'MacCdfCandidateE2e must be explicitly true.'}
     $ScriptPath='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\mac-cdf-candidate-e2e.ps1'
-    $ScriptParameters=@{ProtocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json';ProtocolSha256=$ProtocolSha256}
+    $ScriptParameters=@{ProtocolPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json');ProtocolSha256=$ProtocolSha256}
     $MaxRunMiB=8;$MaxEntries=96;$TimeoutSeconds=360
 }
 if ($ScriptParameters.ContainsKey('CorpusProfile') -and [string]$ScriptParameters['CorpusProfile'] -ieq 'UciTabularDevelopment20261020') { throw 'UCI development-only metadata has no admitted runnable wrapper and is excluded from holdout registration and evaluation.' }
@@ -152,10 +152,10 @@ if($scriptFile -ieq $portfolioSizeScreen -and ($MaxRunMiB -ne 32 -or $MaxEntries
     throw 'The fixed Canterbury11 block-portfolio size pilot requires MaxRunMiB 32 / MaxEntries 96 / TimeoutSeconds 300 before registration.'
 }
 if($scriptFile -ieq $portfolioSizeScreen){
-    $pinnedPortfolioScreenSha='b429ff4e9bff43a3c2021022c36986fc7f21cad95dacffb78ce3de29c80569ad'
-    $expectedInput='D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
-    $expectedKhc='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
-    $expectedProbe='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe'
+    $pinnedPortfolioScreenSha='893d0fea9330d24d98a9abf21d13ce9540218093324b3151c5c88cb576c203cf'
+    $expectedInput=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip')
+    $expectedKhc=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe')
+    $expectedProbe=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe')
     $expectedSeven='C:\Program Files\7-Zip\7z.exe'
     $expectedProbeSha='fb595c1c8ab5b08135fa634c5d6b9e00ea6a2c7d3da8049f4d0aab06f52f6012'
     $expectedKhcSourceManifestSha='e24f0502e7ecccdd4933fcfc08217bfe11771eb6c229dc46877364a5754ec424'
@@ -206,7 +206,7 @@ if($scriptFile -ieq $portfolioSizeScreen){
 }
 if($scriptFile -ieq $portfolioProductScreen){
     $pinnedPortfolioProductScreenSha='8789bad160e3dbdb1931267b80e4cd4da679cdc22d00f9b7e20f4417669e7a16'
-    $expectedInput='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\egov-screen-20261020\input.zip'
+    $expectedInput=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\egov-screen-20261020\input.zip')
     $expectedInputSha='861ce8956f8347b34223466d5fff93360d1901b6aa42cca1238965d590e73099'
     $expectedLifecycleSha='e3953d42595b66aba8a40da393e13bfd32e269b75c7d443e207dbfc9a202ba0c'
     $expectedProfile='eGovLawXml20261016'; $expectedParameterCount=6
@@ -226,7 +226,7 @@ if($scriptFile -ieq $portfolioProductScreen){
         $expectedLifecycleSha=[string]$profileCampaign.lifecycle_sha256
         if($isCanterbury -or $profile.Name -cin @('NictWikiCorpusKcs1CountLengthHoldout20261020','UciDryBeanHoldout20261020')){$expectedCliSha=$profile.CliSha256; $expectedSourceSha=$profile.SourceManifestSha256}
     }
-    $expectedKhc='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    $expectedKhc=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe')
     $expectedSeven='C:\Program Files\7-Zip\7z.exe'
     $expectedParameterNames=@('CorpusProfile','Round','Strategy','InputRecoveryZip','KhcExecutable','SevenZipPath')
     if($null -ne $profileCampaign){$expectedParameterNames+=@('CampaignManifestSha256')}
@@ -323,7 +323,7 @@ if($recordFastSpeedFrontierScreen){
     }
 }
 if($scriptFile -ieq $spatialMdlProductScreen){
-    $pinnedScreenSha='3ce500d4115653d340afa5b54f667ff5b89d6e5e19a5d32502344b4d1e23f3f4'
+    $pinnedScreenSha='bcf3c51cc71ecd0861850baf99c2ef1f92e79b69650bae0dcf5b14761438c622'
     if((Get-FileHash -LiteralPath $scriptFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pinnedScreenSha){
         throw 'The preregistered revision-9 product screen source hash changed before registration.'
     }
@@ -336,7 +336,7 @@ if($scriptFile -ieq $spatialMdlProductScreen){
        [string]$ScriptParameters['SevenZipSha256'] -cne '95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'){
         throw 'The revision-9 product screen requires exact pinned input/tool parameters before registration.'
     }
-    if([IO.Path]::GetFullPath([string]$ScriptParameters['InputRecoveryZip']) -cne 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip'){
+    if([IO.Path]::GetFullPath([string]$ScriptParameters['InputRecoveryZip']) -cne (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\8a849a3267954242bcd8424b93526176\recovery.zip')){
         throw 'The revision-9 product screen requires the registered pinned ptt5 recovery path before registration.'
     }
     $revision9Pins=@(
@@ -357,12 +357,12 @@ if($scriptFile -ieq $spatialMdlProductScreen){
     }
 }
 if($scriptFile -ieq $spatialMdlCanterburySizeScreen){
-    $pinnedSizeScreenSha='28db2ed65ff254378aaa811fde43ae3017601ca9239a2a30d8b0eac04911e1ba'
+    $pinnedSizeScreenSha='a297f0e278c9d8f7c3e06b23a12bdcb8ffe1546413f24193b93a330b1b80bcf8'
     if((Get-FileHash -LiteralPath $scriptFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pinnedSizeScreenSha){
         throw 'The preregistered revision-9 Canterbury11 size-screen source hash changed before registration.'
     }
-    $expectedInput='D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
-    $expectedKhc='D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+    $expectedInput=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip')
+    $expectedKhc=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe')
     $expectedSeven='C:\Program Files\7-Zip\7z.exe'
     if(-not $ScriptParameters.ContainsKey('InputRecoveryZip') -or
        -not $ScriptParameters.ContainsKey('InputRecoveryZipSha256') -or
@@ -480,7 +480,7 @@ function Invoke-KhcRunDiskBudget {
 }
 try {
     if($spatialReplayAdmission){
-        $claimPath=if($foldedSpatialReplayAdmission){'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\folded-zero-count-20261023\performance-claim.json'}elseif($compactSpatialReplayAdmission){'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\compact-replay-20261020\performance-claim.json'}else{'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\kcs1-replay-20261020\performance-claim.json'}
+        $claimPath=if($foldedSpatialReplayAdmission){(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\folded-zero-count-20261023\performance-claim.json')}elseif($compactSpatialReplayAdmission){(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\compact-replay-20261020\performance-claim.json')}else{(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\kcs1-replay-20261020\performance-claim.json')}
         $replayClaimSchema=if($foldedSpatialReplayAdmission){'kcs1-folded-replay-performance-v1'}elseif($compactSpatialReplayAdmission){'kcs1-compact-replay-performance-v1'}else{'kcs1-replay-performance-v1'}
         $claimed=[DateTime]::UtcNow
         $claimJson=[ordered]@{schema=$replayClaimSchema;run_id=$context.RunId;record_path=$context.RecordPath;record_sha256=(Get-FileHash -LiteralPath $context.RecordPath -Algorithm SHA256).Hash.ToLowerInvariant();work_directory=$work;protocol_path=$ScriptParameters.ProtocolPath;protocol_sha256=$ScriptParameters.ProtocolSha256;claimed_utc=$claimed.ToString('o');deadline_utc=$claimed.AddSeconds(900).ToString('o');retries=0} | ConvertTo-Json -Depth 5 -Compress

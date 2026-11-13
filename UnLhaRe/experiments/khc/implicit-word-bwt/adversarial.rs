@@ -4,7 +4,7 @@ fn rejected<T>(x: Result<T>, name: &str) -> Result<()> {
     if x.is_err() { Ok(()) } else { Err(format!("accepted: {name}")) }
 }
 pub fn wrap(stream: &[u8], raw: &[u8]) -> Result<Vec<u8>> {
-    let body = unlhare::khc::compress_block(stream).map_err(|e| e.to_string())?;
+    let body = unlhare::lhc::compress_block(stream).map_err(|e| e.to_string())?;
     let mut f = vec![0u8; 40];
     f[..8].copy_from_slice(b"KWI1BLK\0");
     f[8] = 1;

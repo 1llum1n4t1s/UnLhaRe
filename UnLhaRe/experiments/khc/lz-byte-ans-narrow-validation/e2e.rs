@@ -2,9 +2,9 @@
 #![allow(dead_code)]
 #[path = "../lz-byte-ans-narrow/codec.rs"]
 mod codec;
-#[path = "../../../src/khc/block/lz.rs"]
+#[path = "../../../src/lhc/block/lz.rs"]
 mod lz;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod multi_range;
 #[path = "../lz-byte-ans/codec.rs"]
 mod original_codec;
@@ -68,10 +68,10 @@ fn run() -> Result<()> {
     if args.len() != 4 {
         return Err("old/record/corpus required".into());
     }
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
         .map_err(|e| e.to_string())?;
     let record_entries =
-        unlhare::khc::list_archive(Path::new(&args[2]), &unlhare::Limits::default())
+        unlhare::lhc::list_archive(Path::new(&args[2]), &unlhare::Limits::default())
             .map_err(|e| e.to_string())?;
     if entries.len() != 11 || record_entries.len() != 11 {
         return Err("entry coverage".into());
@@ -109,8 +109,8 @@ fn run() -> Result<()> {
         let raw =
             std::fs::read(Path::new(&args[3]).join(&entry.name)).map_err(|e| e.to_string())?;
         if raw.len() != entry.original_size as usize
-            || unlhare::khc::decompress_block(old_frame).map_err(|e| e.to_string())? != raw
-            || unlhare::khc::decompress_block(record_frame).map_err(|e| e.to_string())? != raw
+            || unlhare::lhc::decompress_block(old_frame).map_err(|e| e.to_string())? != raw
+            || unlhare::lhc::decompress_block(record_frame).map_err(|e| e.to_string())? != raw
         {
             return Err("public legacy/record whole bytes".into());
         }
@@ -169,7 +169,7 @@ fn run() -> Result<()> {
             ("all-byte", (0..16384).map(|i| i as u8).collect()),
         ] {
             let frame = legacy(&raw, context)?.ok_or("synthetic legacy LZ missing")?;
-            if unlhare::khc::decompress_block(&frame).map_err(|e| e.to_string())? != raw {
+            if unlhare::lhc::decompress_block(&frame).map_err(|e| e.to_string())? != raw {
                 return Err("synthetic native old mismatch".into());
             }
             finite_legacy += codec::finite_legacy_contract(&raw, &frame)?.checks;

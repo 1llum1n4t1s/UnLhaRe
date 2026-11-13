@@ -1,6 +1,6 @@
 //! 因果的な12bit空間文脈の独立研究codec。既知技術の再実装で、新原理ではない。
 use super::baseline;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod range;
 pub const MAX_RAW: usize = 1 << 20;
 pub const HEADER: usize = 40;

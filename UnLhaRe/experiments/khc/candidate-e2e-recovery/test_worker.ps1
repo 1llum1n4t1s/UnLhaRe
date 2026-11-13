@@ -16,11 +16,12 @@ foreach($name in @('Get-KhcRecoveryWorkerContract','Assert-KhcRecoveryWorkerInvo
     . ([scriptblock]::Create($f.Extent.Text))
 }
 $contract=Get-KhcRecoveryWorkerContract
-$work='D:\Codex\UnLhaRe\goal-restore-20261019\run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+# 正例・負例とも worker と同じ基点（ユーザー既定TEMP\UnLhaRe）から組み立て、拒否理由を基点以外の差に限定する。
+$work=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
 Accept {Assert-KhcRecoveryWorkerInvocation $work $contract.ProtocolPath $contract.ProtocolSha256}
-foreach($bad in @(('0'*64),'173EF073007C62D9A5DC013BB5724C1EA8C8177EE6327A6081EA752540403DBF')){Reject {Assert-KhcRecoveryWorkerInvocation $work $contract.ProtocolPath $bad}}
-foreach($bad in @('relative','D:\elsewhere\run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','D:\Codex\UnLhaRe\goal-restore-20261019\run-a')){Reject {Assert-KhcRecoveryWorkerInvocation $bad $contract.ProtocolPath $contract.ProtocolSha256}}
-Reject {Assert-KhcRecoveryWorkerInvocation $work 'D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json' $contract.ProtocolSha256}
+foreach($bad in @(('0'*64),'95CBD4DB2F793720B4612A36BC50525FC5BD00CB6C1E44B0586E5F1E78F0C148')){Reject {Assert-KhcRecoveryWorkerInvocation $work $contract.ProtocolPath $bad}}
+foreach($bad in @('relative','D:\elsewhere\run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\run-a'))){Reject {Assert-KhcRecoveryWorkerInvocation $bad $contract.ProtocolPath $contract.ProtocolSha256}}
+Reject {Assert-KhcRecoveryWorkerInvocation $work (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-protocol.json') $contract.ProtocolSha256}
 Reject {Assert-KhcRecoveryWorkerIntegration}
 foreach($summary in @(@{verified=$true;cleanup_allowed=$true},@{verified=$false;content_verified=$true;verification_scope='receipt-content-only';cleanup_allowed=$false;recovery_authorized=$false;native_execution_enabled=$false})){
     Reject {Assert-KhcRecoveryReceiptAuthorization $summary}

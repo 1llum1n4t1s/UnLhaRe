@@ -13,7 +13,7 @@ compile_error!("UnLhaRe supports only Windows/macOS on x86_64 or aarch64 (64-bit
 mod directory;
 mod error;
 pub mod ffi;
-pub mod khc;
+pub mod lhc;
 mod operation;
 mod pathname;
 mod reader;

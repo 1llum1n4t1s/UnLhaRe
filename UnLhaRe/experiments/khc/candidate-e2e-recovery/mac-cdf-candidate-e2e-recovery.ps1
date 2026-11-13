@@ -11,9 +11,9 @@ $timer=[Diagnostics.Stopwatch]::StartNew()
 function Get-KhcRecoveryWorkerContract {
     [ordered]@{
         WorkerPath='D:\Dev\UnLhaRe\UnLhaRe\experiments\khc\candidate-e2e-recovery\mac-cdf-candidate-e2e-recovery.ps1'
-        ProtocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-cdf-candidate-e2e-recovery-protocol.json'
-        ProtocolSha256='173ef073007c62d9a5dc013bb5724c1ea8c8177ee6327a6081ea752540403dbf'
-        EndpointSha256='424bc74f81d8d11af03c7ad0ae9df36cdd2252fed9995d3cdcbf0f1ea57cc069'
+        ProtocolPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-cdf-candidate-e2e-recovery-protocol.json')
+        ProtocolSha256='95cbd4db2f793720b4612a36bc50525fc5bd00cb6c1e44b0586e5f1e78f0c148'
+        EndpointSha256='18471c7bad1c36f56220838dda491c5769cdb5a98e152644049f861e05e479e2'
         WindowsBindingSha256='af044113e2f841728f8da01095b3ae6bdeb7018b7f1730046f88129ba0596a9f'
         OldRunId='8fd4b003ba9e406da5a21b9be5a37c56'
         WorkerTimeoutSeconds=350
@@ -26,7 +26,9 @@ function Assert-KhcRecoveryWorkerInvocation {
     param([string]$Work,[string]$Protocol,[string]$Sha)
     $contract=Get-KhcRecoveryWorkerContract
     if($Protocol -cne $contract.ProtocolPath -or $Sha -cne $contract.ProtocolSha256 -or
-       $Work -cnotmatch '\AD:\\Codex\\UnLhaRe\\goal-restore-20261019\\run-[0-9a-f]{32}\z' -or
+       # 作業先はユーザー既定TEMP\UnLhaRe\work\<task>\run-<GUID> に固定する（旧Dドライブ固定の作業フォルダー運用は廃止）。
+       # $env:TEMP は親がtask専用tempへ差し替えるため、レジストリ上のユーザーTEMPを基点にする。
+       $Work -cnotmatch ('\A'+[regex]::Escape((Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\run-'))+'[0-9a-f]{32}\z') -or
        [IO.Path]::GetFullPath($Work) -cne $Work){throw 'Recovery worker requires its exact fixed invocation.'}
 }
 function Assert-KhcRecoveryWorkerIntegration {

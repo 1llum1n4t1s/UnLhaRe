@@ -1,5 +1,5 @@
 //! 独立KCS1実験。copy中は投票のみ、literal中だけ空間bit確率を更新する。
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 pub mod range;
 #[path = "../causal-record-vote/voter.rs"]
 mod voter;

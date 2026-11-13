@@ -1,7 +1,7 @@
 //! private候補。旧LZの意味tokenをbyte CDF/rANSへ移し、探索器は触らない。
 #[path = "../mdl-rans/entropy.rs"]
 mod ans;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod legacy_range;
 
 pub type Result<T> = std::result::Result<T, String>;

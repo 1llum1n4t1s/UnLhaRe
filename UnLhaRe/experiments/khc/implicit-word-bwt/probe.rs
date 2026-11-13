@@ -28,7 +28,7 @@ fn run() -> Result<()> {
         return Err("archive corpus".into());
     }
     ram(2 << 20)?;
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default()).map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if saved.len() != 457017 || entries.len() != 11 {
         return Err("fixed archive".into());
@@ -72,7 +72,7 @@ fn run() -> Result<()> {
             return Err("raw length/CRC".into());
         }
         ram(caller + raw.len())?;
-        let original = unlhare::khc::decompress_block(old).map_err(|e| e.to_string())?;
+        let original = unlhare::lhc::decompress_block(old).map_err(|e| e.to_string())?;
         ram(caller + original.capacity())?;
         if original != raw {
             return Err("native byte equality".into());

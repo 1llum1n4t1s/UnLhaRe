@@ -9,7 +9,7 @@ fn execute() -> Result<(), String> {
         preserve_timestamps: true,
         ..Default::default()
     };
-    let summary = unlhare::khc::extract_archive_with_progress(
+    let summary = unlhare::lhc::extract_archive_with_progress(
         Path::new(&args[1]),
         Path::new(&args[2]),
         &unlhare::Limits::default(),

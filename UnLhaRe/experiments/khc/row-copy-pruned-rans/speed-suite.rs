@@ -42,9 +42,9 @@ fn measure(path: &str, reversed: bool) -> Result<String> {
     let (before, old_bound) = encode(&raw, false)?;
     let (after, new_bound) = encode(&raw, true)?;
     if before
-        != unlhare::khc::compress_block_with_strategy(
+        != unlhare::lhc::compress_block_with_strategy(
             &raw,
-            unlhare::khc::BlockStrategy::BinaryAdaptive,
+            unlhare::lhc::BlockStrategy::BinaryAdaptive,
         )
         .map_err(|e| e.to_string())?
         || decode(&before, false)?.0 != raw

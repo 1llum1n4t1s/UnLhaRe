@@ -1,13 +1,13 @@
 //! 全合法token/limitの経路照合。入力データやframeを生成しない。
 #![allow(dead_code)]
 const MAX_INPUT: usize = 1 << 20;
-#[path = "../../../src/khc/block/bwt.rs"]
+#[path = "../../../src/lhc/block/bwt.rs"]
 mod bwt;
-#[path = "../../../src/khc/block/frontend.rs"]
+#[path = "../../../src/lhc/block/frontend.rs"]
 mod frontend;
-#[path = "../../../src/khc/block/grammar.rs"]
+#[path = "../../../src/lhc/block/grammar.rs"]
 mod grammar;
-#[path = "../../../src/khc/block/histogram.rs"]
+#[path = "../../../src/lhc/block/histogram.rs"]
 mod histogram;
 fn main() -> Result<(), String> {
     let mut pairs = 0usize;

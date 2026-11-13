@@ -14,7 +14,7 @@ if($PSCmdlet.ParameterSetName -ceq 'Retry'){
     if(-not $Retry){throw 'Retry must be explicitly true.'}
     $retrySnapshot=& $module {
         param($sha)
-        $path='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-decode-phase-retry-amendment.json'
+        $path=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-decode-phase-retry-amendment.json')
         $bytes=Read-KhcBoundedSnapshotBytes $path 32768
         $spec=ConvertFrom-KhcBoundedJsonSnapshot $bytes $sha 32768
         Assert-KhcMacDecodeRetryAmendment $spec
@@ -23,7 +23,7 @@ if($PSCmdlet.ParameterSetName -ceq 'Retry'){
         return [pscustomobject]@{Spec=$spec;Bytes=$bytes}
     } $AmendmentSha256
 }
-$protocolPath='D:\Codex\TaskArtifacts\UnLhaRe\goal-restore-20261019\mac-decode-phase-build-protocol.json'
+$protocolPath=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\goal-restore-20261019\mac-decode-phase-build-protocol.json')
 $snapshot=if($Retry){$null}else{& $module {
     param($path,$sha)
     $bytes=Read-KhcBoundedSnapshotBytes $path 32768

@@ -193,14 +193,14 @@ function Invoke-Tool(
 
 $work = Get-PlainPath $WorkDirectory
 $paths = Get-KhcStorageTaskPaths
-$expectedRecoveryPath = 'D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip'
+$expectedRecoveryPath = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\5e93ed1e99ca4f5ab29d490db421e50b\recovery.zip')
 $expectedZipSha = 'b74644fac5f89251b15a68db6b2a3bce1bd508c12f0f685a61cd5c96ae1540bb'
 $expectedManifestSha = 'bb63b0d70713c9aefa681347eaf99fb891d59f45923e009ad0deadc9ec9fc438'
 $expectedProbeSha = $ProbeExecutableSha256
 $expectedKhcSha = '50952a6e7781800b946f85a7493bea7ca0923b5a974f34db1ba2baf32d1de6e3'
 $expectedSevenZipSha = '95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53'
-$expectedProbePath = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe'
-$expectedKhcPath = 'D:\Codex\UnLhaRe\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe'
+$expectedProbePath = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\examples\khc_portfolio_size_pilot.exe')
+$expectedKhcPath = (Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'work\goal-restore-20261019\cargo\x86_64-pc-windows-msvc\release\unlhare-cli.exe')
 $expectedProbeSourceSha = '3f8bf9b6b8aaaca679f70822ec87e4c73d34f14a1542627d2c69b78141922707'
 $expectedKhcSourceManifestSha = 'e24f0502e7ecccdd4933fcfc08217bfe11771eb6c229dc46877364a5754ec424'
 $expectedMainSha = '35ee6bd7a7d222db03f92a1647155c678d752b9a69e793b4749a665fa57c72aa'

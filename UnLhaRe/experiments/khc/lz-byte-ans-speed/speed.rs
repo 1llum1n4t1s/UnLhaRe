@@ -56,7 +56,7 @@ fn decode(frame: &[u8], caller: usize) -> Result<Vec<u8>> {
         }
         Ok(out)
     } else {
-        unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())
+        unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())
     }
 }
 fn timed(rows: &[Row<'_>], candidate: bool, caller: usize) -> Result<(f64, Vec<f64>)> {
@@ -67,7 +67,7 @@ fn timed(rows: &[Row<'_>], candidate: bool, caller: usize) -> Result<(f64, Vec<f
         let out = if candidate {
             decode(black_box(frame), caller)?
         } else {
-            unlhare::khc::decompress_block(black_box(frame)).map_err(|e| e.to_string())?
+            unlhare::lhc::decompress_block(black_box(frame)).map_err(|e| e.to_string())?
         };
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         if out != row.raw {
@@ -89,7 +89,7 @@ fn run() -> Result<()> {
         return Err("record/corpus/order required".into());
     }
     let reverse = args[3] == "reverse";
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
         .map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if entries.len() != 11 || saved.len() != 457017 {
@@ -113,7 +113,7 @@ fn run() -> Result<()> {
         let raw =
             std::fs::read(Path::new(&args[2]).join(&entry.name)).map_err(|e| e.to_string())?;
         if raw.len() != entry.original_size as usize
-            || unlhare::khc::decompress_block(frame).map_err(|e| e.to_string())? != raw
+            || unlhare::lhc::decompress_block(frame).map_err(|e| e.to_string())? != raw
         {
             return Err("public saved whole bytes".into());
         }

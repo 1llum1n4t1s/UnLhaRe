@@ -24,7 +24,7 @@ fn run() -> Result<()> {
     if args.len() != 3 {
         return Err("saved archive/corpus required".into());
     }
-    let entries = unlhare::khc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
+    let entries = unlhare::lhc::list_archive(Path::new(&args[1]), &unlhare::Limits::default())
         .map_err(|e| e.to_string())?;
     let saved = std::fs::read(&args[1]).map_err(|e| e.to_string())?;
     if entries.len() != 11 || saved.len() != 466395 {
@@ -48,7 +48,7 @@ fn run() -> Result<()> {
         at += length + 4;
         let raw =
             std::fs::read(Path::new(&args[2]).join(&entry.name)).map_err(|e| e.to_string())?;
-        if unlhare::khc::decompress_block(legacy).map_err(|e| e.to_string())? != raw {
+        if unlhare::lhc::decompress_block(legacy).map_err(|e| e.to_string())? != raw {
             return Err("native original whole bytes".into());
         }
         if legacy[10] != 1 {

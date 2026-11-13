@@ -6,7 +6,7 @@ use unlhare::{
 };
 
 #[derive(Parser)]
-#[command(version, about = "64-bit cross-platform LHA and KHC archiver (UTF-8)")]
+#[command(version, about = "64-bit cross-platform LHA and LHC archiver (UTF-8)")]
 struct Cli {
     /// Maximum number of archive entries.
     #[arg(long, global = true, default_value_t = 100_000)]
@@ -23,25 +23,25 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Create an independent KHC1 archive (not an LHA method).
-    KhcCreate {
+    /// Create an independent LHC1 archive (not an LHA method).
+    LhcCreate {
         archive: PathBuf,
         #[arg(short, long)]
         source: PathBuf,
         /// Explicit revision-2 through revision-10 strategies; default preserves revision 1.
-        #[arg(long, value_enum, default_value_t = KhcStrategy::Mdl)]
-        strategy: KhcStrategy,
+        #[arg(long, value_enum, default_value_t = LhcStrategy::Mdl)]
+        strategy: LhcStrategy,
     },
-    /// List KHC metadata; use khc-test for complete decoded CRC validation.
-    KhcList {
+    /// List LHC metadata; use lhc-test for complete decoded CRC validation.
+    LhcList {
         archive: PathBuf,
         #[arg(long)]
         json: bool,
     },
-    /// Decode and validate every KHC file.
-    KhcTest { archive: PathBuf },
-    /// Extract KHC entries after validation, without overwriting.
-    KhcExtract {
+    /// Decode and validate every LHC file.
+    LhcTest { archive: PathBuf },
+    /// Extract LHC entries after validation, without overwriting.
+    LhcExtract {
         archive: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
@@ -83,7 +83,7 @@ enum Codec {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
-enum KhcStrategy {
+enum LhcStrategy {
     Mdl,
     HybridTrial,
     BinaryAdaptive,
@@ -106,44 +106,44 @@ fn run(cli: Cli) -> unlhare::Result<()> {
         max_total_bytes: cli.max_total_bytes,
     };
     match cli.command {
-        Command::KhcCreate {
+        Command::LhcCreate {
             archive,
             source,
             strategy,
         } => {
-            unlhare::khc::create_from_directory(
+            unlhare::lhc::create_from_directory(
                 &source,
                 &archive,
-                &unlhare::khc::CreateOptions {
+                &unlhare::lhc::CreateOptions {
                     limits,
                     block_strategy: match strategy {
-                        KhcStrategy::Mdl => unlhare::khc::BlockStrategy::Mdl,
-                        KhcStrategy::HybridTrial => unlhare::khc::BlockStrategy::HybridTrial,
-                        KhcStrategy::BinaryAdaptive => unlhare::khc::BlockStrategy::BinaryAdaptive,
-                        KhcStrategy::RecordTrial => unlhare::khc::BlockStrategy::RecordTrial,
-                        KhcStrategy::Gather32Trial => unlhare::khc::BlockStrategy::Gather32Trial,
-                        KhcStrategy::Delta16Trial => unlhare::khc::BlockStrategy::Delta16Trial,
-                        KhcStrategy::RecordFastTrial => {
-                            unlhare::khc::BlockStrategy::RecordFastTrial
+                        LhcStrategy::Mdl => unlhare::lhc::BlockStrategy::Mdl,
+                        LhcStrategy::HybridTrial => unlhare::lhc::BlockStrategy::HybridTrial,
+                        LhcStrategy::BinaryAdaptive => unlhare::lhc::BlockStrategy::BinaryAdaptive,
+                        LhcStrategy::RecordTrial => unlhare::lhc::BlockStrategy::RecordTrial,
+                        LhcStrategy::Gather32Trial => unlhare::lhc::BlockStrategy::Gather32Trial,
+                        LhcStrategy::Delta16Trial => unlhare::lhc::BlockStrategy::Delta16Trial,
+                        LhcStrategy::RecordFastTrial => {
+                            unlhare::lhc::BlockStrategy::RecordFastTrial
                         }
-                        KhcStrategy::SpatialBitsTrial => {
-                            unlhare::khc::BlockStrategy::SpatialBitsTrial
+                        LhcStrategy::SpatialBitsTrial => {
+                            unlhare::lhc::BlockStrategy::SpatialBitsTrial
                         }
-                        KhcStrategy::RecordAdaptiveTrial => {
-                            unlhare::khc::BlockStrategy::RecordAdaptiveTrial
+                        LhcStrategy::RecordAdaptiveTrial => {
+                            unlhare::lhc::BlockStrategy::RecordAdaptiveTrial
                         }
-                        KhcStrategy::SpatialMdlTrial => {
-                            unlhare::khc::BlockStrategy::SpatialMdlTrial
+                        LhcStrategy::SpatialMdlTrial => {
+                            unlhare::lhc::BlockStrategy::SpatialMdlTrial
                         }
-                        KhcStrategy::PortfolioTrial => unlhare::khc::BlockStrategy::PortfolioTrial,
+                        LhcStrategy::PortfolioTrial => unlhare::lhc::BlockStrategy::PortfolioTrial,
                     },
                     ..Default::default()
                 },
             )?;
-            println!("Created KHC: {}", archive.display());
+            println!("Created LHC: {}", archive.display());
         }
-        Command::KhcList { archive, json } => {
-            let entries = unlhare::khc::list_archive(&archive, &limits)?;
+        Command::LhcList { archive, json } => {
+            let entries = unlhare::lhc::list_archive(&archive, &limits)?;
             if json {
                 println!(
                     "{}",
@@ -153,22 +153,22 @@ fn run(cli: Cli) -> unlhare::Result<()> {
             } else {
                 for entry in entries {
                     println!(
-                        "KHC1\t{}\t{}\t{}",
+                        "LHC1\t{}\t{}\t{}",
                         entry.original_size, entry.compressed_size, entry.name
                     );
                 }
             }
         }
-        Command::KhcTest { archive } => {
-            let s = unlhare::khc::verify_archive(&archive, &limits)?;
+        Command::LhcTest { archive } => {
+            let s = unlhare::lhc::verify_archive(&archive, &limits)?;
             println!(
-                "OK KHC: {} files, {} entries, {} bytes",
+                "OK LHC: {} files, {} entries, {} bytes",
                 s.files, s.entries, s.bytes
             );
         }
-        Command::KhcExtract { archive, output } => {
-            let s = unlhare::khc::extract_archive(&archive, &output, &limits)?;
-            println!("Extracted KHC: {} files, {} bytes", s.files, s.bytes);
+        Command::LhcExtract { archive, output } => {
+            let s = unlhare::lhc::extract_archive(&archive, &output, &limits)?;
+            println!("Extracted LHC: {} files, {} bytes", s.files, s.bytes);
         }
         Command::List { archive, json } => {
             let entries = list_archive(&archive, &limits)?;

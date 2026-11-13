@@ -1,6 +1,6 @@
 //! 因果pair幅stateをbyte完成後に更新する独立bit codec。既知技術の組合せ。
 use super::baseline;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod range;
 #[path = "../causal-record-vote/voter.rs"]
 mod voter;

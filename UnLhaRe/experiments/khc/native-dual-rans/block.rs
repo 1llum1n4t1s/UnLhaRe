@@ -6,29 +6,29 @@
 pub(crate) use super::original::{HEADER, MAX_INPUT, SCRATCH_BOUND, Stats, crc32, revision_method_valid};
 pub(crate) type Result<T> = std::result::Result<T, String>;
 pub const MAGIC: &[u8; 8] = b"KDB1BLK\0";
-#[path = "../../../src/khc/block/bwt.rs"]
+#[path = "../../../src/lhc/block/bwt.rs"]
 mod bwt;
-#[path = "../../../src/khc/block/codebook.rs"]
+#[path = "../../../src/lhc/block/codebook.rs"]
 mod codebook;
 #[path = "dual.rs"]
 mod dual;
-#[path = "../../../src/khc/block/frontend.rs"]
+#[path = "../../../src/lhc/block/frontend.rs"]
 mod frontend;
-#[path = "../../../src/khc/block/grammar.rs"]
+#[path = "../../../src/lhc/block/grammar.rs"]
 mod grammar;
-#[path = "../../../src/khc/block/histogram.rs"]
+#[path = "../../../src/lhc/block/histogram.rs"]
 mod histogram;
-#[path = "../../../src/khc/block/model.rs"]
+#[path = "../../../src/lhc/block/model.rs"]
 mod model;
-#[path = "../../../src/khc/block/multi_range.rs"]
+#[path = "../../../src/lhc/block/multi_range.rs"]
 mod multi_range;
-#[path = "../../../src/khc/block/packed.rs"]
+#[path = "../../../src/lhc/block/packed.rs"]
 mod packed;
-#[path = "../../../src/khc/block/packet.rs"]
+#[path = "../../../src/lhc/block/packet.rs"]
 mod packet;
-#[path = "../../../src/khc/block/paid_model.rs"]
+#[path = "../../../src/lhc/block/paid_model.rs"]
 mod paid_model;
-#[path = "../../../src/khc/block/program.rs"]
+#[path = "../../../src/lhc/block/program.rs"]
 mod program;
 
 pub const DECODER_RESERVE: usize = 54 << 20;

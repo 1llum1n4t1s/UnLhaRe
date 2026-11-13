@@ -45,7 +45,7 @@ class CandidateTests(unittest.TestCase):
                 candidate.validate_protocol(dict(protocol, **{key: value}), 'a'*64, candidate.SNAPSHOT_SHA)
 
     def test_candidate_real_archive_matches_base_except_packet(self):
-        root = Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019')
+        root = Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019')
         base=(root/'mac-native-source.zip').read_bytes()
         derived=(root/'mac-cdf-chooser-ablation-source-36d904e0.zip').read_bytes()
         candidate.validate_source_snapshot(base,derived)

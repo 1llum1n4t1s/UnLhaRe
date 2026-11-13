@@ -32,7 +32,7 @@ def fixture():
     return p,r
 
 def snapshot_fixture(extra_change=None):
-    base=Path('D:/Codex/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-source.zip').read_bytes()
+    base=Path('D:/Claude/TaskArtifacts/UnLhaRe/goal-restore-20261019/mac-native-source.zip').read_bytes()
     with zipfile.ZipFile(io.BytesIO(base)) as z:
         files={n:z.read(n) for n in z.namelist() if n!='snapshot-manifest.json'}
     for name in M.CHANGED_FILES:files[name]+=b'\n// diagnostic fixture\n'

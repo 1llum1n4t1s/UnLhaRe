@@ -27,7 +27,7 @@ if(-not $probe.StartsWith($probeRoot,[StringComparison]::OrdinalIgnoreCase)){thr
 if(-not(Test-Path -LiteralPath $probe -PathType Leaf)){throw 'Probe executable is missing'}
 if(Test-Path -LiteralPath $work){throw 'WorkDirectory must be new'}
 
-$sourceZip='D:\Codex\TaskArtifacts\UnLhaRe\storage-lifecycle\runs\0acc17d780a142dcafe88645a07205a5\recovery.zip'
+$sourceZip=(Join-Path (Join-Path ([Environment]::GetEnvironmentVariable('TEMP','User') ?? [IO.Path]::GetTempPath()) 'UnLhaRe') 'TaskArtifacts\storage-lifecycle\runs\0acc17d780a142dcafe88645a07205a5\recovery.zip')
 $expectedZipSha256='27030319c3938bdec7df681d8113df43318d9a01ee40eef36e43af3e6f86e898'
 $expectedSourceSha256='e0cd21cef5b6c4069461e949be100080c3ce887de6f1dd8626c480528efaaf61'
 $expectedSourceBytes=24603
