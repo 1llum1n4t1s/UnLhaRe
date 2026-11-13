@@ -63,6 +63,7 @@
 | `UnLhaRe/bindings/dotnet/` | Native AOT対応C# API、CPU別DLLとライセンスのNuGet同梱 |
 | `UnLhaRe/tests/`、`UnLhaRe/bindings/dotnet/tests/`、`UnLhaRe/scripts/` | Rust・C・.NETの契約試験、ローカルbundle作成 |
 | `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 3環境のネイティブ検証（Windows x64/ARM64はGitHub提供ランナー、macOS ARM64だけ自前のApple Silicon Mac）、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
+| `.github/workflows/release-unlhare.yml`、`UnLha32Re/scripts/sign-release.ps1` | 成功したModern Rustの成果物を再ビルドせずSigilune（Certumクラウド署名、Environment `release`）で署名し、配布ZIP・SHA256SUMS・下書きReleaseを作成 |
 
 ### 近代化版のデータフローと契約
 

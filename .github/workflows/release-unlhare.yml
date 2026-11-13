@@ -1,0 +1,188 @@
+name: Release UnLhaRe
+
+# 近代化版 UnLhaRe の Windows bundle を Sigilune で署名し、配布ファイルを作る。
+# - 再ビルドしない: release/unlhare/<version> の HEAD で成功した Modern Rust (modern.yml) の
+#   成果物（Windows x64/ARM64 bundle、macOS ARM64 tar.gz）を取得し、Windows の DLL・CLI だけへ署名する。
+# - 署名: Sigilune (https://github.com/1llum1n4t1s/Sigilune) が Certum SimplySign のクラウド鍵で行う。
+#   本人の PC や SimplySign Desktop は不要。Secrets は Environment "release" の
+#   SIGILUNE_EMAIL / SIGILUNE_TOTP_URI を署名 step だけへ渡す。
+# - 配布: create_draft_release が true のときだけ、unlhare-v<version> の GitHub Release を「下書き」で作り、
+#   3パッケージと SHA256SUMS.txt を添付する。リリースノートを確認して本人が公開する。
+#   公開後に publish-unlhare-nuget.yml を手動実行する（NuGet は従来どおり公開済み Release から作る）。
+# - 起動: 手動 (workflow_dispatch) で main から実行する（Environment "release" は main と v* タグだけ許可）。
+#   誤配信を避けるため push / tag では自動起動しない。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: リリースする安定版 1.0.x（Cargo.toml と release/unlhare/<version> ブランチに一致させる）
+        required: true
+        type: string
+      create_draft_release:
+        description: unlhare-v<version> の GitHub Release を下書きで作成して添付する（false なら Actions の成果物だけ）
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-unlhare-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == '1llum1n4t1s/UnLhaRe' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - name: リポジトリをチェックアウト
+        # 署名スクリプト（UnLha32Re/scripts/sign-release.ps1）は main の版を使う。
+        # actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: 版・コミット・CI 成果物を確認
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RELEASE_VERSION -cnotmatch '^1\.0\.\d+$') { throw "Version must be a stable 1.0.x version: $env:RELEASE_VERSION" }
+          $branch = "release/unlhare/$env:RELEASE_VERSION"
+          $sha = (gh api "repos/$env:GITHUB_REPOSITORY/branches/$branch" --jq '.commit.sha').Trim()
+          if ($LASTEXITCODE -ne 0 -or $sha -cnotmatch '^[0-9a-f]{40}$') { throw "Release branch was not found: $branch" }
+          # Cargo.toml の [package] version が入力と一致することを、そのコミットで確認する。
+          $encoded = gh api "repos/$env:GITHUB_REPOSITORY/contents/UnLhaRe/Cargo.toml?ref=$sha" --jq '.content'
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo.toml could not be read.' }
+          $manifest = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($encoded -join '') -replace '\s', ''))
+          $package = [regex]::Match($manifest, '(?ms)^\[package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
+          $versions = [regex]::Matches($package.Groups['body'].Value, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+          if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -cne $env:RELEASE_VERSION) { throw 'Cargo package version does not match the requested release.' }
+          # 同じ SHA で成功した push の Modern Rust を使う（RELEASING.md の手順2）。
+          $listed = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/modern.yml/runs?head_sha=$sha&status=success&per_page=20" --jq '[.workflow_runs[] | {id, head_sha}]'
+          if ($LASTEXITCODE -ne 0) { throw 'Modern Rust runs could not be listed.' }
+          $runs = @(($listed | ConvertFrom-Json) | Where-Object { $_.head_sha -ceq $sha } | ForEach-Object { $_.id })
+          if ($runs.Count -lt 1) { throw "No successful Modern Rust run for $sha. Push the release branch and wait for CI first." }
+          "sha=$sha" >> $env:GITHUB_OUTPUT
+          "run_id=$($runs[0])" >> $env:GITHUB_OUTPUT
+          Write-Host "Release commit: $sha / Modern Rust run: $($runs[0])"
+
+      - name: CI 成果物を取得
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ steps.source.outputs.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'unlhare-ci'
+          foreach ($target in @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc', 'aarch64-apple-darwin')) {
+            gh run download $env:SOURCE_RUN --repo $env:GITHUB_REPOSITORY --name "unlhare-$target" --dir (Join-Path $root $target)
+            if ($LASTEXITCODE -ne 0) { throw "CI artifact unlhare-$target could not be downloaded." }
+          }
+          # bundle の必須ファイルを確認する（build.ps1 の New-LocalBundle と同じ構成）。
+          foreach ($target in @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')) {
+            foreach ($name in @('unlhare.dll', 'unlhare-cli.exe', 'unlhare.dll.lib', 'include/unlhare.h', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.txt', 'licensing')) {
+              if (!(Test-Path -LiteralPath (Join-Path $root "$target/$name"))) { throw "Bundle file is missing: $target/$name" }
+            }
+            foreach ($binary in @('unlhare.dll', 'unlhare-cli.exe')) {
+              # 署名前の CI 成果物であることを確認する（別物の混入を避ける）。
+              if ((Get-AuthenticodeSignature -LiteralPath (Join-Path $root "$target/$binary")).Status -ne 'NotSigned') { throw "CI artifact is unexpectedly signed: $target/$binary" }
+            }
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $root 'aarch64-apple-darwin/unlhare-aarch64-apple-darwin.tar.gz') -PathType Leaf)) { throw 'macOS bundle is missing.' }
+
+      - name: Sigilune を導入
+        id: sigilune
+        uses: 1llum1n4t1s/Sigilune@v1
+
+      - name: Windows の DLL・CLI へ署名
+        # 署名用 Secrets はこの step だけへ渡す。ローカルと同じ sign-release.ps1 を1ファイルずつ呼び、
+        # 同じ Sigilune セッションで4ファイルを署名する（ログイン・TOTP は最初の1回）。
+        env:
+          SIGILUNE_EMAIL: ${{ secrets.SIGILUNE_EMAIL }}
+          SIGILUNE_TOTP_URI: ${{ secrets.SIGILUNE_TOTP_URI }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'unlhare-ci'
+          foreach ($target in @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')) {
+            foreach ($binary in @('unlhare.dll', 'unlhare-cli.exe')) {
+              & ./UnLha32Re/scripts/sign-release.ps1 -Candidate (Join-Path $root "$target/$binary")
+            }
+          }
+
+      - name: Sigilune からログアウト
+        # ランナー上の Certum セッションを残さない。
+        if: always() && steps.sigilune.outcome == 'success'
+        run: sigilune logout | Out-Null
+
+      - name: 配布ファイルと SHA256SUMS.txt を作成
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'unlhare-ci'
+          $dist = Join-Path $env:RUNNER_TEMP 'unlhare-dist'
+          New-Item -ItemType Directory -Path $dist | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          foreach ($pair in @(@{ Target = 'x86_64-pc-windows-msvc'; Rid = 'win-x64' }, @{ Target = 'aarch64-pc-windows-msvc'; Rid = 'win-arm64' })) {
+            $bundle = Join-Path $root $pair.Target
+            foreach ($binary in @('unlhare.dll', 'unlhare-cli.exe')) {
+              $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $bundle $binary)
+              if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike 'CN=Open Source Developer Yuichiro Shinozaki*' -or !$signature.TimeStamperCertificate) {
+                throw "Signature verification failed: $($pair.Target)/$binary"
+              }
+            }
+            # 従来の配布 ZIP と同じく、bundle の内容を ZIP 直下に置く（NuGet workflow は直下の unlhare.dll を読む）。
+            [IO.Compression.ZipFile]::CreateFromDirectory($bundle, (Join-Path $dist "UnLhaRe-$env:RELEASE_VERSION-$($pair.Rid).zip"), [IO.Compression.CompressionLevel]::Optimal, $false)
+          }
+          # macOS は CI で ad-hoc 署名した tar.gz をそのまま使う（Developer ID 署名・公証ではない）。
+          Copy-Item -LiteralPath (Join-Path $root 'aarch64-apple-darwin/unlhare-aarch64-apple-darwin.tar.gz') -Destination (Join-Path $dist "UnLhaRe-$env:RELEASE_VERSION-macos-arm64.tar.gz")
+          $lines = Get-ChildItem -LiteralPath $dist -File | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          }
+          [IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS.txt'), (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+          Get-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt')
+          "DIST_DIR=$dist" >> $env:GITHUB_ENV
+
+      - name: 成果物をアップロード
+        # actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: unlhare-release-${{ inputs.version }}
+          path: ${{ env.DIST_DIR }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: GitHub Release を下書きで作成
+        if: inputs.create_draft_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "unlhare-v$env:RELEASE_VERSION"
+          # 既存の Release は上書きしない。タグが先に push 済みなら、同じコミットを指す場合だけ続行する。
+          $existing = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs/tags/$tag" --jq '.sha' 2>$null
+          if ($LASTEXITCODE -eq 0 -and $existing -and $existing.Trim() -cne $env:RELEASE_SHA) { throw "Tag $tag already exists at a different commit." }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          $notes = @(
+            "UnLhaRe $env:RELEASE_VERSION",
+            '',
+            '- Windows x64/ARM64: unlhare.dll と unlhare-cli.exe は Authenticode 署名済み（Certum、タイムスタンプ付き）。',
+            '- macOS ARM64: ad-hoc 署名のみ。Developer ID 署名・公証ではありません。',
+            '- 各ファイルの SHA-256 は SHA256SUMS.txt を参照してください。',
+            '',
+            '（下書き: 変更内容は CHANGELOG を確認して追記してから公開してください）'
+          ) -join "`n"
+          $files = @(Get-ChildItem -LiteralPath $env:DIST_DIR -File | Sort-Object Name | ForEach-Object FullName)
+          gh release create $tag @files --repo $env:GITHUB_REPOSITORY --draft --target $env:RELEASE_SHA --title "UnLhaRe $env:RELEASE_VERSION" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed.' }

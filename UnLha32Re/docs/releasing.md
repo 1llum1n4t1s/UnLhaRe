@@ -15,9 +15,10 @@ pwsh -NoProfile -File .\scripts\release.ps1
 ```
 
 `release.ps1` は300秒のローカル予算でビルド→署名→スモーク→ZIPを直列に実行する。
-スモークを通過した後の再ビルドは不要。署名は現在のユーザーの証明書ストアと Windows SDK の SignTool を使う。
-署名証明書が複数ある場合は `-CertificateThumbprint` で指定する。
-秘密鍵のコピーや自己署名への切り替えは行わない。証明書の認証操作は事前に済ませる。
+スモークを通過した後の再ビルドは不要。署名は [Sigilune](https://github.com/1llum1n4t1s/Sigilune)（Certum SimplySign のクラウド鍵を SignTool の `/dlib` で使う CLI）と Windows SDK の SignTool を使う。
+SimplySign Desktop や証明書ストアは不要。事前に `sigilune setup` で Certum アカウントを登録しておく（実行ファイルは `SIGILUNE_EXE` → PATH → `%USERPROFILE%\.local\Sigilune\bin` の順に探す）。
+`-CertificateThumbprint` は互換のため残し、指定時は署名者の証明書がそのサムプリントであることも確認する。
+秘密鍵のコピーや自己署名への切り替えは行わない。Sigilune のログインに失敗した場合は自動再試行しない。
 
 配布版番号はルート `VERSION`、DLL の互換バージョンは `3.00.0.5` を使う。
 スクリプトは版番号、Gitのブランチ、コミット、リモートを変更しない。
@@ -86,5 +87,5 @@ DLLの署名と第三者告知・ソースを確認したZIPを、そのまま�
 公開前後で再ビルド・全互換試験を挟まない。
 
 300秒はローカル準備の予算で、署名のタイムスタンプ通信もこの予算に含む。時間を超えた実行は不合格になる。
-証明書の本人認証は事前に済ませ、公開のGit／GitHub通信は別に計測する。
+Sigilune のクラウドログインもこの予算に含む（事前に `sigilune login` を実行するとセッションを再利用する）。公開のGit／GitHub通信は別に計測する。
 ローカル検証の実測と署名・公開の所要時間を分けて報告し、外部サービス待ちを含む成功を一律5分保証とは記載しない。
