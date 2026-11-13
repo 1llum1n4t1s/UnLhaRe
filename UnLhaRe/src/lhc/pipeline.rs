@@ -1,10 +1,14 @@
 //! plain API 専用。入力・出力とentry公開をmainに閉じ、decodeだけを並列化する。
 use super::*;
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     io::{Seek, SeekFrom},
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::mpsc::{Receiver, SyncSender, sync_channel},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, Sender, channel},
+    },
     thread::{self, JoinHandle},
 };
 
@@ -13,6 +17,10 @@ use std::{
 // 4worker同時でも64MiB codec gate内に収まる想定（見積もりであり、全familyのpeak実測ではない）。
 pub(super) const WORKERS: usize = 4;
 const MAX_EVENTS: usize = 32;
+// 投入済みで未消費のblock（queue待ち・復号中・並べ直し待ち）の上限はworker数×この値。
+// 各blockはframeかraw（各1MiB強）を1つ持つので、保持量は最大でも約16MiB（4worker時）に収まる。
+// 重いblock（PPMなど）を待つ間も、他のworkerが後続blockを先に復号できる幅を確保する。
+const WINDOW_PER_WORKER: usize = 4;
 const STACK_BYTES: usize = 2 << 20;
 const MAX_PARALLEL_ENTRIES: usize = 4096;
 const MAX_PARALLEL_NAME_BYTES: usize = 512 << 10;
@@ -92,27 +100,47 @@ struct Decoded {
     id: u64,
     raw: Result<Vec<u8>>,
 }
-struct Worker {
-    input: SyncSender<Job>,
-    output: Receiver<Decoded>,
-    handle: JoinHandle<()>,
-}
+/// 共有 job queue から書庫順に block を取り出す worker 群。結果は id 付きで返り、
+/// `receive` が書庫順へ並べ直す。先に届いた結果は `ready` に保持する（件数は window で有界）。
 struct Pool {
-    workers: Vec<Worker>,
+    jobs: Option<Sender<Job>>,
+    results: Receiver<Decoded>,
+    ready: HashMap<u64, Result<Vec<u8>>>,
+    /// 停止時に、queue に残った job を復号せず捨てさせる印。
+    stop: Arc<AtomicBool>,
+    handles: Vec<JoinHandle<()>>,
 }
 impl Pool {
     fn new(workers: usize) -> Result<Self> {
+        let (jobs, queue) = channel::<Job>();
+        let queue = Arc::new(Mutex::new(queue));
+        let (results, output) = channel::<Decoded>();
+        // spawn 途中で失敗しても Drop が queue を閉じて既存 worker を止められるよう、先に組み立てる。
         let mut pool = Self {
-            workers: Vec::with_capacity(workers),
+            jobs: Some(jobs),
+            results: output,
+            ready: HashMap::new(),
+            stop: Arc::new(AtomicBool::new(false)),
+            handles: Vec::with_capacity(workers),
         };
         for slot in 0..workers {
-            let (sender, receiver) = sync_channel::<Job>(1);
-            let (results, output) = sync_channel(1);
+            let queue = Arc::clone(&queue);
+            let results = results.clone();
+            let stop = Arc::clone(&pool.stop);
             let handle = thread::Builder::new()
                 .name(format!("lhc-decode-{slot}"))
                 .stack_size(STACK_BYTES)
                 .spawn(move || {
-                    while let Ok(job) = receiver.recv() {
+                    loop {
+                        // lock は受信の間だけ持つ。復号中は他の worker が次の job を取れる。
+                        let job = match queue.lock() {
+                            Ok(queue) => queue.recv(),
+                            Err(_) => break,
+                        };
+                        let Ok(job) = job else { break };
+                        if stop.load(Ordering::Relaxed) {
+                            break;
+                        }
                         let id = job.id;
                         let raw = catch_unwind(AssertUnwindSafe(move || {
                             let raw = decompress_block(&job.frame)?;
@@ -131,45 +159,46 @@ impl Pool {
                         }
                     }
                 })?;
-            pool.workers.push(Worker {
-                input: sender,
-                output,
-                handle,
-            });
+            pool.handles.push(handle);
         }
+        // 結果の送信側は worker だけが持つ。全 worker が終われば recv が切断を返す。
+        drop(results);
         Ok(pool)
     }
 
-    fn receive(&self, slot: usize, id: u64) -> Result<Vec<u8>> {
-        let decoded = self.workers[slot]
-            .output
-            .recv()
-            .map_err(|_| Error::Unsupported("LHC decode worker disconnected".into()))?;
-        if decoded.id != id {
-            return Err(Error::Unsupported("LHC decode job order".into()));
+    fn submit(&self, job: Job) -> Result<()> {
+        self.jobs
+            .as_ref()
+            .and_then(|jobs| jobs.send(job).ok())
+            .ok_or_else(|| Error::Unsupported("LHC decode worker disconnected".into()))
+    }
+
+    // id の結果を書庫順で受け取る。先に届いた別 id の結果は ready に保持する。
+    fn receive(&mut self, id: u64) -> Result<Vec<u8>> {
+        if let Some(raw) = self.ready.remove(&id) {
+            return raw;
         }
-        decoded.raw
+        loop {
+            let decoded = self
+                .results
+                .recv()
+                .map_err(|_| Error::Unsupported("LHC decode worker disconnected".into()))?;
+            if decoded.id == id {
+                return decoded.raw;
+            }
+            if self.ready.insert(decoded.id, decoded.raw).is_some() {
+                return Err(Error::Unsupported("LHC decode job order".into()));
+            }
+        }
     }
 
     fn shutdown(&mut self) -> Result<()> {
+        // 残った job は捨て、queue を閉じてから join する。
+        self.stop.store(true, Ordering::Relaxed);
+        self.jobs = None;
+        self.ready.clear();
         let mut panicked = false;
-        // 全channelを閉じてからjoinするため、失敗時のsendも停止できる。
-        let handles: Vec<_> = self
-            .workers
-            .drain(..)
-            .map(
-                |Worker {
-                     input,
-                     output,
-                     handle,
-                 }| {
-                    drop(input);
-                    drop(output);
-                    handle
-                },
-            )
-            .collect();
-        for handle in handles {
+        for handle in self.handles.drain(..) {
             panicked |= handle.join().is_err();
         }
         if panicked {
@@ -188,7 +217,7 @@ impl Drop for Pool {
 enum Event {
     Directory(usize),
     Begin(usize),
-    Block { slot: usize, id: u64 },
+    Block { id: u64 },
     End(u32),
     Finished(Result<()>),
 }
@@ -202,7 +231,9 @@ struct Producer {
     entry: usize,
     phase: Phase,
     next_id: u64,
-    busy: Vec<bool>,
+    /// 投入済みで未消費の block 数と、その上限。
+    in_flight: usize,
+    window: usize,
     all_families: bool,
     done: bool,
     events: VecDeque<Event>,
@@ -215,7 +246,8 @@ impl Producer {
             entry: 0,
             phase: Phase::Begin,
             next_id: 0,
-            busy: vec![false; workers],
+            in_flight: 0,
+            window: workers * WINDOW_PER_WORKER,
             done: false,
             events: VecDeque::with_capacity(MAX_EVENTS),
         }
@@ -250,9 +282,9 @@ impl Producer {
             }
             Phase::Blocks(0) => self.phase = Phase::Crc,
             Phase::Blocks(remaining) => {
-                let Some(slot) = self.busy.iter().position(|&busy| !busy) else {
+                if self.in_flight >= self.window {
                     return Ok(false);
-                };
+                }
                 let expected = remaining.min(BLOCK_BYTES as u64) as usize;
                 let frame = read_frame(input, expected, self.revision)?;
                 // prescan後に入力が変わっても、旧MDLをworkerへ渡さない。
@@ -263,16 +295,13 @@ impl Producer {
                 self.next_id = id
                     .checked_add(1)
                     .ok_or_else(|| Error::Limit("LHC decode job count".into()))?;
-                pool.workers[slot]
-                    .input
-                    .send(Job {
-                        id,
-                        expected,
-                        frame,
-                    })
-                    .map_err(|_| Error::Unsupported("LHC decode worker disconnected".into()))?;
-                self.busy[slot] = true;
-                self.events.push_back(Event::Block { slot, id });
+                pool.submit(Job {
+                    id,
+                    expected,
+                    frame,
+                })?;
+                self.in_flight += 1;
+                self.events.push_back(Event::Block { id });
                 self.phase = Phase::Blocks(remaining - expected as u64);
             }
             Phase::Crc => {
@@ -427,8 +456,8 @@ pub(super) fn process(
                 Event::Begin(index) => {
                     pending = Some(Pending::begin(index, entries, root, destination)?)
                 }
-                Event::Block { slot, id } => {
-                    let raw = pool.receive(slot, id)?;
+                Event::Block { id } => {
+                    let raw = pool.receive(id)?;
                     let file = pending
                         .as_mut()
                         .ok_or_else(|| Error::Unsupported("LHC decode pipeline entry".into()))?;
@@ -436,8 +465,8 @@ pub(super) fn process(
                     if let Some(output) = &mut file.output {
                         output.write_all(&raw)?;
                     }
-                    // rawはこのiterationで解放し、次のfillからだけslotを再利用する。
-                    producer.busy[slot] = false;
+                    // rawはこのiterationで解放し、次のfillから空いた枠を再利用する。
+                    producer.in_flight -= 1;
                 }
                 Event::End(crc) => pending
                     .take()

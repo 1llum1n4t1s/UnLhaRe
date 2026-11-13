@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- LHCの並列展開・検証で、重いblockを待つ間も他workerが後続blockを復号できるよう、共有job queueと番号順の並べ直しへ変更。blockの重さに偏りがある書庫で展開が速くなる。書庫形式と出力は変わらない。
 - 開発中の独自形式KHCをLHC（LHA High Compression、拡張子`.lhc`）へ改名。Rust APIは`unlhare::lhc`、CLIは`lhc-create`/`lhc-list`/`lhc-test`/`lhc-extract`、仕様は`LHC_FORMAT.md`。書庫・frameのmagicも`KHC*`から`LHC*`へ変更したため、改名前に作成した開発版書庫は読めない。LHAの圧縮方式ではなく、既存LHAツールとの互換性はない。
 - LHCの作成・展開・検証に`--threads`（`CreateOptions::threads` / `ExtractOptions::threads`、`lhc::extract_archive_with_options` / `verify_archive_with_options`）を追加。作成はblock単位の並列圧縮で、worker数にかかわらず書庫のbyteは同一。展開・検証は全frame familyを並列復号できる。
 - 公開前のfsyncを明示的に省く`--no-fsync`（`skip_fsync`）をLHCの作成・展開とLHAの展開へ追加。既定はfsyncを維持する。
