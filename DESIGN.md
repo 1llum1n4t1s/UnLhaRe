@@ -58,7 +58,7 @@
 | `UnLhaRe/src/operation.rs`、`UnLhaRe/src/ffi/app.rs` | API level 2〜5の進捗・キャンセル、選択操作・上限指定・結果通知JSON・エラー分類・項目単位一覧通知 |
 | `UnLhaRe/bindings/dotnet/` | Native AOT対応C# API、CPU別DLLとライセンスのNuGet同梱 |
 | `UnLhaRe/tests/`、`UnLhaRe/bindings/dotnet/tests/`、`UnLhaRe/scripts/` | Rust・C・.NETの契約試験、ローカルbundle作成 |
-| `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 3環境のネイティブ検証、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
+| `.github/workflows/modern.yml`、`.github/workflows/publish-unlhare-nuget.yml` | 3環境のネイティブ検証（Windows x64/ARM64はGitHub提供ランナー、macOS ARM64だけ自前のApple Silicon Mac）、Native AOT試験、署名済みDLLからのNuGet作成・検証・公開 |
 
 ### 近代化版のデータフローと契約
 
