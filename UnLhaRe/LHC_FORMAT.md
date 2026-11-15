@@ -348,3 +348,120 @@ revision 11の各blockはrevision 10が許す全frame（KCS1BLK、KRS2BLK、KRS3
 modelはLZMA SDKのPpmd7（public domain）と同じPPMII手順（SEE、情報継承、binary context、最大頻度124のrescale）で、range coderは7-Zip PPMd（Ppmd7z）と同じ方式である。ただしmemory配置は独自（8 byte cellの添字arena、1 unit 16 byte）で、上限unit数に達するとPPMdと同様にmodelを初期化し直す。7-Zipの書庫・PPMd streamとの互換性はない。decoderはframe長・CRCを確保前に検査し、復号後にpayloadの余剰byte、最終codeが0でない非正準な終端、raw CRC不一致を拒否する。decodeの作業memoryはmodel上限40MiBとtext・出力の各1MiBで、64MiB codec gate内に収まる。
 
 テキストblockでは既存候補より小さくなる一方、PPMの復号はblock内で文脈modelを逐次更新するため、BWT系MDLの約2〜3倍の時間がかかる（2026-11-13のWindows x64開発測定で、Calgary book1の1 block復号が約80ms）。速度・7-Zip比較の評価条件と結果は[ゲート](experiments/khc/GOAL_GATE_20261113.md)に記録する。
+
+## Archive revision 12：大きなentryを長距離LZで格納（実験候補）
+
+Rust `BlockStrategy::LongRangeTrial` / CLI `--strategy long-range-trial` の明示指定だけがrevision 12を作る。manifest・block prefix・file CRC・終端はrevision 1と同じ。1MiB以下の単独block圧縮（`compress_block_with_strategy`）と、8MiB未満のentryはrevision 11と同じ候補（MDL、KCS1、KRS2、KRS3、PPM）を使う。8MiB以上のentryは、各blockを長距離LZのframe `LLZ1BLK` で格納する。
+
+### 形式の規則
+
+次の値は形式の定数で、作成・展開のworker数やmemory指定から決めない。
+
+- **block**：1MiB。entry内のblock番号kは0から数える。
+- **wave**：2 block。block kのwave開始は `k / 2 * 2` 番目のblockの先頭。
+- **参照範囲**：block kは、自分のblock内と、wave開始より前の**同じentry**のbyteだけを参照できる。同じwaveの他blockは参照しない。このため、同じwaveの2 blockは並列に復号できる。entryをまたぐ参照はない。
+- **距離**：64MiB未満。距離は常に、wave開始までの履歴の内側を指す。
+- **許可するentry**：8MiB以上のentryだけがLLZ1BLKを持てる。読み手は、その条件を満たすentryにだけ履歴を保持し、8MiB未満のentryのLLZ1BLKは拒否する。
+- **block単位の初期化**：blockごとにmodel・状態・rep履歴・range符号器を初期化する。block先頭のliteral文脈の「直前byte」は0とする。一致byte文脈は、そのbyteを読める場合だけ使う。
+- **単独復号の禁止**：LLZ1BLKは履歴を要するため、`decompress_block`は拒否する。revision 11以前では受理しない。
+- revision 12のblockは、revision 11が許す全frameとLLZ1BLKを格納できる。LLZ1BLKを許すentryでも、blockごとに他のfamilyを格納してよい（読み手はblockごとにfamilyを見分ける）。
+
+### LLZ1BLK frame
+
+32 byte headerの後にpayloadを置く。整数はlittle-endian。
+
+| offset | 長さ | 内容 |
+| ---: | ---: | --- |
+| 0 | 8 | `LLZ1BLK\0` |
+| 8 | 2 | frame revision 1 |
+| 10 | 1 | method：0＝無圧縮（payloadがraw）、1＝LZ |
+| 11 | 1 | 0 |
+| 12 | 4 | raw長（manifestのblock長と一致、1〜1MiB） |
+| 16 | 4 | payload長（method 0はraw長と同じ、method 1は5以上raw長未満） |
+| 20 | 4 | raw CRC-32 |
+| 24 | 4 | wire CRC-32（offset 24〜27を除くframe全体） |
+| 28 | 4 | 0 |
+
+method 1のpayloadは、LZMAと同じ記号体系（literal、一致、rep0〜3、short rep）とrange coder（11bit確率、移動量5）で、lc=3・lp=0・pb=2の固定model。位置は絶対位置（entry内のbyte位置）を使う。一致の最短長は2、最長は273。encoderはLZMAのoptimumに倣う価格つき最短路（先読み最大4,096位置）で記号列を決めるが、記号列の選び方は形式の規則ではない。payloadがraw長以上になるblockはmethod 0で格納する。
+
+decoderは、header・長さ・wire CRCを確保前に検査し、復号中は距離が窓の内側にあること、参照元が規則の範囲内にあること、block長ちょうどで終わること、raw CRCの一致を確かめる。履歴が足りない（保持外を指す）参照や、wave内の他blockを指す参照は誤りとして拒否する。
+
+### 作成・展開のmemory（例外）
+
+製品のcodec予算は1処理64MiBだが、2026-11-14に本人が、大きなentryに限ってこれを超えることを許可した。
+
+- **作成**：entry全体をmemoryに置き、窓長＋探索単位（1MiB）の二分木（約520MiB）、4byte hashの先頭（64MiB）、領域ごとの一致置き場（最大512MiB）、位置の索引（32MiB）、探索単位の前処理（32MiB）を使う。`LONG_RANGE_CREATE_MEMORY_BYTES`（1160MiB）未満の`max_codec_memory_bytes`では、8MiB以上のentryを含む作成を処理前に拒否する。encoderは512MiB以下のentryにだけ長距離LZを使い、それより大きいentryは従来のblockで格納する（読み手の規則ではない）。enwik8（100,000,000B）の作成で、最大の作業メモリは約918MiB。
+- **展開**：同じentryの直近の出力を、窓（64MiB）とwaveの分だけ1MiB blockの列で保持する。enwik8の展開（4thread・1thread）で最大の作業メモリは約73〜74MiB。
+- 並列展開は、wave内の2 blockを同時に復号する。wave（またはその前のblock）の消費を待ってから投入するため、LLZ1BLKのentryで同時に動くのは最大2 workerである。
+
+### 開発測定（2026-11-14、判定ではない）
+
+enwik8（100,000,000B、Windows x64、4thread、fsyncなし）：書庫25,013,606B（7-Zip LZMA2 d8m fb273の26,546,583Bの0.942倍）、作成約18秒、展開約0.65秒（1threadでは約1.2秒）。作成・展開の条件と7-Zip比較は[ゲート](experiments/khc/GOAL_GATE_20261113.md)、試作の経緯は[長距離LZの記録](experiments/khc/LONG_RANGE_LZ_20261113.md)にある。
+
+## Archive revision 13：近傍距離の符号を加えた長距離LZ（実験候補）
+
+Rust `BlockStrategy::LongRangeNearTrial` / CLI `--strategy long-range-near-trial` の明示指定だけがrevision 13を作る。revision 12との違いはLLZ1BLK frameの符号（frame revision 2）だけで、manifest・block prefix・entry・wave・窓・block単位の初期化・許可するentryの規則はrevision 12と同じ。revision 13のLLZ1BLKはframe revision 2だけ、revision 12は1だけを受理し、取り違えは拒否する（frame header offset 8の2 byteで区別する）。revision 11以前のframeには影響しない。
+
+### frame revision 2の通常一致
+
+通常一致（rep記号でも短rep記号でもない一致）の先頭に、近傍flag（11bit確率、文脈は更新前のstate）を1bit置く。
+
+- **flag=0**：revision 1と同じ（長さ、slot、直接bit、align）。
+- **flag=1**：長さはrevision 1と同じに書いた後、距離を「更新前のrep距離との差」で書く。
+  - 基準の番号 i（0〜3、更新前のrep0〜3）：2bitの木、文脈は min(長さ-2, 3)。
+  - 符号（i別の1bit、1＝距離が基準より小さい側）。
+  - 差−1（`g`）：5bitの木（i別）でslotを書き、slot 4以上は残りを直接bitで書く（revision 1の距離slotと同じ割り方）。差は1〜65536。
+  - 距離＝基準±差。rep3←rep2←rep1←rep0←距離の更新は通常一致と同じ。
+
+正規形（encoderはこれ以外を出さず、decoderは拒否する）：同じ距離のrepが先の番号にある基準 i は選ばない。距離が更新前のrepのどれかと等しいときは、近傍ではなくrep記号で書く。差を使って距離が負になる記号、窓外・履歴外を指す距離も拒否する。encoderはモデルの価格で近傍が厳密に安いときだけ近傍を使う（同価格は通常、複数の基準が同価格なら小さい i）。記号列の選び方は形式の規則ではない。
+
+### 開発測定（2026-11-14、判定ではない）
+
+Windows x64、4thread、fsyncなし。書庫のbyteはthread数で変わらない。サイズはrevision 12比。
+
+| 入力 | revision 12 | revision 13 | 縮み |
+| --- | ---: | ---: | ---: |
+| linux（tar、200MiB級） | 26,767,200 | 26,425,904 | 1.275% |
+| sources | 31,521,251 | 31,057,585 | 1.471% |
+| dblp | 21,957,221 | 21,774,645 | 0.832% |
+| simplewiki | 40,592,987 | 40,370,838 | 0.547% |
+| english | 47,374,033 | 47,367,278 | 0.014% |
+
+作成はparseの距離価格が増えるぶん、revision 12より約2.5%遅い（dblpで7-Zipの約1.85倍）。展開時間はrevision 12と同等（english 7-Zip比2.35、交互測定の中央値の比は0.97〜1.05）。経緯は[設計メモ](experiments/khc/TEXT_CLASS_DESIGN_20261114.md)にある。
+
+## Archive revision 14：4MiBのsegmentで符号化する長距離LZ（実験候補）
+
+Rust `BlockStrategy::LongRangeWideTrial` / CLI `--strategy long-range-wide-trial` の明示指定だけがrevision 14を作る。符号（近傍距離を含む）はrevision 13と同じで、modelを初期化する単位（segment）を1MiBから4MiBにした。archiveのblock長（1MiB）とmanifestは変えず、LLZ1BLKを使うentryでは1 frameが1 segment（最大4MiB）を覆う。
+
+| archive revision | LLZ1BLK frame revision | segment | 近傍距離 |
+| ---: | ---: | ---: | --- |
+| 12 | 1 | 1MiB | なし |
+| 13 | 2 | 1MiB | あり |
+| 14 | 3 | 4MiB | あり |
+
+### 形式の規則（revision 14）
+
+- **entryの単位**：8MiB以上のentryで、最初のframeがLLZ1BLKなら、そのentryの全frameがLLZ1BLK（frame revision 3）で、単位は4MiB（最後だけ端数、1B〜4MiB）。最初のframeが他familyなら、そのentryにLLZ1BLKは置けず、単位は1MiBでrevision 11のfamily集合を使う。revision 12/13のblockごとの混在規則は変えない。
+- **frame revision 3**：header配置はrevision 1/2と同じ。raw長は `min(entryの残り, 4MiB)` と一致しなければならない。bit列はframe revision 2と同一。
+- **参照範囲**：segment kは、自分のsegmentと、wave開始（`k / 2 * 2` 番目のsegmentの先頭）より前の同じentryの64MiB未満だけを参照できる。同じwaveのもう一方のsegmentは参照しない。
+- **読む順序**：最初のframeのprefix上限は `min(残り, 4MiB) + 40`。magicでfamilyを決め、他familyなら `min(残り, 1MiB) + 40` 以下を確かめ直してから既存の検査に進む。以降のframeは決まった単位で上限を検査する。
+- revision 12/13とframe revisionの取り違え、entry途中のfamilyの混在、期待と違うraw長は拒否する。
+
+### 作成・展開のmemory
+
+- **作成**：一致探索の同期単位を1MiB（木は窓＋1MiB分）、同時にparseするsegmentを最大 `min(threads, 4)`、一致置き場を640MiBまでとし、上限に近づくと完成済みのsegmentを先にparseして解放する。frameは順に書き出す。見積もり `LONG_RANGE_WIDE_CREATE_MEMORY_BYTES` は1448MiB（探索単位の前処理32MiBを含む）で、entry buffer（最大512MiB）と合わせて約1.92GiB以下（2026-11-14に本人が2GiBまで許可）。200MiB入力の実測peakは4threadで1.34〜1.47GiB、16threadで1.46GiB。出力はthread数・解放の時機で変わらない。1 segmentの一致が置き場の上限を超える入力は作成エラーになる（実測の最大は185MiB）。
+- **展開**：履歴は窓＋wave（約72MiB）。
+
+### 開発測定（2026-11-14、判定ではない）
+
+Windows x64、4thread、fsyncなし。7-Zipは LZMA2 d8m fb273 -mx9 -mmt4。展開は交互3回の中央値。
+
+| 入力 | revision 13 | revision 14 | 7-Zip | 14/7-Zip | 展開 14/13 | 展開 14/7-Zip |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| linux tar | 26,425,904 | 26,161,485 | 27,565,795 | 0.949 | 0.92 | 2.08 |
+| sources | 31,057,585 | 30,991,125 | 33,324,130 | 0.930 | 0.97 | 2.29 |
+| dblp | 21,774,645 | 21,669,061 | 23,927,658 | 0.906 | 0.99 | 2.11 |
+| simplewiki | 40,370,838 | 40,431,148 | 43,975,753 | 0.919 | 1.08 | 2.03 |
+| english | 47,367,278 | 46,074,592 | 52,031,726 | 0.886 | 0.99 | 2.57 |
+
+作成は、一致探索の前処理を1 threadにまとめて次の探索単位と重ねるなどの高速化（出力のbyteは不変）で、7-Zip と交互に測って dblp 39.7〜40.5秒（7-Zip 25.5〜25.7秒、比1.54〜1.59）、linux 33.8〜34.6秒（7-Zip 28.0〜28.2秒、比1.21〜1.23）になった（2026-11-15、高速化前はdblp 45.8〜47.3秒、linux 36.7〜39.8秒）。9MiB前後の小さいentryやsimplewikiでは、4MiBのsegmentが1MiBより最大約1%大きくなる。

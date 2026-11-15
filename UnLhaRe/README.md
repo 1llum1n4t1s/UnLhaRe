@@ -82,6 +82,12 @@ LHCの既定`mdl`は従来のrevision 1を維持します。明示指定の`hybr
 
 明示指定の`portfolio-ppm-trial`（Rust `BlockStrategy::PortfolioPpmTrial`）はrevision 11の実験候補です。revision 10の4方式に、PPMII（PPMd var.H相当）の独自Rust実装によるテキスト候補（LPM1BLK、order 5）を加え、厳密に短い場合だけ採用します。2026-11-13のWindows x64開発測定では、Calgary 18fileの書庫が783,335B（7-Zip LZMA2 mx9 solidの0.921倍）、Canterbury 11fileのframe合計がrevision 10より約7.4%小さくなりました。一方でテキストblockの復号はMDLの約2倍遅く、4worker展開は7-Zipの約2.6倍でした。default `mdl`、revision 1〜10の読取を維持します。[形式仕様](LHC_FORMAT.md#archive-revision-11ppmii系テキスト候補を加えたblock単位完全frame選択実験候補)を参照してください。
 
+明示指定の`long-range-trial`（Rust `BlockStrategy::LongRangeTrial`）はrevision 12の実験候補です。8MiB以上のfileだけを、同じfileの過去64MiBまでを参照できる長距離LZ（LZMA系の記号、frame `LLZ1BLK`）で格納し、小さいfileはrevision 11と同じ候補を使います。2blockずつを並列に復号できる形式で、作成は一致探索とblockごとの符号化を並列化します（worker数で書庫のbyteは変わりません）。作成には約1.2GiBのcodec memory（`max_codec_memory_bytes`）と、file自体のbufferを使います。2026-11-14のWindows x64開発測定で、enwik8（100,000,000B）が7-Zip LZMA2 d8m fb273の0.942倍、作成約18秒（7-Zipは約22秒）、4thread展開約0.65秒（7-Zipは約0.3秒）でした。大きなバイナリ（オブジェクト書庫・リンク済みの機械語）はLZMA級のmodelでは届きません。[形式仕様](LHC_FORMAT.md#archive-revision-12大きなentryを長距離lzで格納実験候補)を参照してください。
+
+明示指定の`long-range-near-trial`（Rust `BlockStrategy::LongRangeNearTrial`）はrevision 13の実験候補で、revision 12の符号に、直近のrep距離との差で距離を書く近傍符号（LLZ1BLK frame revision 2）を加えます。2026-11-14の開発測定でrevision 12よりlinux tarが1.28%、ソースtarが1.47%、dblpが0.83%、simplewikiが0.55%小さくなり、作成は約2.5%、展開は同等です。revision 12と13は互いのframeを読めません。[形式仕様](LHC_FORMAT.md#archive-revision-13近傍距離の符号を加えた長距離lz実験候補)を参照してください。
+
+明示指定の`long-range-wide-trial`（Rust `BlockStrategy::LongRangeWideTrial`）はrevision 14の実験候補で、revision 13の符号のまま、modelを初期化する単位を4MiBにします（LLZ1BLK frame revision 3）。2026-11-14の開発測定で、linux tar・ソースtar・dblp・simplewiki・英文の200MB級5入力すべてが7-Zip LZMA2 d8m fb273の0.95倍以下（0.886〜0.949）になり、展開は7-Zipの2.0〜2.6倍でした。作成には約1.4GiBのcodec memoryとfile自体のbuffer（合計2GiB以下）を使います。[形式仕様](LHC_FORMAT.md#archive-revision-144mibのsegmentで符号化する長距離lz実験候補)を参照してください。
+
 開発版LHCの実操作（既存`create/list/test/extract`は引き続きLHA）：
 
 MDL復号のモデル表は同じCDFを共有して保持メモリを抑えます。[公開経路の評価](experiments/khc/forest-layout/PUBLIC_RESULT_20261006.md)では調整用11入力の観測展開private最大が約9.74MBから5.33MBへ減りました。全処理の最大メモリは圧縮側でほぼ不変で、全モデルが可変な最悪条件の追加領域も必要です。形式・既定戦略は変更しません。小幅な時間短縮は確認していますが、7-Zip総合優位の証拠ではありません。
@@ -99,6 +105,7 @@ unlhare-cli lhc-create record-adaptive.lhc --source input-directory --strategy r
 unlhare-cli lhc-create spatial-mdl.lhc --source input-directory --strategy spatial-mdl-trial
 unlhare-cli lhc-create portfolio.lhc --source input-directory --strategy portfolio-trial
 unlhare-cli lhc-create portfolio-ppm.lhc --source input-directory --strategy portfolio-ppm-trial
+unlhare-cli lhc-create long-range.lhc --source input-directory --strategy long-range-trial
 unlhare-cli lhc-list output.lhc --json
 unlhare-cli lhc-test output.lhc
 unlhare-cli lhc-extract output.lhc --output restored-directory

@@ -13,12 +13,16 @@ use std::{
 };
 
 // 既定(旧来)のworker数と、threads指定時の上限。
-// 1worker当たりの復号scratchはframe/raw各1MiB強と小さなmodel表の見積もりで数MiBであり、
+// 1MiB blockの1worker当たりの復号scratchはframe/raw各1MiB強と小さなmodel表の見積もりで数MiBであり、
 // 4worker同時でも64MiB codec gate内に収まる想定（見積もりであり、全familyのpeak実測ではない）。
+// LLZ1BLK（revision 12〜14）の entry は別枠で、同じ file の直近の出力（窓64MiB＋wave）を履歴として持つ。
+// revision 14 は segment が4MiBなので、履歴は約72MiB、wave内で同時に復号する2 segmentのframeとrawが
+// 各最大4MiB強（合計16MiB強）で、codec gateを超える（読み手の別枠）。
 pub(super) const WORKERS: usize = 4;
 const MAX_EVENTS: usize = 32;
 // 投入済みで未消費のblock（queue待ち・復号中・並べ直し待ち）の上限はworker数×この値。
 // 各blockはframeかraw（各1MiB強）を1つ持つので、保持量は最大でも約16MiB（4worker時）に収まる。
+// 4MiB単位のLLZ1BLK（revision 14）はwaveで投入が止まり同時最大2件なので、この上限には達しない。
 // 重いblock（PPMなど）を待つ間も、他のworkerが後続blockを先に復号できる幅を確保する。
 const WINDOW_PER_WORKER: usize = 4;
 const STACK_BYTES: usize = 2 << 20;
@@ -57,7 +61,7 @@ pub(super) fn eligible(
 ) -> Result<bool> {
     // all_families は threads>=2 の明示指定時だけ。read_frame が revision ごとの family 境界を検証し、
     // decompress_block が全 family を厳密に復号するため、worker_kind の制限を外せる。
-    if !(matches!(revision, 4 | 5) || (all_families && (1..=11).contains(&revision)))
+    if !(matches!(revision, 4 | 5) || (all_families && (1..=14).contains(&revision)))
         || entries.len() > MAX_PARALLEL_ENTRIES
         || entries.iter().map(|entry| entry.name.len()).sum::<usize>() > MAX_PARALLEL_NAME_BYTES
     {
@@ -67,10 +71,10 @@ pub(super) fn eligible(
     let scan = (|| -> Result<bool> {
         let mut has_g32 = false;
         for entry in entries.iter().filter(|e| !e.is_directory) {
+            let mut units = UnitReader::new(revision, entry);
             let mut remaining = entry.original_size;
             while remaining != 0 {
-                let expected = remaining.min(BLOCK_BYTES as u64) as usize;
-                let frame = read_frame(input, expected, revision)?;
+                let (frame, expected) = units.next(input, remaining)?;
                 let frame_has_g32 = match worker_kind(&frame) {
                     Some(kind) => kind,
                     None if all_families => false,
@@ -95,6 +99,16 @@ struct Job {
     id: u64,
     expected: usize,
     frame: Vec<u8>,
+    /// LLZ1BLK のときだけ、同じ file の履歴（wave 開始までの block 列）を持つ。
+    llz: Option<LlzJob>,
+}
+/// LLZ1BLK の復号に要る履歴。segment 番号 `first` から wave 開始の直前までの segment 長の block を共有参照で持つ。
+struct LlzJob {
+    block: usize,
+    first: usize,
+    /// 書庫の revision が許す LLZ1BLK の形式（segment 長・frame revision）。
+    layout: longlz::Layout,
+    blocks: Vec<Arc<[u8]>>,
 }
 struct Decoded {
     id: u64,
@@ -143,7 +157,18 @@ impl Pool {
                         }
                         let id = job.id;
                         let raw = catch_unwind(AssertUnwindSafe(move || {
-                            let raw = decompress_block(&job.frame)?;
+                            let raw = match &job.llz {
+                                Some(l) => longlz::decode_frame_blocks(
+                                    &job.frame,
+                                    job.expected,
+                                    l.block,
+                                    &l.blocks,
+                                    l.first,
+                                    l.layout,
+                                )
+                                .map_err(Error::Format)?,
+                                None => decompress_block(&job.frame)?,
+                            };
                             if raw.len() != job.expected {
                                 return Err(Error::Format("LHC decoded size".into()));
                             }
@@ -217,7 +242,11 @@ impl Drop for Pool {
 enum Event {
     Directory(usize),
     Begin(usize),
-    Block { id: u64 },
+    /// entry は block が属する entry の番号（LLZ の履歴へ足すかの判定に使う）。
+    Block {
+        id: u64,
+        entry: usize,
+    },
     End(u32),
     Finished(Result<()>),
 }
@@ -237,6 +266,14 @@ struct Producer {
     all_families: bool,
     done: bool,
     events: VecDeque<Event>,
+    /// 現在の entry の frame の単位（entry の開始で作る）と、次に読む frame（segment）の番号。
+    units: Option<UnitReader>,
+    block: usize,
+    /// LLZ1BLK の履歴：消費済みの segment（番号 history_first から）。窓＋wave の分だけ保つ。
+    history: VecDeque<Arc<[u8]>>,
+    history_first: usize,
+    /// wave の前の block がまだ消費されておらず、投入を待っている frame。
+    held: Option<(Vec<u8>, usize)>,
 }
 impl Producer {
     fn new(revision: u8, workers: usize, all_families: bool) -> Self {
@@ -250,6 +287,29 @@ impl Producer {
             window: workers * WINDOW_PER_WORKER,
             done: false,
             events: VecDeque::with_capacity(MAX_EVENTS),
+            units: None,
+            block: 0,
+            history: VecDeque::new(),
+            history_first: 0,
+            held: None,
+        }
+    }
+
+    /// 消費した block を、現在の entry の LLZ 履歴へ足す（別の entry の block なら何もしない）。
+    fn consumed(&mut self, entry: usize, raw: &[u8]) {
+        if entry != self.entry {
+            return;
+        }
+        // LLZ1BLK の entry（revision 14 は最初の frame が LLZ1BLK の entry）だけ履歴を持つ。
+        let Some(layout) = self.units.as_ref().and_then(UnitReader::long_layout) else {
+            return;
+        };
+        self.history.push_back(Arc::from(raw));
+        // 今後の segment が参照しうるのは history_start(現在の segment) 以降だけ。
+        let keep_from = longlz::history_start(self.block, layout) / layout.segment;
+        while self.history_first < keep_from && !self.history.is_empty() {
+            self.history.pop_front();
+            self.history_first += 1;
         }
     }
     fn fill(&mut self, input: &mut File, entries: &[Entry], pool: &Pool) {
@@ -278,6 +338,11 @@ impl Producer {
                 } else {
                     self.events.push_back(Event::Begin(self.entry));
                     self.phase = Phase::Blocks(entry.original_size);
+                    self.units = Some(UnitReader::new(self.revision, entry));
+                    self.block = 0;
+                    self.history.clear();
+                    self.history_first = 0;
+                    self.held = None;
                 }
             }
             Phase::Blocks(0) => self.phase = Phase::Crc,
@@ -285,10 +350,43 @@ impl Producer {
                 if self.in_flight >= self.window {
                     return Ok(false);
                 }
-                let expected = remaining.min(BLOCK_BYTES as u64) as usize;
-                let frame = read_frame(input, expected, self.revision)?;
-                // prescan後に入力が変わっても、旧MDLをworkerへ渡さない。
-                if !self.all_families && worker_kind(&frame).is_none() {
+                let (frame, expected) = match self.held.take() {
+                    Some(held) => held,
+                    None => self
+                        .units
+                        .as_mut()
+                        .ok_or_else(|| Error::Unsupported("LHC decode pipeline units".into()))?
+                        .next(input, remaining)?,
+                };
+                let mut llz = None;
+                if frame.get(..8) == Some(&longlz::MAGIC[..]) {
+                    let layout = self
+                        .units
+                        .as_ref()
+                        .and_then(UnitReader::long_layout)
+                        .ok_or_else(|| Error::Format("LLZ1BLK without a layout".into()))?;
+                    // LLZ1BLK は wave の前の segment がすべて消費されてから投入する。
+                    let wave = longlz::wave_start(self.block, layout) / layout.segment;
+                    if self.history_first + self.history.len() < wave {
+                        self.held = Some((frame, expected));
+                        return Ok(false);
+                    }
+                    let first = longlz::history_start(self.block, layout) / layout.segment;
+                    if first < self.history_first {
+                        return Err(Error::Format("LLZ1BLK history range".into()));
+                    }
+                    llz = Some(LlzJob {
+                        block: self.block,
+                        first,
+                        layout,
+                        blocks: self
+                            .history
+                            .range(first - self.history_first..wave - self.history_first)
+                            .cloned()
+                            .collect(),
+                    });
+                } else if !self.all_families && worker_kind(&frame).is_none() {
+                    // prescan後に入力が変わっても、旧MDLをworkerへ渡さない。
                     return Err(Error::Format("LHC parallel frame changed".into()));
                 }
                 let id = self.next_id;
@@ -299,9 +397,14 @@ impl Producer {
                     id,
                     expected,
                     frame,
+                    llz,
                 })?;
                 self.in_flight += 1;
-                self.events.push_back(Event::Block { id });
+                self.block += 1;
+                self.events.push_back(Event::Block {
+                    id,
+                    entry: self.entry,
+                });
                 self.phase = Phase::Blocks(remaining - expected as u64);
             }
             Phase::Crc => {
@@ -456,8 +559,9 @@ pub(super) fn process(
                 Event::Begin(index) => {
                     pending = Some(Pending::begin(index, entries, root, destination)?)
                 }
-                Event::Block { id } => {
+                Event::Block { id, entry } => {
                     let raw = pool.receive(id)?;
+                    producer.consumed(entry, &raw);
                     let file = pending
                         .as_mut()
                         .ok_or_else(|| Error::Unsupported("LHC decode pipeline entry".into()))?;

@@ -116,6 +116,17 @@ enum LhcStrategy {
     #[value(name = "portfolio-trial")]
     PortfolioTrial,
     PortfolioPpmTrial,
+    /// revision 12: 8MiB 以上の file を長距離LZ（同じ file の過去 64MiB を参照）で格納する。
+    /// 大きな file の作成に約 1.2GiB の codec memory（と file 自体の buffer）を使う。
+    LongRangeTrial,
+    /// revision 13: revision 12 の長距離LZに、距離を直前の rep 距離との差で書く近傍符号を加える。
+    /// memory の条件は revision 12 と同じ。
+    #[value(name = "long-range-near-trial")]
+    LongRangeNearTrial,
+    /// revision 14: revision 13 と同じ符号で segment を 4MiB に広げる。8MiB 以上の file は全体を
+    /// LLZ1BLK（4MiB 単位）で格納する。作成に約 1.4GiB の codec memory（と file 自体の buffer）を使う。
+    #[value(name = "long-range-wide-trial")]
+    LongRangeWideTrial,
 }
 
 fn run(cli: Cli) -> unlhare::Result<()> {
@@ -159,11 +170,28 @@ fn run(cli: Cli) -> unlhare::Result<()> {
                             unlhare::lhc::BlockStrategy::SpatialMdlTrial
                         }
                         LhcStrategy::PortfolioTrial => unlhare::lhc::BlockStrategy::PortfolioTrial,
+                        LhcStrategy::LongRangeTrial => unlhare::lhc::BlockStrategy::LongRangeTrial,
+                        LhcStrategy::LongRangeNearTrial => {
+                            unlhare::lhc::BlockStrategy::LongRangeNearTrial
+                        }
+                        LhcStrategy::LongRangeWideTrial => {
+                            unlhare::lhc::BlockStrategy::LongRangeWideTrial
+                        }
                         LhcStrategy::PortfolioPpmTrial => {
                             unlhare::lhc::BlockStrategy::PortfolioPpmTrial
                         }
                     },
-                    max_codec_memory_bytes: unlhare::lhc::CODEC_MEMORY_BYTES * workers,
+                    // 長距離LZは大きな file に限り 64MiB の予算を超える（本人が許可した例外）。
+                    max_codec_memory_bytes: match strategy {
+                        LhcStrategy::LongRangeTrial | LhcStrategy::LongRangeNearTrial => {
+                            (unlhare::lhc::CODEC_MEMORY_BYTES * workers)
+                                .max(unlhare::lhc::LONG_RANGE_CREATE_MEMORY_BYTES)
+                        }
+                        LhcStrategy::LongRangeWideTrial => (unlhare::lhc::CODEC_MEMORY_BYTES
+                            * workers)
+                            .max(unlhare::lhc::LONG_RANGE_WIDE_CREATE_MEMORY_BYTES),
+                        _ => unlhare::lhc::CODEC_MEMORY_BYTES * workers,
+                    },
                     threads,
                     skip_fsync: no_fsync,
                 },

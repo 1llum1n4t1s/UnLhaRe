@@ -134,9 +134,9 @@ fn revision11_selects_ppm_round_trips_and_rejects_family_and_corruption() {
     assert!(lhc::extract_archive(&downgraded, &output, &limits).is_err());
     assert!(!output.join("prose.txt").exists());
 
-    // 未知の revision 12 は manifest 読み取りで拒否する。
-    let future = root.join("revision-12.lhc");
-    fs::write(&future, with_revision(&base, 12)).unwrap();
+    // 未知の revision 15 は manifest 読み取りで拒否する（12・13・14 は長距離LZの revision）。
+    let future = root.join("revision-15.lhc");
+    fs::write(&future, with_revision(&base, 15)).unwrap();
     assert!(lhc::list_archive(&future, &limits).is_err());
 
     // payload の破損（wire CRC 付け直し・なしの両方）は拒否し、公開しない。

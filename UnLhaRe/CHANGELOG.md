@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- LHCに実験候補`long-range-wide-trial`（`BlockStrategy::LongRangeWideTrial`、archive revision 14、LLZ1BLK frame revision 3）を追加。revision 13の符号のまま、modelを初期化するsegmentを4MiBにし、200MB級のテキスト系5入力すべてで7-Zip LZMA2 d8m fb273の0.95倍以下になる。作成は一致置き場に上限を設けて完成済みsegmentを並列にparseし、frameを順に書き出す（約1.4GiB＋entry、2GiB以下）。revision 12/13の出力と読取は変更しない。
+- LHCの長距離LZ（revision 12/13/14）の作成を高速化。出力のbyteは変えずに、一致探索の前処理を1 threadにまとめて次の探索単位と重ね、距離価格と連結rep長の計算結果を再利用する。200MB級のdblpで作成が約15%速くなり、7-Zip比は約1.8から約1.6になった。作成時の見積もりmemoryは32MiB増える（revision 12/13は1160MiB、14は1448MiB）。
+- LHCに実験候補`long-range-near-trial`（`BlockStrategy::LongRangeNearTrial`、archive revision 13、LLZ1BLK frame revision 2）を追加。直近のrep距離との差が65536以内の距離を、基準の番号・符号・差で書く近傍符号で、revision 12よりlinux tarで1.28%、ソースtarで1.47%、dblpで0.83%小さくなる。revision 12の読取は変更しない。
+- LHCに実験候補`long-range-trial`（`BlockStrategy::LongRangeTrial`、archive revision 12）を追加。8MiB以上のfileを、同じfileの過去64MiBまでを参照するLZMA系の長距離LZ（frame `LLZ1BLK`、2blockを1つのwaveとして並列に復号できる）で格納し、小さいfileはrevision 11と同じ候補を使う。一致探索をhash分担の並列BT4にして作成を速くし、worker数で書庫のbyteは変わらない。大きなfileの作成は約1.2GiBのcodec memoryを要し、64MiBの予算の例外として本人が許可した。enwik8で7-Zip LZMA2 d8m fb273の0.942倍。既定`mdl`と既存revisionの読取は変更しない。
 - LHCの並列展開・検証で、重いblockを待つ間も他workerが後続blockを復号できるよう、共有job queueと番号順の並べ直しへ変更。blockの重さに偏りがある書庫で展開が速くなる。書庫形式と出力は変わらない。
 - 開発中の独自形式KHCをLHC（LHA High Compression、拡張子`.lhc`）へ改名。Rust APIは`unlhare::lhc`、CLIは`lhc-create`/`lhc-list`/`lhc-test`/`lhc-extract`、仕様は`LHC_FORMAT.md`。書庫・frameのmagicも`KHC*`から`LHC*`へ変更したため、改名前に作成した開発版書庫は読めない。LHAの圧縮方式ではなく、既存LHAツールとの互換性はない。
 - LHCの作成・展開・検証に`--threads`（`CreateOptions::threads` / `ExtractOptions::threads`、`lhc::extract_archive_with_options` / `verify_archive_with_options`）を追加。作成はblock単位の並列圧縮で、worker数にかかわらず書庫のbyteは同一。展開・検証は全frame familyを並列復号できる。
