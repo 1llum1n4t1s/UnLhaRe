@@ -1,10 +1,18 @@
 name: Publish UnLhaRe NuGet package
 
+# 近代化版 UnLhaRe の NuGet パッケージ Kagayoi.UnLhaRe を作成して NuGet.org へ公開する（手動実行だけ）。
+# 入力元は Cloudflare R2 の配布物（https://unlhare.kagayoi.com/<版>/）。タグも GitHub Release も使わない。
+# - release.json の commit（release/unlhare/<版> ブランチの配信時コミット）をチェックアウトして、
+#   契約試験・pack に使うソースを配信物と同じ版に固定する。
+# - 署名済み ZIP は R2 から取得し、SHA256SUMS.txt・release.json のハッシュと Authenticode 署名を検証してから梱包する。
+# - environment は付けない（NuGet Trusted Publishing の OIDC claim を変えないため）。
+# 先に release-unlhare.yml（release/unlhare/<版> ブランチの push）で R2 へ配信しておく。
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Stable UnLhaRe 1.0.x version already published as a GitHub Release
+        description: Stable UnLhaRe 1.0.x version already published to R2 (https://unlhare.kagayoi.com/<version>/)
         required: true
         type: string
 
@@ -26,17 +34,29 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          if ($env:REQUESTED_VERSION -notmatch '^1\.0\.\d+$') {
+          if ($env:REQUESTED_VERSION -notmatch '^1.0.d+$') {
             throw "Version must be a stable 1.0.x version: $env:REQUESTED_VERSION"
           }
           "PACKAGE_VERSION=$env:REQUESTED_VERSION" >> $env:GITHUB_ENV
-          "RELEASE_TAG=unlhare-v$env:REQUESTED_VERSION" >> $env:GITHUB_ENV
+          "DIST_BASE_URL=https://unlhare.kagayoi.com/$env:REQUESTED_VERSION" >> $env:GITHUB_ENV
 
-      - name: Check out the released source tag
+      - name: Download release metadata from R2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # 公開 URL からだけ取得する（リダイレクトは追わない）。release.json の version・commit・ハッシュを後続で使う。
+          $metadataPath = Join-Path $env:RUNNER_TEMP 'release.json'
+          Invoke-WebRequest -Uri "$env:DIST_BASE_URL/release.json" -OutFile $metadataPath -MaximumRedirection 0 -TimeoutSec 60
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+          if ("$($metadata.version)" -cne $env:PACKAGE_VERSION) { throw 'release.json version does not match the requested version.' }
+          if ("$($metadata.commit)" -cnotmatch '^[0-9a-f]{40}$') { throw 'release.json commit is not a 40-digit lowercase hex SHA.' }
+          "RELEASE_COMMIT=$($metadata.commit)" >> $env:GITHUB_ENV
+          "RELEASE_METADATA=$metadataPath" >> $env:GITHUB_ENV
+
+      - name: Check out the released source commit
         shell: pwsh
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
-          CHECKOUT_REF: unlhare-v${{ inputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
           git init .
@@ -49,10 +69,12 @@ jobs:
           $env:GIT_CONFIG_KEY_0 = 'http.extraHeader'
           $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $header"
           try {
-            git fetch --force --tags origin $env:CHECKOUT_REF
+            # release.json の commit を SHA で取得する（タグは使わない）。
+            git fetch --force origin $env:RELEASE_COMMIT
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
             git checkout --detach FETCH_HEAD
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            if ((git rev-parse HEAD).Trim() -cne $env:RELEASE_COMMIT) { throw 'Checked out commit does not match release.json.' }
           } finally {
             $env:GIT_CONFIG_COUNT = $null
             $env:GIT_CONFIG_KEY_0 = $null
@@ -89,20 +111,24 @@ jobs:
             throw 'Cargo package version does not match the requested release.'
           }
 
-      - name: Download signed Windows release assets
+      - name: Download signed Windows release assets from R2
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Path release-assets -Force | Out-Null
-          gh release download $env:RELEASE_TAG `
-            --repo $env:GITHUB_REPOSITORY `
-            --dir release-assets `
-            --pattern "UnLhaRe-$env:PACKAGE_VERSION-win-x64.zip" `
-            --pattern "UnLhaRe-$env:PACKAGE_VERSION-win-arm64.zip" `
-            --pattern 'SHA256SUMS.txt' `
-            --clobber
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $metadata = Get-Content -LiteralPath $env:RELEASE_METADATA -Raw | ConvertFrom-Json
+          $names = @("UnLhaRe-$env:PACKAGE_VERSION-win-x64.zip", "UnLhaRe-$env:PACKAGE_VERSION-win-arm64.zip", 'SHA256SUMS.txt')
+          foreach ($name in $names) {
+            # 公開 URL から取得する（リダイレクトは追わない）。
+            Invoke-WebRequest -Uri "$env:DIST_BASE_URL/$name" -OutFile (Join-Path 'release-assets' $name) -MaximumRedirection 0 -TimeoutSec 600
+          }
+          # release.json に記録された ZIP のハッシュとも照合する（SHA256SUMS.txt との照合は次の step）。
+          foreach ($name in $names[0..1]) {
+            $entry = @($metadata.files | Where-Object { $_.name -ceq $name })
+            if ($entry.Count -ne 1) { throw "release.json must list $name exactly once." }
+            $actual = (Get-FileHash -LiteralPath (Join-Path 'release-assets' $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -cne "$($entry[0].sha256)") { throw "SHA256 differs from release.json for $name." }
+          }
 
       - name: Verify release assets and Authenticode signatures
         shell: pwsh

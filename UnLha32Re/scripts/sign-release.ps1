@@ -5,7 +5,7 @@
 # signtool の /dlib として使う。SimplySign Desktop・証明書ストア・手入力のワンタイムコードは不要。
 # - ローカル: `sigilune setup` で資格情報マネージャーへ登録済みであること。
 # - GitHub Actions: Environment "release" の Secrets を SIGILUNE_EMAIL / SIGILUNE_TOTP_URI で
-#   署名 step だけへ渡す（.github/workflows/release-unlhare.yml）。
+#   署名 step だけへ渡す（.github/workflows/release-unlhare.yml の sign ジョブ）。
 # UnLha32Re の release.ps1 と、近代化版 UnLhaRe の Windows bundle の両方から使う。
 [CmdletBinding()]
 param(

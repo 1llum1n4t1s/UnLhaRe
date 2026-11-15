@@ -14,7 +14,7 @@
 - Windows x64で `scripts/build.ps1 -Target x86_64-pc-windows-msvc -Test` が成功。fmt、clippy `-D warnings`、Rust全61試験、doc test、Release bundleを確認した。実junctionを途中要素に置いた圧縮元・展開先・書庫出力先の拒否、検査済み出力親ハンドルへの一時作成とno-replace公開、全入力スキップ時の非公開、API level 4のエラー分類とsticky状態を含む。
 - .NET 10のwin-x64 NativeAOT publish・実行が成功。通常の `List(path)`、作成結果enum、厳格作成オプション、`ArchiveNativeException.Kind` を実native DLLとの契約試験で確認した。publishには `-p:OS=Windows_NT` を指定した。
 - Windows ARM64はRelease bundleを生成し、macOS x64/ARM64は `cargo check --locked --all-targets` に成功。Windows ARM64とmacOSのネイティブ実行はCIで確認する。
-- Windows x64/ARM64のローカルbundleからNuGet 1.0.3をpackし、nuspecのID・版、CPU別native DLL、buildTransitive、README、第三者告知・ライセンス全文の同梱を確認した。公開用NuGetはGitHub Releaseの署名済みDLLからCIで再作成する。
+- Windows x64/ARM64のローカルbundleからNuGet 1.0.3をpackし、nuspecのID・版、CPU別native DLL、buildTransitive、README、第三者告知・ライセンス全文の同梱を確認した。公開用NuGetはR2へ配信した署名済みDLLからCIで再作成する。
 - WindowsとmacOSでは絶対パスをルートハンドルから要素単位で開く。途中のjunction、シンボリックリンク、その他のreparse pointを追跡せず、欠けた展開先要素も1件ずつ作成して再検査する。Windowsでは実junctionを通る公開圧縮・展開経路で拒否と外部側非変更を確認した。macOSは同じ公開経路のsymlink試験を追加してクロスコンパイルしたが、ネイティブ実行はCIで確認する。
 
 ## 1.0.2 API level 3 利用性改善
@@ -51,7 +51,7 @@
 - Windows ARM64: Releaseクロスビルド成功。macOS x64/ARM64: 全ターゲットのcargo check成功。ネイティブ実行はModern Rust CIで確認する。
 - .NET 10: C#経由のUnicode往復、選択、上限、取消、コールバック例外、最終通知内取消を確認。x64 Native AOT実行成功、ARM64 Native AOTクロスビルド成功。
 - NuGet実物: PackageReference経由のx64 Native AOT実行、CPU別DLLとライセンスのpublish同梱を確認。
-- 現在の3環境のネイティブCI、署名、検証済み送信物のハッシュ、GitHub Releaseの作成・アップロード結果とNuGet workflow・pushの受付・実行結果はリリースごとの `artifacts/release-<version>/release-state.json` に記録する。
+- 現在の3環境のネイティブCI、署名、検証済み送信物のハッシュ、R2への配信結果（`release.json` のcommitを含む）とNuGet workflow・pushの受付・実行結果はリリースごとの `artifacts/release-<version>/release-state.json` に記録する。
 
 以下は1.0.0実装時のローカル検証記録。1.0.0の4環境ネイティブCIは [run 35207328000](https://github.com/1llum1n4t1s/UnLhaRe/actions/runs/35207328000) で成功済み。
 

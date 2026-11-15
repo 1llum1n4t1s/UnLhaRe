@@ -1,14 +1,14 @@
 name: Modern Rust
 
+# 近代化版の3ネイティブターゲット（Windows x64/ARM64、macOS ARM64）の検証と bundle 作成。
+# - pull_request / workflow_dispatch: 通常の検証。
+# - workflow_call: release-unlhare.yml が release/unlhare/<版> ブランチの push から呼ぶ。
+#   release ブランチへの push で直接は起動しない（配信 workflow が同じ run の中でビルドし、署名・配信へ成果物を渡す）。
+#   呼び出し側へ Secrets は渡さない。
 on:
-  push:
-    branches:
-      - 'release/unlhare/**'
-    paths:
-      - 'UnLhaRe/**'
-      - '.github/workflows/modern.yml'
   pull_request: null
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

@@ -1,98 +1,128 @@
 name: Release UnLhaRe
 
-# 近代化版 UnLhaRe の Windows bundle を Sigilune で署名し、配布ファイルを作る。
-# - 再ビルドしない: release/unlhare/<version> の HEAD で成功した Modern Rust (modern.yml) の
-#   成果物（Windows x64/ARM64 bundle、macOS ARM64 tar.gz）を取得し、Windows の DLL・CLI だけへ署名する。
-# - 署名: Sigilune (https://github.com/1llum1n4t1s/Sigilune) が Certum SimplySign のクラウド鍵で行う。
-#   本人の PC や SimplySign Desktop は不要。Secrets は Environment "release" の
-#   SIGILUNE_EMAIL / SIGILUNE_TOTP_URI を署名 step だけへ渡す。
-# - 配布: create_draft_release が true のときだけ、unlhare-v<version> の GitHub Release を「下書き」で作り、
-#   3パッケージと SHA256SUMS.txt を添付する。リリースノートを確認して本人が公開する。
-#   公開後に publish-unlhare-nuget.yml を手動実行する（NuGet は従来どおり公開済み Release から作る）。
-# - 起動: 手動 (workflow_dispatch) で main から実行する（Environment "release" は main と v* タグだけ許可）。
-#   誤配信を避けるため push / tag では自動起動しない。
+# 近代化版 UnLhaRe を署名し、Cloudflare R2（https://unlhare.kagayoi.com）へ配信する。
+# タグも GitHub Release も使わない。配布は R2 が唯一の入口で、release/unlhare/<版> ブランチへの push が配信の起点。
+#
+# 起動:
+# - push: release/unlhare/** ブランチ。GitHub のブランチフィルタは glob で、`*` は `/` に一致しないため `**` を使う。
+#   paths フィルタは付けない（release ブランチへの push は常に配信の意思表示。ビルドの要否は modern.yml 側で決まる）。
+# - workflow_dispatch: 同じ release/unlhare/<版> ブランチを指定して配信をやり直す。
+#   R2 に同じ版があれば、内容が同一のときだけ成功する（別内容は上書きせず失敗する）。
+#
+# ジョブ構成:
+# 1. resolve: ブランチ名 release/unlhare/<版> と UnLhaRe/Cargo.toml の [package] version を照合して版を決める。
+# 2. build  : modern.yml を再利用してこの run の中で3ネイティブターゲットをビルド・検証する（Secrets は渡さない）。
+#             macOS ARM64 の tar.gz（ad-hoc 署名）は、この成果物をそのまま配る。
+# 3. sign   : Windows の DLL・CLI を Sigilune（Certum クラウド署名）で署名し、ZIP・SHA256SUMS.txt・release.json を作る。
+# 4. publish: 署名済み成果物を R2 へ配信する（UnLhaRe/scripts/Publish-R2.ps1）。
+# sign と publish を分ける理由: 署名し直すとタイムスタンプでバイト列（ハッシュ）が変わる。配信だけが失敗したとき、
+# 失敗した publish ジョブだけを再実行すれば、署名済みの同じバイト列をもう一度配れる。
+#
+# Secrets は Environment "release"（release/unlhare/* だけ許可、承認者なし）にだけ置く。
+# 署名用（SIGILUNE_EMAIL / SIGILUNE_TOTP_URI）は sign の署名 step だけ、
+# 配信用（CLOUDFLARE_API_TOKEN）は publish の配信 step だけへ渡す。
+# 配信後の公開手順（NuGet）は publish-unlhare-nuget.yml を手動実行する（入力は R2 の同じ版）。
 on:
+  push:
+    branches: ['release/unlhare/**']
   workflow_dispatch:
-    inputs:
-      version:
-        description: リリースする安定版 1.0.x（Cargo.toml と release/unlhare/<version> ブランチに一致させる）
-        required: true
-        type: string
-      create_draft_release:
-        description: unlhare-v<version> の GitHub Release を下書きで作成して添付する（false なら Actions の成果物だけ）
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-unlhare-${{ inputs.version }}
+  group: release-unlhare-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    if: github.repository == '1llum1n4t1s/UnLhaRe' && github.ref == 'refs/heads/main'
-    runs-on: windows-latest
-    timeout-minutes: 30
-    environment: release
-    permissions:
-      contents: write
-      actions: read
+  resolve:
+    if: github.repository == '1llum1n4t1s/UnLhaRe' && startsWith(github.ref, 'refs/heads/release/unlhare/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
     defaults:
       run:
         shell: pwsh
-    env:
-      RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - name: リポジトリをチェックアウト
-        # 署名スクリプト（UnLha32Re/scripts/sign-release.ps1）は main の版を使う。
         # actions/checkout@v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - name: 版・コミット・CI 成果物を確認
-        id: source
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: ブランチ名と Cargo.toml から版を解決
+        id: version
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:RELEASE_VERSION -cnotmatch '^1\.0\.\d+$') { throw "Version must be a stable 1.0.x version: $env:RELEASE_VERSION" }
-          $branch = "release/unlhare/$env:RELEASE_VERSION"
-          $sha = (gh api "repos/$env:GITHUB_REPOSITORY/branches/$branch" --jq '.commit.sha').Trim()
-          if ($LASTEXITCODE -ne 0 -or $sha -cnotmatch '^[0-9a-f]{40}$') { throw "Release branch was not found: $branch" }
-          # Cargo.toml の [package] version が入力と一致することを、そのコミットで確認する。
-          $encoded = gh api "repos/$env:GITHUB_REPOSITORY/contents/UnLhaRe/Cargo.toml?ref=$sha" --jq '.content'
-          if ($LASTEXITCODE -ne 0) { throw 'Cargo.toml could not be read.' }
-          $manifest = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($encoded -join '') -replace '\s', ''))
+          # ブランチ名 release/unlhare/<版> から版を取り、安定版 1.0.x の形式だけを受け付ける。
+          # 旧互換版の release/1.0.0 や main では止まる（別の製品・版を誤って配信しない）。
+          if ($env:GITHUB_REF_TYPE -ne 'branch') { throw "ref is not a branch: $env:GITHUB_REF" }
+          $match = [regex]::Match($env:GITHUB_REF_NAME, '^release/unlhare/(1\.0\.\d+)$')
+          if (-not $match.Success) { throw "Branch must be release/unlhare/1.0.x: $env:GITHUB_REF_NAME" }
+          $version = $match.Groups[1].Value
+          # Cargo.toml の [package] version がブランチ名の版と一致することを、このコミットで確認する。
+          $manifest = Get-Content -LiteralPath 'UnLhaRe/Cargo.toml' -Raw
           $package = [regex]::Match($manifest, '(?ms)^\[package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
           $versions = [regex]::Matches($package.Groups['body'].Value, '(?m)^version\s*=\s*"([^"]+)"\s*$')
-          if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -cne $env:RELEASE_VERSION) { throw 'Cargo package version does not match the requested release.' }
-          # 同じ SHA で成功した、release ブランチ上の Modern Rust を使う（RELEASING.md の手順2）。
-          # head_sha だけでは同じ SHA を head とする PR の run（base とのマージ結果をビルド）も一致するため、
-          # head_branch と event（push か、ブランチを指定した手動実行。どちらも $sha そのものをビルドする）も
-          # API の絞り込みと応答の両方で照合する。1.0.4 は手動実行の run で公開した。
-          $encodedBranch = [uri]::EscapeDataString($branch)
-          $listed = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/modern.yml/runs?head_sha=$sha&branch=$encodedBranch&status=success&per_page=20" --jq '[.workflow_runs[] | {id, head_sha, event, head_branch}]'
-          if ($LASTEXITCODE -ne 0) { throw 'Modern Rust runs could not be listed.' }
-          $runs = @(($listed | ConvertFrom-Json) | Where-Object { $_.head_sha -ceq $sha -and $_.head_branch -ceq $branch -and $_.event -cin @('push', 'workflow_dispatch') } | ForEach-Object { $_.id })
-          if ($runs.Count -lt 1) { throw "No successful Modern Rust run for $sha. Push the release branch and wait for CI first." }
-          "sha=$sha" >> $env:GITHUB_OUTPUT
-          "run_id=$($runs[0])" >> $env:GITHUB_OUTPUT
-          Write-Host "Release commit: $sha / Modern Rust run: $($runs[0])"
+          if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -cne $version) { throw 'Cargo package version does not match the release branch.' }
+          if ($env:GITHUB_SHA -cnotmatch '^[0-9a-f]{40}$') { throw "Unexpected commit: $env:GITHUB_SHA" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "commit=$env:GITHUB_SHA" >> $env:GITHUB_OUTPUT
+          Write-Host "Release $version at $env:GITHUB_SHA"
 
-      - name: CI 成果物を取得
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN: ${{ steps.source.outputs.run_id }}
+  build:
+    # 3ネイティブターゲットのビルド・試験は modern.yml と共通。Secrets は渡さない（署名・配信の鍵はこのジョブから見えない）。
+    needs: resolve
+    uses: ./.github/workflows/modern.yml
+    permissions:
+      contents: read
+
+  sign:
+    needs: [resolve, build]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+    steps:
+      - name: リポジトリをチェックアウト
+        # 署名スクリプト（UnLha32Re/scripts/sign-release.ps1）は、配信するブランチの版を使う。
+        # actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: CI 成果物を取得（x64）
+        # actions/download-artifact@v8.0.2。build ジョブ（modern.yml）が同じ run で upload した成果物。
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: unlhare-x86_64-pc-windows-msvc
+          path: ${{ runner.temp }}/unlhare-ci/x86_64-pc-windows-msvc
+
+      - name: CI 成果物を取得（ARM64）
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: unlhare-aarch64-pc-windows-msvc
+          path: ${{ runner.temp }}/unlhare-ci/aarch64-pc-windows-msvc
+
+      - name: CI 成果物を取得（macOS ARM64）
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: unlhare-aarch64-apple-darwin
+          path: ${{ runner.temp }}/unlhare-ci/aarch64-apple-darwin
+
+      - name: CI 成果物を確認
         run: |
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'unlhare-ci'
-          foreach ($target in @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc', 'aarch64-apple-darwin')) {
-            gh run download $env:SOURCE_RUN --repo $env:GITHUB_REPOSITORY --name "unlhare-$target" --dir (Join-Path $root $target)
-            if ($LASTEXITCODE -ne 0) { throw "CI artifact unlhare-$target could not be downloaded." }
-          }
           # bundle の必須ファイルを確認する（build.ps1 の New-LocalBundle と同じ構成）。
           foreach ($target in @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')) {
             foreach ($name in @('unlhare.dll', 'unlhare-cli.exe', 'unlhare.dll.lib', 'include/unlhare.h', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.txt', 'licensing')) {
@@ -129,7 +159,7 @@ jobs:
         if: always() && steps.sigilune.outcome == 'success'
         run: sigilune logout | Out-Null
 
-      - name: 配布ファイルと SHA256SUMS.txt を作成
+      - name: 配布ファイル・SHA256SUMS.txt・release.json を作成
         run: |
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'unlhare-ci'
@@ -149,44 +179,66 @@ jobs:
           }
           # macOS は CI で ad-hoc 署名した tar.gz をそのまま使う（Developer ID 署名・公証ではない）。
           Copy-Item -LiteralPath (Join-Path $root 'aarch64-apple-darwin/unlhare-aarch64-apple-darwin.tar.gz') -Destination (Join-Path $dist "UnLhaRe-$env:RELEASE_VERSION-macos-arm64.tar.gz")
-          $lines = Get-ChildItem -LiteralPath $dist -File | Sort-Object Name | ForEach-Object {
-            '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
-          }
+          # 配布名は ordinal 順に固定する（Publish-R2.ps1 が同じ正規形で SHA256SUMS.txt を照合する）。
+          $names = @("UnLhaRe-$env:RELEASE_VERSION-macos-arm64.tar.gz", "UnLhaRe-$env:RELEASE_VERSION-win-arm64.zip", "UnLhaRe-$env:RELEASE_VERSION-win-x64.zip")
+          $files = @($names | ForEach-Object {
+            [ordered]@{ name = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $dist $_) -Algorithm SHA256).Hash.ToLowerInvariant() }
+          })
+          $lines = $files | ForEach-Object { '{0}  {1}' -f $_.sha256, $_.name }
           [IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS.txt'), (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+          # release.json: 版・元のコミット・配布ファイルのハッシュ。NuGet workflow はここから commit を読み、
+          # R2 の latest.json は同じ内容を使う。
+          $release = [ordered]@{ version = $env:RELEASE_VERSION; commit = $env:RELEASE_COMMIT; files = $files }
+          [IO.File]::WriteAllText((Join-Path $dist 'release.json'), (($release | ConvertTo-Json -Depth 4 -Compress) + "`n"), [Text.UTF8Encoding]::new($false))
           Get-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt')
-          "DIST_DIR=$dist" >> $env:GITHUB_ENV
+          Get-Content -LiteralPath (Join-Path $dist 'release.json')
 
       - name: 成果物をアップロード
+        # publish ジョブが同じバイト列を取得する。配信だけ失敗した場合は publish だけを再実行する。
         # actions/upload-artifact@v7.0.2
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: unlhare-release-${{ inputs.version }}
-          path: ${{ env.DIST_DIR }}/*
+          name: unlhare-release-${{ needs.resolve.outputs.version }}
+          path: ${{ runner.temp }}/unlhare-dist/*
           if-no-files-found: error
           retention-days: 30
 
-      - name: GitHub Release を下書きで作成
-        if: inputs.create_draft_release
+  publish:
+    needs: [resolve, sign]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: release
+    # R2 へは Cloudflare のトークンで書くため、GitHub の書込み権限は要らない。
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+    steps:
+      - name: リポジトリをチェックアウト
+        # actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: 署名済み成果物を取得
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: unlhare-release-${{ needs.resolve.outputs.version }}
+          path: ${{ runner.temp }}/unlhare-dist
+
+      - name: R2 へ配信
+        # 版付きの不変ファイルを先に置き、公開 URL で照合してから latest.json を更新する（詳細は UnLhaRe/scripts/Publish-R2.ps1）。
+        # 同じ版が R2 にあれば、内容が同一のときだけ成功する（別内容は上書きせず失敗）。
+        # R2 の latest.json がより新しい版なら latest.json は更新しない。
+        # CLOUDFLARE_API_TOKEN はこの step だけへ渡す。
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = "unlhare-v$env:RELEASE_VERSION"
-          # 既存の Release は上書きしない。タグが先に push 済みなら、同じコミットを指す場合だけ続行する。
-          $existing = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs/tags/$tag" --jq '.sha' 2>$null
-          if ($LASTEXITCODE -eq 0 -and $existing -and $existing.Trim() -cne $env:RELEASE_SHA) { throw "Tag $tag already exists at a different commit." }
-          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
-          $notes = @(
-            "UnLhaRe $env:RELEASE_VERSION",
-            '',
-            '- Windows x64/ARM64: unlhare.dll と unlhare-cli.exe は Authenticode 署名済み（Certum、タイムスタンプ付き）。',
-            '- macOS ARM64: ad-hoc 署名のみ。Developer ID 署名・公証ではありません。',
-            '- 各ファイルの SHA-256 は SHA256SUMS.txt を参照してください。',
-            '',
-            '（下書き: 変更内容は CHANGELOG を確認して追記してから公開してください）'
-          ) -join "`n"
-          $files = @(Get-ChildItem -LiteralPath $env:DIST_DIR -File | Sort-Object Name | ForEach-Object FullName)
-          gh release create $tag @files --repo $env:GITHUB_REPOSITORY --draft --target $env:RELEASE_SHA --title "UnLhaRe $env:RELEASE_VERSION" --notes $notes
-          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed.' }
+          # 失敗は Publish-R2.ps1 が例外(throw)で知らせる。ここで $LASTEXITCODE を見ると、配信が全部成功した後でも
+          # スクリプト内部のネイティブ呼び出しの終了コードが残っていて誤って失敗扱いになるため、確認しない
+          # （Sigilune 1.1.3 で発生した）。
+          ./UnLhaRe/scripts/Publish-R2.ps1 -Version $env:RELEASE_VERSION -Commit $env:RELEASE_COMMIT -DistDirectory (Join-Path $env:RUNNER_TEMP 'unlhare-dist')

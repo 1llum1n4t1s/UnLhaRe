@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 配信をタグ・GitHub Releaseから Cloudflare R2（`https://unlhare.kagayoi.com`）へ移行。`release/unlhare/<版>` ブランチのpushで `release-unlhare.yml` が始まり、同じrunでビルド・Sigilune署名・R2配信（`scripts/Publish-R2.ps1`）を行う。版付きファイルは不変で、`latest.json` と `<版>/release.json`（version・commit・ハッシュ）を配信する。NuGet公開workflowの入力もR2へ変更。1.0.3以前のタグは廃止し、版とコミットの対応は `RELEASING.md` に残した。
+
 - LHCに実験候補`long-range-mix-trial`（`BlockStrategy::LongRangeMixTrial`、archive revision 15、LLZ1BLK frame revision 4）を追加。revision 14の構成に距離slotの文脈の長さ8区分を加え、literalの各bitをLZMAの確率と直前1byte文脈の確率のlogistic混合（整数、12bit確率）で符号化する方式を、0.3%以上縮むwaveだけに使う（frameのmethod 1＝混合なし、2＝混合あり）。parseは1回で両方を同時に書く。200MB級のテキスト系5入力で7-Zip LZMA2 d8m fb273の0.880〜0.944倍（linux tarは0.949から0.944）、展開は7-Zipの2.4〜2.7倍、作成は1.2〜1.7倍。作成の見積もりmemoryは1480MiB。revision 12〜14の出力と読取は変更しない。
 - LHCに実験候補`long-range-wide-trial`（`BlockStrategy::LongRangeWideTrial`、archive revision 14、LLZ1BLK frame revision 3）を追加。revision 13の符号のまま、modelを初期化するsegmentを4MiBにし、200MB級のテキスト系5入力すべてで7-Zip LZMA2 d8m fb273の0.95倍以下になる。作成は一致置き場に上限を設けて完成済みsegmentを並列にparseし、frameを順に書き出す（約1.4GiB＋entry、2GiB以下）。revision 12/13の出力と読取は変更しない。
 - LHCの長距離LZ（revision 12/13/14）の作成を高速化。出力のbyteは変えずに、一致探索の前処理を1 threadにまとめて次の探索単位と重ね、距離価格と連結rep長の計算結果を再利用する。200MB級のdblpで作成が約15%速くなり、7-Zip比は約1.8から約1.6になった。作成時の見積もりmemoryは32MiB増える（revision 12/13は1160MiB、14は1448MiB）。
