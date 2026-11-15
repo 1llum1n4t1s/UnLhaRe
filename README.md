@@ -17,7 +17,7 @@ UnLhaRe はLHA書庫を扱うライブラリです。Windows x64/ARM64とmacOS A
 
 ## 配布物の使い方
 
-GitHub Releases の `UnLha32Re-win-x86.zip` を展開し、`bin/UNLHA32RE.DLL` を対象となる 32 ビットアプリの実行ファイルと同じフォルダーへ配置してください。従来名を固定して読み込むアプリでは `UNLHA32.DLL` へ名前を変更します。システム全体へ影響するため、`System32` や `SysWOW64` には配置しないでください。
+[`UnLha32Re-win-x86.zip`](https://unlhare.kagayoi.com/unlha32re/1.0.0/UnLha32Re-win-x86.zip)（[SHA-256](https://unlhare.kagayoi.com/unlha32re/1.0.0/UnLha32Re-win-x86.zip.sha256)）を展開し、`bin/UNLHA32RE.DLL` を対象となる 32 ビットアプリの実行ファイルと同じフォルダーへ配置してください。従来名を固定して読み込むアプリでは `UNLHA32.DLL` へ名前を変更します。システム全体へ影響するため、`System32` や `SysWOW64` には配置しないでください。
 
 配布 ZIP には、再配布条件を満たすため、対応するソース、ライセンス、第三者告知を収録しています。ZIP 内の `README.txt` と `THIRD_PARTY_NOTICES.md` も確認してください。
 
