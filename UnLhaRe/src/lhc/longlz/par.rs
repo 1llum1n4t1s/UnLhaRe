@@ -26,11 +26,12 @@ use std::sync::{
     atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed},
 };
 
-use super::codec::{Encoder, Settings, segment_scope};
+use super::codec::{Encoder, SegOut, Settings, segment_scope};
 use super::mf::{
     FastMod, Finder, HASH3_BITS, MAX_LEN, MUL, Match, Scope, common, hash_bits_for, is_run_inside,
     run_match,
 };
+use super::rc::{Coder, DualEnc, RangeEnc};
 
 /// 全 thread で共有する木と 4byte hash の先頭。
 struct Shared {
@@ -568,7 +569,7 @@ pub struct Stats {
 
 /// 探索を終えた segment を並列に parse し、body を番号順に sink へ渡して置き場を解放する。
 #[allow(clippy::too_many_arguments)]
-fn parse_batch(
+fn parse_batch<R: Coder>(
     data: &[u8],
     s: &Settings,
     geom: &Geom,
@@ -576,14 +577,14 @@ fn parse_batch(
     locals: &mut [Local],
     ks: &[usize],
     threads: usize,
-    sink: &mut dyn FnMut(usize, Vec<u8>) -> Result<(), String>,
+    sink: &mut dyn FnMut(usize, SegOut) -> Result<(), String>,
 ) -> Result<(), String> {
     let n = data.len();
     let (segment, wave) = (s.segment, s.wave.max(1));
     let per = ks.len().div_ceil(threads).max(1);
     let shared: &[Local] = locals;
-    let mut parts: Vec<(usize, Vec<u8>)> =
-        std::thread::scope(|sc| -> Result<Vec<(usize, Vec<u8>)>, String> {
+    let mut parts: Vec<(usize, SegOut)> =
+        std::thread::scope(|sc| -> Result<Vec<(usize, SegOut)>, String> {
             let handles: Vec<_> = ks
                 .chunks(per)
                 .map(|group| {
@@ -600,7 +601,7 @@ fn parse_batch(
                                     index: geom.index,
                                     locals: shared,
                                 };
-                                let mut enc = Encoder::with_finder(data, s, pre);
+                                let mut enc: Encoder<_, R> = Encoder::with_finder(data, s, pre);
                                 (k, enc.encode_segment(segment_scope(n, segment, wave, k)))
                             })
                             .collect::<Vec<_>>()
@@ -614,8 +615,8 @@ fn parse_batch(
             Ok(all)
         })?;
     parts.sort_by_key(|(k, _)| *k);
-    for (k, body) in parts {
-        sink(k, body)?;
+    for (k, out) in parts {
+        sink(k, out)?;
     }
     // parse を終えた segment の置き場を空き列へ戻す。
     for local in locals.iter_mut() {
@@ -635,7 +636,22 @@ pub fn encode_bodies(
     s: &Settings,
     plan: &Plan,
     threads: usize,
-    sink: &mut dyn FnMut(usize, Vec<u8>) -> Result<(), String>,
+    sink: &mut dyn FnMut(usize, SegOut) -> Result<(), String>,
+) -> Result<Stats, String> {
+    // revision 15 は混合なし・ありの 2 本の符号器で同時に書く。それ以外は単一の符号器（従来と同じ code）。
+    if s.dual {
+        encode_bodies_with::<DualEnc>(data, s, plan, threads, sink)
+    } else {
+        encode_bodies_with::<RangeEnc>(data, s, plan, threads, sink)
+    }
+}
+
+fn encode_bodies_with<R: Coder>(
+    data: &[u8],
+    s: &Settings,
+    plan: &Plan,
+    threads: usize,
+    sink: &mut dyn FnMut(usize, SegOut) -> Result<(), String>,
 ) -> Result<Stats, String> {
     let n = data.len();
     if n >= u32::MAX as usize {
@@ -721,7 +737,7 @@ pub fn encode_bodies(
         let r1 = (r0 + unit).min(n);
         // 次の単位で置き場が予算を超えるおそれがあれば、完成した segment を先に parse して解放する。
         if over(&chunks) && !pending.is_empty() {
-            parse_batch(
+            parse_batch::<R>(
                 data,
                 s,
                 &geom,
@@ -781,7 +797,7 @@ pub fn encode_bodies(
             next_seg += 1;
         }
         if pending.len() >= batch {
-            parse_batch(
+            parse_batch::<R>(
                 data,
                 s,
                 &geom,
@@ -797,7 +813,7 @@ pub fn encode_bodies(
         r0 = r1;
     }
     if !pending.is_empty() {
-        parse_batch(
+        parse_batch::<R>(
             data,
             s,
             &geom,

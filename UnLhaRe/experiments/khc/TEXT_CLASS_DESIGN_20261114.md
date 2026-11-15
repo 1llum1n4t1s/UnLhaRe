@@ -154,3 +154,61 @@ simplewikiではliteralが10.8%。literalの混合model（見積もり：直前b
 - **変更**：探索単位の前処理（2/3byte hash の更新と区分の振り分け）を1 thread にまとめ、次の単位の前処理を今の単位の探索と重ねた。`advance` の巡回位置を除算なしで求め、`common` を SSE2 の16byte比較にし、`dist_costs` と `tail_rep0` の結果を覚えた。revision 12/13 の探索単位も1MiBにした（出力は不変）。見積もりは前処理32MiB分増え、`LONG_RANGE_CREATE_MEMORY_BYTES` 1160MiB、`LONG_RANGE_WIDE_CREATE_MEMORY_BYTES` 1448MiB。
 - **確認**：revision 12/13/14 × thread 1/4 の書庫が変更前とbyte一致（dblp 200MB、linux・dblp・englishの先頭）。7-Zipとの交互測定で dblp 39.7〜40.5秒（7-Zip比1.54〜1.59、変更前1.78〜1.85）、linux 33.8〜34.6秒（比1.21〜1.23）。peak は4threadで1.34〜1.47GiB。
 - **残り案（未実装）**：find と parse の重ね合わせ（出力は不変だが約8 thread・索引+128MiBが要り、`--threads` の意味が変わる。dblp約26〜27秒の見込み）、nice 128・cut 64（出力が変わる。parse −27%、サイズ+0.14%）。
+
+## 11. 長さの混合（整数の試作、2026-11-15、no-go）
+
+- **目的**：linux の7-Zip比を0.949から0.945以下へ（正味−0.45%）。english の展開（2.57倍）は2.8倍までの余裕が約9%。
+- **試作**：`examples/longlz/mix.rs`・`lzma.rs`（`--var v0..v6`）。16bit確率の counter、lpaq 型の整数 stretch/squash の混合、parse は主入力の counter から作った近似の価格表。revision 14 の構成（segment 4MiB、近傍あり）で200MB×5入力を測り、全案で往復一致を確かめた。V0 は製品と byte 一致。
+- **サイズ（V0比）**：最良の V4（並べ替えず、slot の文脈を長さ8区分にし、長さと rep 長さを3入力で混合）で linux −0.326%（0.9459）、english −0.62%、dblp −1.40%、sources −0.26%、simplewiki −0.33%。slot を先に送る案（V1〜V3）は linux −0.09〜−0.22%。混合なしで slot の文脈を長さ8区分にするだけの案は linux −0.13%、english −0.57%、dblp −0.50%。
+- **展開**：混合する案は V0 の約1.7〜2.0倍（製品の english に換算して約4.3〜5.0倍）で上限を大きく超える。slot の文脈だけの案は同等。
+- **見積もりの偏り**：影 model の「len base」は実際の LZMA の長さ符号より全体比で0.24〜0.27%悪く、節約を大きく見せていた。実符号と比べると linux の4入力混合は0.62%、整数の実装と parse を含めた実測はさらにその半分程度。
+- **判断**：長さの混合は採らない。slot 文脈の長さ8区分（展開の負担なし）は、他の手段と組み合わせる土台として残す。直接 bit 上位の混合（見込み約0.2%）、align の混合（約0.06%）を足しても linux の−0.45%には届かない見込み。
+
+## 12. literal の混合（整数の試作、2026-11-15、サイズは達成・展開で no-go）
+
+- **案**：L1（`--lit 1`）は、今の LZMA literal 確率（一致中は一致 bit の節）と直前1 byte 全体の16bit counter を2入力＋bias で混合する。重みは16組（一致中か×bit 位置）、学習の shift は12、parse の literal 価格は LZMA の確率で近似する。L2（`--lit 1 --wide 1`）は L1 に11章の slot 文脈の長さ8区分を足したもの。
+- **サイズ（7-Zip比、200MB）**：L2 で linux 0.9439（V0比 −0.53%、26,020,587B）、english 0.8786、dblp 0.8974、sources 0.9259、simplewiki 0.9142。5入力すべてが開発目標0.945以下。L1 単独は linux 0.9453 で届かない。単一文脈の案（lc=8、order-2 hash）は悪化した。
+- **展開**：L2 は V0 の english 1.13〜1.18倍、linux 1.25〜1.28倍、dblp 1.29〜1.31倍、sources 1.20倍。製品換算で english 2.91〜3.02（開発目標2.8を超え、ゲート3.0の際）、dblp 2.72〜2.76、sources 2.76。作成は dblp で V0 の1.04倍（換算1.61〜1.66）。
+- **混合を減らす変種**：上位4bitだけ混合（`--ltop 4`）は展開+6.8%だが linux 0.9460、一致byte文脈は混合しない案は0.9456、重み固定は0.9451で、どれもサイズが足りない。
+- **残る手段**：混合の演算がない2確率の平均（`--lit 6`）でも展開が約+7%かかるため、超過の約半分は演算以外（2つ目の表の読み書き、`bit12`、汎用の経路）にあると見られる。復号器を詰めれば L2 が+9%に収まる可能性がある（未実証、1回の測定に基づく）。
+
+## 13. L2 復号器の高速化（形式不変、2026-11-15、未達）
+
+- **変更**：L2 専用の復号経路 `LitMix::decode_o1` を作った（`lit_code` と同じ式・順序で mode の分岐と closure を除き、一致byte文脈の区間と通常の区間を別の loop に分け、表と重みを固定長配列にして境界検査を省いた）。子の予測を先に作る版と、区画の先読み（`_mm_prefetch`）は遅くなるか効かず、外した。
+- **一致**：変更前の exe で作った5入力の V0・L2 書庫（`D:\tmp\llzmix\ref\`）に対し、最終版の復号は5入力とも入力と byte 一致し、L2 の再符号化も変更前の書庫と byte 一致した（english は親の独立確認でも一致）。
+- **展開（V0比、4 thread の中央値）**：english 1.154→1.106、linux 1.325→1.245、dblp 1.361→1.285、sources 1.195→1.193、simplewiki 1.297→1.311。1 thread の最小値どうしでは english 1.122→1.099、linux 1.285→1.298 で、改善は測定の揺れ（他のプロセスの負荷で V0 自体が1.3〜4.3秒）の範囲にとどまる。目標の english 1.09 は未達。
+- **見立て**：1 bit ごとの依存の連鎖が V0 の「確率の読み込み→乗算→比較」に「2表の読み込み→stretch 2回→積和→squash」を加え、1 bit あたり約15 cycle 長い。分岐や境界検査を除いても縮まないため、超過は形式（混合の式）で決まる部分が大きい。倍率は literal の割合に比例する（linux 約9%、english 約5%）。
+- **次の手**：形式を変えずに詰めるなら、管理者権限の sampling（wpr など）で実際の内訳を取ってから手を入れる。形式を変えるなら、混合する bit・文脈を減らす案はサイズが足りないため、別の節約と組み合わせる必要がある。
+
+## 14. L2 を製品へ（revision 15、2026-11-15）
+
+- **実装**：`BlockStrategy::LongRangeMixTrial`（CLI `long-range-mix-trial`）、archive revision 15、LLZ1BLK frame revision 4。混合は `src/lhc/longlz/mix.rs`、12bit 確率の符号は `rc.rs` の `bit12`。復号は `decode_segment::<NEAR, MIX>` で単相化し、revision 12〜14 の経路は変えない。
+- **試作の修正**：試作の `near_costs` が `--wide 1` でも行0〜3だけで省略を判定していたのを、使う全行に広げた（V0 は不変、試作 L2 の linux は 26,020,587B→26,018,864B）。
+- **一致**：200MB×5 の全50 segment の payload が試作 L2 と一致。revision 12〜14 の書庫は変更前の製品（`10f4432`）と byte 一致。5入力の往復一致、thread 数で byte が変わらないこと、破損・途中切れの拒否を確認（親が20MB の dblp でも独立に確認）。`build.ps1 -Test` は exit 0。
+- **サイズ（7-Zip比）**：linux 0.9439、english 0.8786、dblp 0.8975、sources 0.9260、simplewiki 0.9142。5入力すべてが開発目標0.945以下。
+- **作成（7-Zip比）**：1.01〜1.58（dblp 1.58）。開発目標1.9以下。
+- **展開（7-Zip比、3回の中央値）**：linux 2.67、dblp 2.56、sources 2.58、simplewiki 2.81、english 3.07（再測定2.75）。revision 14 比は1.16〜1.25。負荷が重く7-Zip側の時間が大きく揺れた。english を展開だけ10回交互に測り直すと、中央値の比2.88、最小値どうしの比3.05（revision 14 は2.42と2.54、15/14 は1.19〜1.20）。english はゲート3.0の際から上、simplewiki は開発目標2.8の際。前に見込んだ「3.0まで約5%の余裕」は誤りだった。
+- **memory**：作成の見積もり1449MiB（実測ワーキングセット1,370MiB）、展開の実測83MiB で revision 14 と同じ。
+- **判定**：サイズと作成は開発目標を満たす。展開は english がゲート3.0の際（最小値どうしで3.05）で、開発目標2.8は english・simplewiki で満たさない。未見データへは進めない。展開を約7%以上縮める手段（混合する bit の削減と別の節約の組み合わせ、管理者権限の sampling による内訳の取得）を選ぶか、revision 14 を候補に残す。
+
+## 15. wave ごとに混合を選ぶ revision 15（2026-11-15、開発目標を達成）
+
+- **wave 幅（没）**：試作で wave 幅（同時に復号する segment 数）を2→3→4にすると、linux の展開は824→613→515ms に縮むが、サイズは+0.76%・+1.24%（english は+2.0%）で目標を外れる。同じ wave の segment どうしを参照できない損が大きい。
+- **segment ごとの差**：混合なし（`--wide 1`）と L2 の segment ごとの符号長の縮みは、linux 0.27〜1.94%（中央0.38%）、english 0.09〜2.87%（中央0.18%）、dblp 中央0.33%、sources 中央0.30%、simplewiki 中央0.31%。復号は wave 内の遅い方で決まるので、wave 単位で選ぶ。
+- **形式**：revision 15 を作り直し、frame revision 4 の method で区別する（1＝slot 8区分・混合なし、2＝slot 8区分・混合あり）。設計は architect が決め、wave 内の method の一致は形式で強制しない。
+- **符号化**：parse 1回で `DualEnc` が2本の range 符号器へ同時に書く。sink で wave ごとに実効長の合計 P・M を比べ、`(P−M)×1000 ≥ 3P` なら混合する。
+- **一致**：200MB×5 の全50 frame の payload が、method 2 は試作の L2、method 1 は試作の混合なしと byte 一致した。混合した wave は linux 23、english 4、dblp 17、sources 13、simplewiki 13（各25）。全混合の強制の payload は前の revision 15 と一致。revision 12〜14 は不変。`build.ps1 -Test` exit 0。
+- **結果（7-Zip比）**：
+
+  | 入力 | サイズ | 作成 | 展開 |
+  | --- | ---: | ---: | ---: |
+  | linux | 0.9442 | 1.22〜1.43 | 2.57〜2.64 |
+  | english | 0.8801 | 1.26 | 2.45〜2.54 |
+  | dblp | 0.8982 | 1.61〜1.65 | 2.40〜2.46 |
+  | sources | 0.9271 | 1.45〜1.49 | 2.35〜2.36 |
+  | simplewiki | 0.9155 | 1.30〜1.39 | 2.58〜2.66 |
+
+  開発目標（サイズ≤0.945、作成≤1.9、展開≤2.8）を5入力すべてで満たした。linux のサイズの余裕は0.0008と小さい。dblp の作成は revision 14 と同等（中央値の比1.00）。
+- **memory**：作成の見積もり1480MiB（実測1,373MiB）、展開82MiB。
+- **診断**：`LLZ_MIX_CHOICE`（選択の強制）と `LLZ_WAVE_LOG`（wave ごとの P・M・literal 数）は、既定で無効の cargo feature `llz-diag` のビルドだけで読む。
+- **未確定**：しきい値0.3%は開発5入力で決めた値で、linux・dblp・simplewiki の wave の縮みは0.27〜0.32%に密集しているため、わずかな差で選択が大きく動く。「縮んだ byte ÷ literal 数」による基準は未評価。未見データでの判定はまだ行っていない。

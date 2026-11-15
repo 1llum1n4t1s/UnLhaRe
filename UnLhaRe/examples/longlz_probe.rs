@@ -6,6 +6,13 @@
 //!   longlz_probe enc <input> <out> [--window-mib N] [--cut N] [--nice N] [--segment-kib N] [--wave N] [--threads N] [--near 0|1]
 //!   longlz_probe dec <in> [--check <raw>] [--repeat N] [--threads N] [--write <out>]
 //!   longlz_probe mf <input> [--window-mib N] [--cut N]
+//! 長さ混合の試作（`LLZSEGX` 容器、--near 1 と segment 指定が必要）:
+//!   enc ... --var v0..v6 [--order 0|1|2] [--k 0..3] [--wide 0|1] [--rep 0|1] [--hc N] [--lim0 N] [--lim1 N]
+//!       [--lr N] [--sctx 0|1] [--nodc 0|1]
+//!   literal の試作：[--lit 0..6] [--lbits N] [--lshift N] [--llr N] [--ltop 1..8] [--lnomatch 0|1]
+//!   （例：L2 は `--lit 1 --wide 1`）。
+//!   計測では全案に --hc 5 を付けた（例：`--var v4 --hc 5 --rep 1`、slot 文脈だけは `--order 0 --k 0 --wide 1`）。
+//!   環境変数 LLZ_REFRESH（価格表の更新間隔）と LLZ_DIAG_LZPRICE=1（order 0 で parse の長さ価格を LZMA から取る）は診断用。
 //! segment 長を指定すると、wave 単位で並列に復号できる segment 容器（`LLZSEG1`）を出す。
 //! --near 1 は近傍距離符号つきの容器（`LLZSEG2`）で、segment 指定が必要（環境変数 LLZ_NEAR_PARSE=0 で
 //! parse は従来の価格のまま、符号化だけが近傍を選ぶ）。
@@ -13,6 +20,8 @@
 mod lzma;
 #[path = "longlz/mf.rs"]
 mod mf;
+#[path = "longlz/mix.rs"]
+mod mix;
 #[path = "longlz/par.rs"]
 mod par;
 #[path = "longlz/rc.rs"]
@@ -23,6 +32,65 @@ mod shadow;
 mod shadow2;
 
 use std::time::Instant;
+
+/// 長さ混合の試作の案（`--var v0..v6`）と、個別の上書き（`--k`、`--order` など）。
+/// v0：今の revision 14。v1：距離を先に送り、長さは ps×距離区分の単一文脈。v2：v1＋直前の長さを混合。
+/// v3：v2＋state。v4：順序は今のまま、slot 文脈を長さ8区分、長さは3入力の混合。
+/// v5：分割（長さ区分→距離→残りの長さ）、単一文脈。v6：v5 を3入力の混合に。
+fn parse_var(args: &[String]) -> Result<lzma::Var, String> {
+    let flag = |name: &str| -> Option<&str> {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .map(String::as_str)
+    };
+    let num = |name: &str, default: usize| -> Result<usize, String> {
+        flag(name).map_or(Ok(default), |v| v.parse().map_err(|_| format!("{name} N")))
+    };
+    let mut v = lzma::Var::default();
+    let preset = flag("--var").unwrap_or("v0");
+    let (order, k, wide) = match preset {
+        "v0" => (0, 0, 0),
+        "v1" => (1, 1, 0),
+        "v2" => (1, 2, 0),
+        "v3" => (1, 3, 0),
+        "v4" => (0, 3, 1),
+        "v5" => (2, 1, 0),
+        "v6" => (2, 3, 0),
+        _ => return Err("--var v0..v6".into()),
+    };
+    v.order = num("--order", order)? as u8;
+    v.len.k = num("--k", k)? as u8;
+    v.wide_slot = num("--wide", wide)? as u8;
+    if v.len.k > 0 {
+        v.len.lim0 = num("--lim0", 32)?.min(255) as u8;
+        v.len.lim1 = num("--lim1", 64)?.min(255) as u8;
+        v.len.lr = num("--lr", 10)? as u8;
+        v.len.high_coarse = num("--hc", 0)? as u8;
+        v.len.reserved = num("--nodc", 0)? as u8;
+        v.rep_new = num("--rep", 0)? as u8;
+    }
+    v.sctx = num("--sctx", 0)? as u8;
+    // literal の試作（--lit 0..6。L1=1/2、L3=3/4、安価な変種 5/6。--lbits、--lshift、--llr、--ltop、--lnomatch）。
+    v.lit = num("--lit", 0)? as u8;
+    if matches!(v.lit, 1 | 2 | 4 | 5 | 6) {
+        v.lit_bits = if !matches!(v.lit, 2 | 4) {
+            0
+        } else {
+            num("--lbits", 14)? as u8
+        };
+        v.lit_shift = num("--lshift", 5)? as u8;
+        v.lit_lr = if !matches!(v.lit, 1 | 2) {
+            0
+        } else {
+            num("--llr", 12)? as u8
+        };
+        v.lit_top = num("--ltop", 8)?.clamp(1, 8) as u8;
+        v.lit_nomatch = num("--lnomatch", 0)? as u8;
+    }
+    v.check()?;
+    Ok(v)
+}
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -49,7 +117,11 @@ fn main() -> Result<(), String> {
                 segment: num("--segment-kib", 0)? << 10,
                 wave: num("--wave", 4)?,
                 near: num("--near", 0)? != 0,
+                var: parse_var(&args)?,
             };
+            if !settings.var.is_base() && !settings.near {
+                return Err("--var needs --near 1".into());
+            }
             if settings.near && settings.segment == 0 {
                 return Err(
                     "--near needs --segment-kib (the .lzma form cannot hold near codes)".into(),

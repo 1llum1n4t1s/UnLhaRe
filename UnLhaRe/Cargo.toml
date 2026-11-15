@@ -23,6 +23,11 @@ test = true
 name = "lhc_version_delta"
 path = "examples/lhc_version_delta.rs"
 
+[features]
+# LHC 長距離LZ（revision 15）の診断用。環境変数 LLZ_MIX_CHOICE（wave の混合の強制）と LLZ_WAVE_LOG（wave ごとの記録）を
+# 有効にする。開発の計測専用で、既定と配布物では無効。
+llz-diag = []
+
 [dependencies]
 cap-primitives = "4.0.3"
 cap-std = "4.0.3"

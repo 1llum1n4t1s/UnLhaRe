@@ -4,7 +4,7 @@ pub(crate) mod block;
 mod delta16;
 #[allow(dead_code)]
 mod g32;
-// 長距離LZ（LLZ1BLK）。revision 12・13・14 の大きな entry が使う。
+// 長距離LZ（LLZ1BLK）。revision 12・13・14・15 の大きな entry が使う。
 mod longlz;
 mod pipeline;
 // PPMII系テキスト候補（LPM1BLK）。revision 11 の portfolio が使う。
@@ -41,7 +41,11 @@ pub const LONG_RANGE_CREATE_MEMORY_BYTES: u64 = longlz::CREATE_MEMORY_BYTES;
 /// revision 14（`BlockStrategy::LongRangeWideTrial`、segment 4MiB）で大きな entry を作るときに要る codec memory の
 /// 見積もり（約 1.4GiB。一致置き場を 640MiB に抑える。entry 自体の buffer は別）。
 pub const LONG_RANGE_WIDE_CREATE_MEMORY_BYTES: u64 = longlz::CREATE_MEMORY_BYTES_WIDE;
-/// revision 12・13・14 で長距離LZ（LLZ1BLK）を使ってよい entry の最小長。
+/// revision 15（`BlockStrategy::LongRangeMixTrial`、revision 14 に literal の混合と slot 文脈 8 区分を加える）で
+/// 大きな entry を作るときに要る codec memory の見積もり（revision 14 に混合表の分を足した約 1.4GiB。
+/// entry 自体の buffer は別）。
+pub const LONG_RANGE_MIX_CREATE_MEMORY_BYTES: u64 = longlz::CREATE_MEMORY_BYTES_MIX;
+/// revision 12・13・14・15 で長距離LZ（LLZ1BLK）を使ってよい entry の最小長。
 pub const LONG_RANGE_MIN_ENTRY_BYTES: u64 = longlz::MIN_ENTRY;
 const HEADER: usize = 32;
 const MAGIC: &[u8; 8] = b"LHC1ARC\0";
@@ -352,15 +356,21 @@ pub enum BlockStrategy {
     /// revision 11 の候補を使う。block 単位の動作は `LongRangeTrial` と同じ。作成の codec memory は
     /// `LONG_RANGE_WIDE_CREATE_MEMORY_BYTES` 以上が要る。
     LongRangeWideTrial,
+    /// revision 14 の符号（4MiB の segment、近傍符号）に、literal の混合（LZMA の確率と直前 1 byte の文脈の
+    /// 整数の logistic 混合）と、距離 slot の文脈の長さ 8 区分を加えた revision 15（LLZ1BLK の frame revision 4）。
+    /// entry の単位・block 単位の動作は `LongRangeWideTrial` と同じ。作成の codec memory は
+    /// `LONG_RANGE_MIX_CREATE_MEMORY_BYTES` 以上が要る。
+    LongRangeMixTrial,
 }
 
 pub fn compress_block_with_strategy(input: &[u8], strategy: BlockStrategy) -> Result<Vec<u8>> {
-    // revision 12・13・14 の小さな entry と、block 単位の圧縮は revision 11 と同じ候補を使う。
+    // revision 12・13・14・15 の小さな entry と、block 単位の圧縮は revision 11 と同じ候補を使う。
     let strategy = if matches!(
         strategy,
         BlockStrategy::LongRangeTrial
             | BlockStrategy::LongRangeNearTrial
             | BlockStrategy::LongRangeWideTrial
+            | BlockStrategy::LongRangeMixTrial
     ) {
         BlockStrategy::PortfolioPpmTrial
     } else {
@@ -532,7 +542,7 @@ pub fn decompress_block(frame: &[u8]) -> Result<Vec<u8>> {
         .map_err(Error::Format)
 }
 
-/// revision 12・13・14 の作成で長距離LZを使う entry か（8MiB 以上、file 全体を memory に置ける上限以下）。
+/// revision 12・13・14・15 の作成で長距離LZを使う entry か（8MiB 以上、file 全体を memory に置ける上限以下）。
 /// 上限を超える entry は従来の block で格納する（読み手の規則ではなく、符号化側の方針）。
 fn long_encode_entry(entry: &Entry) -> bool {
     !entry.is_directory
@@ -540,10 +550,10 @@ fn long_encode_entry(entry: &Entry) -> bool {
         && entry.original_size <= longlz::MAX_ENCODE_ENTRY
 }
 
-/// revision 12・13・14 で LLZ1BLK を許す entry か（形式の規則：8MiB 以上の file）。
-/// revision 14 では、最初の frame が LLZ1BLK の entry だけが実際に使う（`UnitReader`）。
+/// revision 12〜15 で LLZ1BLK を許す entry か（形式の規則：8MiB 以上の file）。
+/// revision 14・15 では、最初の frame が LLZ1BLK の entry だけが実際に使う（`UnitReader`）。
 fn long_entry(revision: u8, entry: &Entry) -> bool {
-    matches!(revision, 12..=14) && !entry.is_directory && entry.original_size >= longlz::MIN_ENTRY
+    matches!(revision, 12..=15) && !entry.is_directory && entry.original_size >= longlz::MIN_ENTRY
 }
 
 /// LLZ1BLK の復号に使う、同じ file の直近の出力（segment 長の block の列。block 番号 `first` から）。
@@ -734,7 +744,7 @@ fn read_manifest(file: &mut File, limits: &Limits) -> Result<(Vec<Entry>, Summar
     let mut h = [0u8; HEADER];
     exact(file, &mut h)?;
     if &h[..8] != MAGIC
-        || !matches!(h[8], 1..=14)
+        || !matches!(h[8], 1..=15)
         || h[9..12] != [0; 3]
         || u32::from_le_bytes(h[12..16].try_into().unwrap()) != BLOCK_BYTES as u32
     {
@@ -885,14 +895,18 @@ fn create(
     }
     names(&entries)?;
     let summary = lengths(&entries, &options.limits)?;
-    // revision 12・13・14 で長距離LZを使う entry があるなら、その codec memory（64MiB 予算の例外）を先に確かめる。
+    // revision 12〜15 で長距離LZを使う entry があるなら、その codec memory（64MiB 予算の例外）を先に確かめる。
     // memory の指定は worker 数だけを変え、書庫の byte は変えない（足りなければ処理前に拒否する）。
-    // LLZ1BLK の形式（revision 12 は従来の符号、13 は近傍符号、14 は近傍符号で segment 4MiB）。
+    // LLZ1BLK の形式（revision 12 は従来の符号、13 は近傍符号、14 は近傍符号で segment 4MiB、
+    // 15 は 14 に literal の混合と slot 文脈 8 区分を加える）。
     let long_layout = match options.block_strategy {
         BlockStrategy::LongRangeTrial => Some((longlz::LAYOUT_12, longlz::CREATE_MEMORY_BYTES)),
         BlockStrategy::LongRangeNearTrial => Some((longlz::LAYOUT_13, longlz::CREATE_MEMORY_BYTES)),
         BlockStrategy::LongRangeWideTrial => {
             Some((longlz::LAYOUT_14, longlz::CREATE_MEMORY_BYTES_WIDE))
+        }
+        BlockStrategy::LongRangeMixTrial => {
+            Some((longlz::LAYOUT_15, longlz::CREATE_MEMORY_BYTES_MIX))
         }
         _ => None,
     };
@@ -932,6 +946,7 @@ fn create(
         BlockStrategy::LongRangeTrial => 12,
         BlockStrategy::LongRangeNearTrial => 13,
         BlockStrategy::LongRangeWideTrial => 14,
+        BlockStrategy::LongRangeMixTrial => 15,
         _ => 2,
     };
     header[12..16].copy_from_slice(&(BLOCK_BYTES as u32).to_le_bytes());
@@ -1054,7 +1069,7 @@ fn create(
 fn frame_overhead(archive_revision: u8) -> usize {
     if archive_revision == 5 {
         delta16::HEADER
-    } else if matches!(archive_revision, 6..=14) {
+    } else if matches!(archive_revision, 6..=15) {
         40
     } else if matches!(archive_revision, 3 | 4) {
         80
@@ -1065,7 +1080,7 @@ fn frame_overhead(archive_revision: u8) -> usize {
 
 /// frame の長さの下限。
 fn frame_minimum(archive_revision: u8) -> usize {
-    if matches!(archive_revision, 12..=14) {
+    if matches!(archive_revision, 12..=15) {
         // 無圧縮の LLZ1BLK は header 32B＋生データで、他の family の header より短くなりうる。
         longlz::HEADER.min(spatial::HEADER).min(block::HEADER)
     } else if matches!(archive_revision, 7 | 9 | 10 | 11) {
@@ -1090,7 +1105,7 @@ fn read_prefixed(file: &mut File, minimum: usize, maximum: usize) -> Result<Vec<
 
 /// entry の frame を1つ読み、revision ごとの family 境界で検査する（単位は `expected` の 1 block）。
 /// `long_ok` は revision 12・13 で LLZ1BLK を許す entry（`LONG_RANGE_MIN_ENTRY_BYTES` 以上）か。
-/// revision 14 の LLZ1BLK は単位が違うので `UnitReader` が読み、ここでは常に拒否する（`long_ok` は偽）。
+/// revision 14・15 の LLZ1BLK は単位が違うので `UnitReader` が読み、ここでは常に拒否する（`long_ok` は偽）。
 fn read_frame(
     file: &mut File,
     expected: usize,
@@ -1108,14 +1123,14 @@ fn read_frame(
 
 /// 読み込んだ frame を revision ごとの family 境界で検査する。
 fn check_frame(frame: &[u8], expected: usize, archive_revision: u8, long_ok: bool) -> Result<()> {
-    if matches!(archive_revision, 10..=14) {
+    if matches!(archive_revision, 10..=15) {
         if let Some(layout) = longlz::layout_for(archive_revision)
             && frame.get(..8) == Some(&longlz::MAGIC[..])
         {
             if !long_ok {
                 return Err(Error::Format("LLZ1BLK outside an LLZ1BLK entry".into()));
             }
-            // 書庫の revision と frame revision は 1 対 1（12 は 1、13 は 2、14 は 3）。
+            // 書庫の revision と frame revision は 1 対 1（12 は 1、13 は 2、14 は 3、15 は 4）。
             longlz::validate_frame(frame, expected, layout).map_err(Error::Format)?;
         } else if archive_revision >= 11 && frame.get(..8) == Some(&ppm::MAGIC[..]) {
             ppm::validate_frame(frame, expected).map_err(Error::Format)?;
@@ -1128,7 +1143,9 @@ fn check_frame(frame: &[u8], expected: usize, archive_revision: u8, long_ok: boo
         } else if frame.get(..8) == Some(&block::MAGIC[..]) {
             validate_mdl_fallback_frame(frame, expected, archive_revision)?;
         } else {
-            return Err(Error::Format("revision 10/11/12/13/14 frame family".into()));
+            return Err(Error::Format(
+                "revision 10/11/12/13/14/15 frame family".into(),
+            ));
         }
     } else if archive_revision == 9 {
         if frame.get(..8) == Some(&spatial::MAGIC[..]) {
@@ -1166,7 +1183,7 @@ fn check_frame(frame: &[u8], expected: usize, archive_revision: u8, long_ok: boo
 /// 一覧・逐次展開・並列可否の事前走査・並列の読み出しのすべてでこれを使う。
 /// - revision 1〜11: 1MiB。
 /// - revision 12・13: 1MiB。8MiB 以上の entry は frame ごとに LLZ1BLK か他の family かを選べる。
-/// - revision 14: 8MiB 以上の entry は最初の frame の family で決まる。LLZ1BLK なら全 frame が LLZ1BLK
+/// - revision 14・15: 8MiB 以上の entry は最初の frame の family で決まる。LLZ1BLK なら全 frame が LLZ1BLK
 ///   （単位 4MiB、最後だけ端数）、他の family なら LLZ1BLK を置けず単位 1MiB。8MiB 未満の entry は 1MiB。
 struct UnitReader {
     revision: u8,
@@ -1179,9 +1196,9 @@ struct UnitReader {
 enum UnitKind {
     /// 1MiB 単位。LLZ1BLK を許すのは revision 12・13 の `long_ok` の entry だけ。
     Block,
-    /// revision 14 の LLZ1BLK の entry（単位は segment 長）。
+    /// revision 14・15 の LLZ1BLK の entry（単位は segment 長）。
     Wide(longlz::Layout),
-    /// revision 14 で LLZ1BLK を許す entry の、最初の frame を読む前。
+    /// revision 14・15 で LLZ1BLK を許す entry の、最初の frame を読む前。
     Undecided,
 }
 
@@ -1191,7 +1208,7 @@ impl UnitReader {
         Self {
             revision,
             long_ok,
-            kind: if long_ok && revision == 14 {
+            kind: if long_ok && matches!(revision, 14 | 15) {
                 UnitKind::Undecided
             } else {
                 UnitKind::Block
@@ -1199,12 +1216,12 @@ impl UnitReader {
         }
     }
 
-    /// この entry の LLZ1BLK を復号する形式（履歴を保持すべき entry か）。revision 14 は最初の frame を
+    /// この entry の LLZ1BLK を復号する形式（履歴を保持すべき entry か）。revision 14・15 は最初の frame を
     /// 読んだ後で決まる。
     fn long_layout(&self) -> Option<longlz::Layout> {
         match self.kind {
             UnitKind::Wide(layout) => Some(layout),
-            UnitKind::Block if self.long_ok && self.revision != 14 => {
+            UnitKind::Block if self.long_ok && !matches!(self.revision, 14 | 15) => {
                 longlz::layout_for(self.revision)
             }
             _ => None,
@@ -1216,7 +1233,7 @@ impl UnitReader {
         match self.kind {
             UnitKind::Block => {
                 let expected = remaining.min(BLOCK_BYTES as u64) as usize;
-                let long_ok = self.long_ok && self.revision != 14;
+                let long_ok = self.long_ok && !matches!(self.revision, 14 | 15);
                 Ok((
                     read_frame(file, expected, self.revision, long_ok)?,
                     expected,
@@ -1224,7 +1241,11 @@ impl UnitReader {
             }
             UnitKind::Wide(layout) => {
                 let expected = remaining.min(layout.segment as u64) as usize;
-                let frame = read_prefixed(file, longlz::HEADER, expected + frame_overhead(14))?;
+                let frame = read_prefixed(
+                    file,
+                    longlz::HEADER,
+                    expected + frame_overhead(self.revision),
+                )?;
                 longlz::validate_frame(&frame, expected, layout).map_err(Error::Format)?;
                 Ok((frame, expected))
             }
@@ -1324,7 +1345,7 @@ fn validate_mdl_fallback_frame(frame: &[u8], expected: usize, archive_revision: 
     let method = frame[10];
     let allowed = match archive_revision {
         9 => frame_revision == 1 && method <= 1,
-        10..=14 => matches!((frame_revision, method), (1, 0 | 1) | (2, 0 | 1 | 3)),
+        10..=15 => matches!((frame_revision, method), (1, 0 | 1) | (2, 0 | 1 | 3)),
         _ => false,
     };
     if !allowed {
@@ -1532,7 +1553,7 @@ fn process(
         let mut file_crc = digest();
         let mut units = UnitReader::new(revision, &entry);
         // LLZ1BLK を使う entry だけ、同じ file の直近の出力を窓の分だけ保持する
-        // （revision 14 は最初の frame の family で決まる）。
+        // （revision 14・15 は最初の frame の family で決まる）。
         let mut history: Option<History> = None;
         let mut block_index = 0usize;
         while remaining != 0 {

@@ -1,5 +1,6 @@
-//! revision 12・13・14（大きな entry を長距離LZ LLZ1BLK で格納。13 は近傍距離符号を加えた frame revision 2、
-//! 14 は同じ符号で segment を 4MiB に広げた frame revision 3）の公開API往復と拒否。
+//! revision 12・13・14・15（大きな entry を長距離LZ LLZ1BLK で格納。13 は近傍距離符号を加えた frame revision 2、
+//! 14 は同じ符号で segment を 4MiB に広げた frame revision 3、15 はさらに literal の混合と slot 文脈の
+//! 長さ 8 区分を加えた frame revision 4）の公開API往復と拒否。
 //! - 8MiB 以上の entry は LLZ1BLK、小さな entry は revision 11 と同じ候補を使う。
 //! - 作成の worker 数で書庫の byte は変わらない。codec memory が足りなければ処理前に拒否する。
 //! - 逐次・並列（wave 単位）の展開と検証で元に戻る。
@@ -75,6 +76,32 @@ fn text(len: usize, seed: u32) -> Vec<u8> {
     }
     out.truncate(len);
     out
+}
+
+/// 次の byte が直前の byte と 6bit の乱数で決まる、literal ばかりの入力（直前 1 byte 全体の文脈を使う混合で縮む）。
+fn literal_heavy(len: usize, seed: u32) -> Vec<u8> {
+    let mut x = seed;
+    let mut prev = 0u8;
+    (0..len)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            prev = ((prev as u32 * 31 + 17 + ((x >> 8) & 63) * 37) % 251) as u8;
+            prev
+        })
+        .collect()
+}
+
+/// 13MiB（4MiB の segment が 3 つと 1MiB）：wave 0 は literal ばかりの 8MiB（混合で縮む）、wave 1 は wave 0 の
+/// 写し（長い一致ばかりで、混合しても縮みはしきい値に届かない）。revision 15 では method が 2、2、1、1 になる。
+fn two_kinds() -> Vec<u8> {
+    let mut data = literal_heavy(8 << 20, 0x1357_9bdf);
+    let copy_a = data[..4 << 20].to_vec();
+    let copy_b = data[4 << 20..5 << 20].to_vec();
+    data.extend_from_slice(&copy_a);
+    data.extend_from_slice(&copy_b);
+    data
 }
 
 fn create(
@@ -736,6 +763,331 @@ fn revision14_wide_entries_round_trip_and_reject_malformed_frames() {
     assert!(
         lhc::decompress_block(
             &v14[big_frames[0] + 4..big_frames[0] + 4 + u32_at(&v14, big_frames[0])]
+        )
+        .is_err()
+    );
+}
+
+// ---- revision 15（segment 4MiB、literal の混合、frame revision 4） ----
+
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "9MiB の符号化に時間がかかるため release で実行する"
+)]
+fn revision15_mix_entries_round_trip_and_reject_malformed_frames() {
+    let root = root("mix");
+    let big = text((9 << 20) + 4321, 0x9e37_79b9);
+    let small = text(300_000, 0x1234_5678);
+    let exact = text(8 << 20, 0x0bad_cafe);
+    let mixed = two_kinds();
+    fs::write(root.join("big.txt"), &big).unwrap();
+    fs::write(root.join("small.txt"), &small).unwrap();
+    fs::write(root.join("exact.txt"), &exact).unwrap();
+    fs::write(root.join("mixed.bin"), &mixed).unwrap();
+    let mix = BlockStrategy::LongRangeMixTrial;
+    let sources = || {
+        ["big.txt", "small.txt", "exact.txt", "mixed.bin"].map(|name| SourceEntry {
+            path: root.join(name),
+            name: name.into(),
+        })
+    };
+    let make = |name: &str, threads: usize, memory: u64, strategy: BlockStrategy| {
+        let archive = root.join(name);
+        lhc::create_archive(
+            &archive,
+            &sources(),
+            &CreateOptions {
+                block_strategy: strategy,
+                max_codec_memory_bytes: memory,
+                threads,
+                skip_fsync: true,
+                ..Default::default()
+            },
+        )
+        .map(|()| archive)
+    };
+    let memory = lhc::LONG_RANGE_MIX_CREATE_MEMORY_BYTES;
+    // 混合表の分だけ revision 14 の見積もりより大きく、2GiB（entry の buffer を含む）に収まる。
+    assert!(memory > lhc::LONG_RANGE_WIDE_CREATE_MEMORY_BYTES);
+    assert!(memory + (512 << 20) <= 2 << 30);
+
+    // codec memory が足りなければ処理前に拒否し、書庫を作らない（revision 12〜14 の予算でも足りない）。
+    for short in [
+        lhc::CODEC_MEMORY_BYTES,
+        lhc::LONG_RANGE_CREATE_MEMORY_BYTES,
+        lhc::LONG_RANGE_WIDE_CREATE_MEMORY_BYTES,
+    ] {
+        let refused = make("refused.lhc", 1, short, mix);
+        assert!(matches!(refused, Err(Error::Limit(_))), "{refused:?}");
+        assert!(!root.join("refused.lhc").exists());
+    }
+
+    let one = make("mix-1.lhc", 1, memory, mix).unwrap();
+    let four = make("mix-4.lhc", 4, memory, mix).unwrap();
+    let zero = make("mix-0.lhc", 0, memory, mix).unwrap();
+    let v15 = fs::read(&one).unwrap();
+    for other in [&zero, &four] {
+        assert_eq!(
+            v15,
+            fs::read(other).unwrap(),
+            "worker count must not change bytes"
+        );
+    }
+    assert_eq!(v15[8], 15, "archive revision");
+
+    // big は 4MiB 単位の LLZ1BLK（frame revision 4、最後だけ端数）、small は LLZ1BLK ではない、exact は 2 frame。
+    let start = 32 + u32_at(&v15, 20);
+    let big_frames = frames_at(&v15, start, big.len(), 4 * MIB);
+    assert_eq!(big_frames.len(), 3);
+    for &at in &big_frames {
+        assert_eq!(&v15[at + 4..at + 12], LLZ_MAGIC);
+        assert_eq!(frame_rev(&v15, at), 4);
+    }
+    assert_eq!(u32_at(&v15, big_frames[0] + 4 + 12), 4 * MIB, "raw length");
+    assert_eq!(u32_at(&v15, big_frames[2] + 4 + 12), MIB + 4321, "tail");
+    let last = *big_frames.last().unwrap();
+    let small_at = last + 4 + u32_at(&v15, last) + 4;
+    assert_ne!(&v15[small_at + 4..small_at + 12], LLZ_MAGIC);
+    let small_frames = frames_at(&v15, small_at, small.len(), MIB);
+    let last = *small_frames.last().unwrap();
+    let exact_at = last + 4 + u32_at(&v15, last) + 4;
+    let exact_frames = frames_at(&v15, exact_at, exact.len(), 4 * MIB);
+    assert_eq!(exact_frames.len(), 2);
+    let last = *exact_frames.last().unwrap();
+    let mixed_at = last + 4 + u32_at(&v15, last) + 4;
+    let mixed_frames = frames_at(&v15, mixed_at, mixed.len(), 4 * MIB);
+    assert_eq!(mixed_frames.len(), 4, "4MiB × 3 + 1MiB");
+
+    // method byte：frame revision 4 の LZ の frame は 1（混合なし）か 2（混合あり）で、無圧縮は 0。
+    // literal ばかりの wave 0 は混合あり、長い一致ばかりの wave 1 は混合なし（両方の method が現れる）。
+    let method = |archive: &[u8], at: usize| archive[at + 4 + 10];
+    assert_eq!(
+        mixed_frames
+            .iter()
+            .map(|&at| method(&v15, at))
+            .collect::<Vec<_>>(),
+        [2, 2, 1, 1]
+    );
+    for &at in big_frames.iter().chain(&exact_frames) {
+        assert!(matches!(method(&v15, at), 1 | 2));
+    }
+    // wave（2 frame）内の method はそろう（無圧縮の frame を除く）。
+    for frames in [
+        &big_frames[..2],
+        &exact_frames[..],
+        &mixed_frames[..2],
+        &mixed_frames[2..],
+    ] {
+        let methods: Vec<u8> = frames
+            .iter()
+            .map(|&at| method(&v15, at))
+            .filter(|&m| m != 0)
+            .collect();
+        assert!(methods.windows(2).all(|w| w[0] == w[1]), "{methods:?}");
+    }
+
+    // 一覧・検証・展開（threads 0/1/4）で元に戻る。
+    let limits = Limits::default();
+    let total = (big.len() + small.len() + exact.len() + mixed.len()) as u64;
+    assert_eq!(lhc::list_archive(&one, &limits).unwrap().len(), 4);
+    for threads in [0, 1, 4] {
+        let options = ExtractOptions {
+            threads,
+            skip_fsync: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            lhc::verify_archive_with_options(&one, &limits, &options)
+                .unwrap()
+                .bytes,
+            total
+        );
+        let output = root.join(format!("out-15-{threads}"));
+        lhc::extract_archive_with_options(&one, &output, &limits, &options).unwrap();
+        assert_eq!(fs::read(output.join("big.txt")).unwrap(), big);
+        assert_eq!(fs::read(output.join("small.txt")).unwrap(), small);
+        assert_eq!(fs::read(output.join("exact.txt")).unwrap(), exact);
+        assert_eq!(fs::read(output.join("mixed.bin")).unwrap(), mixed);
+    }
+
+    // 同じ入力の revision 14 の書庫は変わらず読め、revision 15 とは相互に取り違えない。
+    let wide = BlockStrategy::LongRangeWideTrial;
+    let v14_path = make(
+        "wide-14.lhc",
+        4,
+        lhc::LONG_RANGE_WIDE_CREATE_MEMORY_BYTES,
+        wide,
+    )
+    .unwrap();
+    let v14 = fs::read(&v14_path).unwrap();
+    assert_eq!(v14[8], 14, "revision 14 archive");
+    for threads in [0, 4] {
+        let options = ExtractOptions {
+            threads,
+            skip_fsync: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            lhc::verify_archive_with_options(&v14_path, &limits, &options)
+                .unwrap()
+                .bytes,
+            total
+        );
+    }
+    assert_ne!(v14, v15);
+    assert_rejected(&root, "rev15 read as 14", &with_revision(&v15, 14), None);
+    assert_rejected(&root, "rev14 read as 15", &with_revision(&v14, 15), None);
+    assert_rejected(&root, "rev15 read as 13", &with_revision(&v15, 13), None);
+    assert_rejected(&root, "rev15 read as 12", &with_revision(&v15, 12), None);
+    assert_rejected(&root, "rev15 read as 11", &with_revision(&v15, 11), None);
+    // 未知の revision 16 は manifest の読み取りで拒否する。
+    let future = root.join("revision-16.lhc");
+    fs::write(&future, with_revision(&v15, 16)).unwrap();
+    assert!(lhc::list_archive(&future, &limits).is_err());
+    // frame revision だけを書き換える（wire CRC は付け直す）。4 を 2・3・5 にした frame は拒否する。
+    for to in [2u16, 3, 5] {
+        let mut bytes = v15.clone();
+        let at = big_frames[1];
+        let length = u32_at(&bytes, at);
+        bytes[at + 4 + 8..at + 4 + 10].copy_from_slice(&to.to_le_bytes());
+        seal(&mut bytes[at + 4..at + 4 + length]);
+        assert_rejected(
+            &root,
+            &format!("frame rev 4 rewritten as {to}"),
+            &bytes,
+            Some("LLZ1BLK"),
+        );
+    }
+
+    // LLZ1BLK の生データ長が期待値 min(残り, 4MiB) と違う。
+    for (index, raw) in [
+        (0usize, 4 * MIB as u32 - 1),
+        (1, MIB as u32),
+        (2, 4 * MIB as u32),
+    ] {
+        let at = big_frames[index];
+        let length = u32_at(&v15, at);
+        let frame = with_raw_length(&v15[at + 4..at + 4 + length], raw);
+        let bytes = replace_frame(&v15, at, &frame);
+        assert_rejected(
+            &root,
+            &format!("rev15 raw length {raw} at frame {index}"),
+            &bytes,
+            Some("LLZ1BLK lengths"),
+        );
+    }
+
+    // frame の長さ prefix の上限（確保の前に拒否）。
+    for (label, bytes) in [
+        (
+            "rev15 llz first frame 4MiB+41",
+            set_prefix(&v15, big_frames[0], (4 * MIB + 41) as u32),
+        ),
+        (
+            "rev15 llz tail frame 1MiB+4361",
+            set_prefix(&v15, big_frames[2], (MIB + 4321 + 41) as u32),
+        ),
+        (
+            "rev15 first frame 4GiB",
+            set_prefix(&v15, big_frames[0], u32::MAX),
+        ),
+    ] {
+        assert_rejected(&root, label, &bytes, Some("block extent"));
+    }
+
+    // LLZ1BLK の entry の途中に他 family の frame が混ざる、8MiB 未満の entry に LLZ1BLK が現れる。
+    let other =
+        lhc::compress_block_with_strategy(&big[..MIB], BlockStrategy::PortfolioPpmTrial).unwrap();
+    let bytes = replace_frame(&v15, big_frames[1], &other);
+    assert_rejected(
+        &root,
+        "rev15 other family at frame 1",
+        &bytes,
+        Some("LLZ1BLK"),
+    );
+    let llz_tail = v15[big_frames[2] + 4..big_frames[2] + 4 + u32_at(&v15, big_frames[2])].to_vec();
+    let bytes = replace_frame(&v15, small_frames[0], &llz_tail);
+    assert_rejected_entry(
+        &root,
+        "rev15 llz in a small entry",
+        &bytes,
+        None,
+        "small.txt",
+    );
+
+    // payload の破損（wire CRC の付け直しあり・なし）は拒否し、公開しない。すべての frame で確かめる。
+    for (index, &at) in big_frames.iter().enumerate() {
+        let length = u32_at(&v15, at);
+        for reseal in [false, true] {
+            let mut broken = v15.clone();
+            broken[at + 4 + 32 + (length - 32) / 2] ^= 0x24;
+            if reseal {
+                seal(&mut broken[at + 4..at + 4 + length]);
+            }
+            assert_rejected(
+                &root,
+                &format!("rev15 payload frame {index} reseal {reseal}"),
+                &broken,
+                None,
+            );
+        }
+    }
+
+    // method byte の拒否（wire CRC は付け直す）：method 3 以上、method を 1 と 2 で入れ替えた frame
+    // （構造は通るが別の bit 列なので復号で拒否する）、frame revision 3（revision 14）の frame の method 2。
+    let set_method = |archive: &[u8], at: usize, value: u8| {
+        let mut bytes = archive.to_vec();
+        let length = u32_at(&bytes, at);
+        bytes[at + 4 + 10] = value;
+        seal(&mut bytes[at + 4..at + 4 + length]);
+        bytes
+    };
+    // 1 と 2 の入れ替えは、literal を含む frame で確かめる（literal が無い frame は 2 つの method で同じ bit 列）。
+    let plain_frame = big_frames
+        .iter()
+        .chain(&exact_frames)
+        .copied()
+        .find(|&at| method(&v15, at) == 1)
+        .expect("a plain frame with literals");
+    let plain_entry = if big_frames.contains(&plain_frame) {
+        "big.txt"
+    } else {
+        "exact.txt"
+    };
+    for (label, at, value, text, entry) in [
+        (
+            "method 3",
+            mixed_frames[0],
+            3u8,
+            Some("LLZ1BLK"),
+            "mixed.bin",
+        ),
+        (
+            "method 255",
+            mixed_frames[0],
+            255,
+            Some("LLZ1BLK"),
+            "mixed.bin",
+        ),
+        ("method 2 as 1", mixed_frames[0], 1, None, "mixed.bin"),
+        ("method 1 as 2", plain_frame, 2, None, plain_entry),
+    ] {
+        let bytes = set_method(&v15, at, value);
+        assert_rejected_entry(&root, &format!("rev15 {label}"), &bytes, text, entry);
+    }
+    let v14_frames = frames_at(&v14, 32 + u32_at(&v14, 20), big.len(), 4 * MIB);
+    assert_rejected(
+        &root,
+        "rev14 frame with method 2",
+        &set_method(&v14, v14_frames[0], 2),
+        Some("LLZ1BLK"),
+    );
+
+    // LLZ1BLK は単独の block としては復号しない。
+    assert!(
+        lhc::decompress_block(
+            &v15[big_frames[0] + 4..big_frames[0] + 4 + u32_at(&v15, big_frames[0])]
         )
         .is_err()
     );

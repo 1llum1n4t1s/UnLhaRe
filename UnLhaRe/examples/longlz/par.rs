@@ -552,5 +552,8 @@ pub fn encode_parallel(data: &[u8], s: &Settings, threads: usize) -> (Vec<u8>, T
     }
     timing.visits = locals.iter().map(|l| l.visits).sum();
     timing.cmp_bytes = locals.iter().map(|l| l.cmp_bytes).sum();
-    (assemble(n, segment, wave, window, s.near, bodies), timing)
+    (
+        assemble(n, segment, wave, window, s.near, &s.var, bodies),
+        timing,
+    )
 }

@@ -127,6 +127,10 @@ enum LhcStrategy {
     /// LLZ1BLK（4MiB 単位）で格納する。作成に約 1.4GiB の codec memory（と file 自体の buffer）を使う。
     #[value(name = "long-range-wide-trial")]
     LongRangeWideTrial,
+    /// revision 15: revision 14 の符号に、literal の混合（LZMA の確率と直前 1 byte の文脈）と距離 slot の
+    /// 文脈の長さ 8 区分を加える。作成に約 1.4GiB の codec memory（と file 自体の buffer）を使う。
+    #[value(name = "long-range-mix-trial")]
+    LongRangeMixTrial,
 }
 
 fn run(cli: Cli) -> unlhare::Result<()> {
@@ -177,6 +181,9 @@ fn run(cli: Cli) -> unlhare::Result<()> {
                         LhcStrategy::LongRangeWideTrial => {
                             unlhare::lhc::BlockStrategy::LongRangeWideTrial
                         }
+                        LhcStrategy::LongRangeMixTrial => {
+                            unlhare::lhc::BlockStrategy::LongRangeMixTrial
+                        }
                         LhcStrategy::PortfolioPpmTrial => {
                             unlhare::lhc::BlockStrategy::PortfolioPpmTrial
                         }
@@ -190,6 +197,9 @@ fn run(cli: Cli) -> unlhare::Result<()> {
                         LhcStrategy::LongRangeWideTrial => (unlhare::lhc::CODEC_MEMORY_BYTES
                             * workers)
                             .max(unlhare::lhc::LONG_RANGE_WIDE_CREATE_MEMORY_BYTES),
+                        LhcStrategy::LongRangeMixTrial => (unlhare::lhc::CODEC_MEMORY_BYTES
+                            * workers)
+                            .max(unlhare::lhc::LONG_RANGE_MIX_CREATE_MEMORY_BYTES),
                         _ => unlhare::lhc::CODEC_MEMORY_BYTES * workers,
                     },
                     threads,

@@ -4,7 +4,8 @@
 //! これにより自前の復号器と独立な実装の両方で、符号化結果の正しさを確かめられる。
 
 use super::mf::{Finder, MAX_LEN, Match, Scope, common};
-use super::rc::{BIT_PRICE, PROB_INIT, Prices, RangeDec, RangeEnc};
+use super::mix::LitMix;
+use super::rc::{BIT_PRICE, Coder, PROB_INIT, Prices, RangeDec, RangeEnc};
 
 const LC: u32 = 3;
 const POS_STATES: usize = 4;
@@ -45,7 +46,7 @@ impl LenModel {
         16 + rc.tree(&mut self.high, 8)
     }
 
-    fn encode(&mut self, rc: &mut RangeEnc, len: u32, ps: usize) {
+    fn encode<R: Coder>(&mut self, rc: &mut R, len: u32, ps: usize) {
         if len < 8 {
             rc.bit(&mut self.choice, 0);
             rc.tree(&mut self.low[ps], 3, len);
@@ -94,11 +95,15 @@ struct Model {
     g1: [u16; STATES],
     g2: [u16; STATES],
     rep0_long: [u16; STATES * POS_STATES],
-    pos_slot: [[u16; 64]; 4],
+    /// 距離 slot の確率。行 0..4 が min(長さ-2, 3) の文脈（revision 12〜14）。revision 15 は長さ-2 の 8 区分
+    /// （`wide_row`）で 8 行すべてを使う。
+    pos_slot: [[u16; 64]; 8],
     pos_special: [u16; 1 + FULL_DISTANCES - END_POS_MODEL],
     align: [u16; 16],
     len: LenModel,
     rep_len: LenModel,
+    /// literal の混合（revision 15 だけ。revision 12〜14 は None で、LZMA と同じ literal 符号）。
+    lit_mix: Option<Box<LitMix>>,
     // 近傍距離符号（frame revision 2 だけが使う。revision 1 では初期値のまま触らない）。
     /// 近傍で書くか（文脈は更新前の state）。
     near_flag: [u16; STATES],
@@ -122,7 +127,9 @@ struct NearCode {
 const NEAR_MAX_DIFF: u32 = 1 << 16;
 
 impl Model {
-    fn new() -> Self {
+    /// `lit_mix` は literal の混合（revision 15 の method 2 の復号と、2 本の符号器で書く encoder）を使うか。
+    /// slot 文脈の行数は model の大きさに影響しない（常に 8 行を持ち、使う行だけが変わる）。
+    fn new(lit_mix: bool) -> Self {
         Self {
             literal: vec![PROB_INIT; LIT_SIZE << LC],
             is_match: [PROB_INIT; STATES * POS_STATES],
@@ -131,11 +138,12 @@ impl Model {
             g1: [PROB_INIT; STATES],
             g2: [PROB_INIT; STATES],
             rep0_long: [PROB_INIT; STATES * POS_STATES],
-            pos_slot: [[PROB_INIT; 64]; 4],
+            pos_slot: [[PROB_INIT; 64]; 8],
             pos_special: [PROB_INIT; 1 + FULL_DISTANCES - END_POS_MODEL],
             align: [PROB_INIT; 16],
             len: LenModel::new(),
             rep_len: LenModel::new(),
+            lit_mix: lit_mix.then(|| Box::new(LitMix::new())),
             near_flag: [PROB_INIT; STATES],
             near_sel: [[PROB_INIT; 4]; 4],
             near_sign: [PROB_INIT; 4],
@@ -180,6 +188,19 @@ fn pos_slot(dist: u32) -> u32 {
 #[inline(always)]
 fn lit_base(prev: u8) -> usize {
     LIT_SIZE * (prev as usize >> (8 - LC))
+}
+
+/// revision 15 の距離 slot の文脈：長さ-2（v）を 8 区分（0、1、2、3、4〜5、6〜9、10〜21、22 以上）にする。
+/// 近傍の基準番号（`near_sel`）の文脈は従来どおり min(v, 3) のまま。
+#[inline(always)]
+fn wide_row(v: usize) -> usize {
+    match v {
+        0..=3 => v,
+        4..=5 => 4,
+        6..=9 => 5,
+        10..=21 => 6,
+        _ => 7,
+    }
 }
 
 /// 復号に使う履歴（file の byte 位置 start()..end() を読める）。
@@ -261,9 +282,11 @@ fn source_ok(scope: &Scope, s: usize, len: usize) -> bool {
 /// base は file の byte 位置 base.start() から wave 開始までの履歴、own はこの segment の出力（空から始める）。
 /// 同じ wave の他 segment（wave_start..seg_start）は読まないので、並列に復号できる。
 /// 距離は window 未満に限り、base より前（file 先頭より前・保持外）を指す参照は誤りとして拒否する。
-/// `NEAR` は frame revision 2（近傍距離符号あり）か。const generic で単相化するので、
-/// revision 1 の経路は近傍の分岐・文脈を一切持たず、従来と同じ速度・同じ符号になる。
-pub fn decode_segment<const NEAR: bool>(
+/// `NEAR` は frame revision 2 以降（近傍距離符号あり）か。`WIDE` は frame revision 4（距離 slot の文脈が
+/// 長さ 8 区分）か。`LITMIX` は frame revision 4 の method 2（literal の混合あり）か。const generic で単相化
+/// するので、revision 1〜3 と revision 4 の method 1 の経路は literal の混合の分岐・model を一切持たず、
+/// 従来（revision 14）と同じ速度で復号する。
+pub fn decode_segment<const NEAR: bool, const WIDE: bool, const LITMIX: bool>(
     body: &[u8],
     base: &impl Base,
     own: &mut Vec<u8>,
@@ -279,7 +302,7 @@ pub fn decode_segment<const NEAR: bool>(
     let known = true;
     let size = scope.end - seg;
     let mut rc = RangeDec::new(body).map_err(|_| "LLZ range coder header")?;
-    let mut m = Model::new();
+    let mut m = Model::new(LITMIX);
     let (mut rep0, mut rep1, mut rep2, mut rep3) = (0usize, 0usize, 0usize, 0usize);
     let mut state = 0usize;
     // 絶対位置 s の byte（自 segment なら own、wave より前なら base）。
@@ -297,10 +320,22 @@ pub fn decode_segment<const NEAR: bool>(
             // segment 先頭の直前 byte は他 segment のものなので 0 とみなす。
             let prev = if pos > seg { own[pos - seg - 1] } else { 0 };
             let lb = lit_base(prev);
+            // 一致byte文脈は、その byte を読める場合だけ使う（符号化側と同じ規則）。
+            let use_match = state >= 7 && rep0 < pos && usable(pos - rep0 - 1, 1, rep0);
+            if LITMIX {
+                // revision 15 の method 2：LZMA の確率と直前 byte の文脈を混合する（`LitMix` が符号化側と同じ手順で読む）。
+                let probs: &mut [u16; LIT_SIZE] = (&mut m.literal[lb..lb + LIT_SIZE])
+                    .try_into()
+                    .map_err(|_| "LLZ literal table")?;
+                let mb = use_match.then(|| at(own, pos - rep0 - 1));
+                let lx = m.lit_mix.as_mut().ok_or("LLZ literal mix model")?;
+                own.push(lx.decode(probs, &mut rc, prev, mb));
+                state = lit_next(state);
+                continue;
+            }
             let probs = &mut m.literal[lb..lb + LIT_SIZE];
             let mut sym = 1usize;
-            // 一致byte文脈は、その byte を読める場合だけ使う（符号化側と同じ規則）。
-            if state >= 7 && rep0 < pos && usable(pos - rep0 - 1, 1, rep0) {
+            if use_match {
                 let mut match_byte = at(own, pos - rep0 - 1) as usize;
                 while sym < 0x100 {
                     let match_bit = (match_byte >> 7) & 1;
@@ -389,7 +424,9 @@ pub fn decode_segment<const NEAR: bool>(
                 }
                 rep0 = dist;
             } else {
-                let slot = rc.tree(&mut m.pos_slot[len.min(3)], 6) as usize;
+                // len は長さ-2。revision 15 は 8 区分（`wide_row`）、それ以前は min(len, 3)。
+                let row = if WIDE { wide_row(len) } else { len.min(3) };
+                let slot = rc.tree(&mut m.pos_slot[row], 6) as usize;
                 if slot < 4 {
                     rep0 = slot;
                 } else {
@@ -476,6 +513,19 @@ pub struct Settings {
     pub wave: usize,
     /// 近傍距離符号を使う（frame revision 2）。false なら従来（revision 1）と同じ符号になる。
     pub near: bool,
+    /// 距離 slot の文脈を長さ 8 区分にする（frame revision 4。near も true であること）。
+    pub wide: bool,
+    /// literal の混合なし・ありの 2 つの body を 1 回の parse で同時に作る（frame revision 4。wide も true）。
+    /// false なら単一の符号器で、literal は LZMA と同じ符号になる（revision 12〜14）。
+    pub dual: bool,
+}
+
+/// 1 segment の符号化結果。`plain` は literal の混合なしの body、`mix` は 2 本の符号器で書いたときの
+/// literal の混合ありの body（同じ記号列）、`literals` は segment の literal の数（診断用）。
+pub struct SegOut {
+    pub plain: Vec<u8>,
+    pub mix: Option<Vec<u8>>,
+    pub literals: usize,
 }
 
 /// k 番目の segment の範囲と参照規則（segment 長・wave 幅は形式の値）。
@@ -487,10 +537,12 @@ pub fn segment_scope(n: usize, segment: usize, wave: usize, k: usize) -> Scope {
     }
 }
 
-pub struct Encoder<'a, F: Finder> {
+pub struct Encoder<'a, F: Finder, R: Coder = RangeEnc> {
     data: &'a [u8],
     m: Model,
-    rc: RangeEnc,
+    rc: R,
+    /// segment の literal の数（診断用）。
+    literals: usize,
     pr: Prices,
     mf: F,
     nice: usize,
@@ -498,9 +550,15 @@ pub struct Encoder<'a, F: Finder> {
     reps: [u32; 4],
     len_prices: Box<[[u32; MAX_LEN - 1]; POS_STATES]>,
     rep_len_prices: Box<[[u32; MAX_LEN - 1]; POS_STATES]>,
-    slot_prices: [[u32; 64]; 4],
-    dist_prices: [[u32; FULL_DISTANCES]; 4],
+    /// 距離 slot・距離の価格。行は slot の文脈（revision 12〜14 は 4 行、revision 15 は 8 行）。
+    slot_prices: [[u32; 64]; 8],
+    dist_prices: [[u32; FULL_DISTANCES]; 8],
     align_prices: [u32; 16],
+    /// 距離 slot の文脈が長さ 8 区分（revision 15）か。parse の価格は LZMA と同じ model で近似する
+    /// （literal の価格は LZMA の確率、混合する入力の効果は価格に入れない）。
+    wide: bool,
+    /// slot の文脈の行数（wide なら 8、そうでなければ 4）。
+    rows: usize,
     since_refresh: u32,
     opts: Vec<Opt>,
     first: Vec<Match>,
@@ -530,7 +588,9 @@ struct DistMemo {
     epoch: u32,
     dist: u32,
     reps: [u32; 4],
-    normal: [u32; 4],
+    /// 通常の距離の価格（slot の文脈の行ごと。revision 12〜14 は先頭 4 つだけ使う）。
+    normal: [u32; 8],
+    /// 近傍で書く場合の sel+sign+gap の最小（基準番号の文脈 min(長さ-2, 3) ごと）。
     near: [u32; 4],
 }
 
@@ -540,14 +600,15 @@ const TAIL_MEMO_BITS: u32 = 6;
 /// dist_costs の覚えの大きさ（2 の冪の bit 数）。
 const DIST_MEMO_BITS: u32 = 6;
 
-impl<'a, F: Finder> Encoder<'a, F> {
+impl<'a, F: Finder, R: Coder> Encoder<'a, F, R> {
     /// 一致探索器を指定して作る（並列探索の結果を読み出す場合など）。
     pub fn with_finder(data: &'a [u8], s: &Settings, mf: F) -> Self {
         let mut e = Self {
             data,
-            m: Model::new(),
+            m: Model::new(R::DUAL),
+            literals: 0,
             // 出力の見込み（segment 単位で符号化するので segment 長を上限に見積もる）。
-            rc: RangeEnc::new(
+            rc: R::new(
                 if s.segment == 0 {
                     data.len()
                 } else {
@@ -562,9 +623,11 @@ impl<'a, F: Finder> Encoder<'a, F> {
             reps: [0; 4],
             len_prices: Box::new([[0; MAX_LEN - 1]; POS_STATES]),
             rep_len_prices: Box::new([[0; MAX_LEN - 1]; POS_STATES]),
-            slot_prices: [[0; 64]; 4],
-            dist_prices: [[0; FULL_DISTANCES]; 4],
+            slot_prices: [[0; 64]; 8],
+            dist_prices: [[0; FULL_DISTANCES]; 8],
             align_prices: [0; 16],
+            wide: s.wide,
+            rows: if s.wide { 8 } else { 4 },
             since_refresh: 0,
             opts: vec![
                 Opt {
@@ -604,7 +667,7 @@ impl<'a, F: Finder> Encoder<'a, F> {
     fn refresh(&mut self) {
         self.m.len.fill(&self.pr, &mut self.len_prices);
         self.m.rep_len.fill(&self.pr, &mut self.rep_len_prices);
-        for ls in 0..4 {
+        for ls in 0..self.rows {
             for s in 0..64u32 {
                 let mut p = self.pr.tree(&self.m.pos_slot[ls], 6, s);
                 if s as usize >= END_POS_MODEL {
@@ -664,10 +727,20 @@ impl<'a, F: Finder> Encoder<'a, F> {
 
     #[inline(always)]
     fn dist_price(&self, dist: u32, len: usize) -> u32 {
-        self.dist_price_ls(dist, (len - 2).min(3))
+        self.dist_price_ls(dist, self.row_of(len))
     }
 
-    /// 長さの文脈 ls（min(長さ-2, 3)）での、通常の距離符号の価格。
+    /// 長さ len（2 以上）の一致の、距離 slot の文脈の行（wide なら 8 区分、そうでなければ min(長さ-2, 3)）。
+    #[inline(always)]
+    fn row_of(&self, len: usize) -> usize {
+        if self.wide {
+            wide_row(len - 2)
+        } else {
+            (len - 2).min(3)
+        }
+    }
+
+    /// slot の文脈の行 ls（wide なら 8 区分、そうでなければ min(長さ-2, 3)）での、通常の距離符号の価格。
     #[inline(always)]
     fn dist_price_ls(&self, dist: u32, ls: usize) -> u32 {
         if (dist as usize) < FULL_DISTANCES {
@@ -709,17 +782,19 @@ impl<'a, F: Finder> Encoder<'a, F> {
             .then_some(code)
     }
 
-    /// parse 用：距離 dist（0始まり）の通常一致の距離部分の価格を、長さの文脈 ls（min(長さ-2, 3)）ごとに返す。
+    /// parse 用：距離 dist（0始まり）の通常一致の距離部分の価格を、slot の文脈の行 ls（`row_of`。revision 12〜14 は
+    /// min(長さ-2, 3) の 4 行、revision 15 は長さ 8 区分の 8 行）ごとに返す。
     /// 近傍を使う符号なら通常側の flag の価格を足し、近傍で書く場合の価格（flag 込み）と比べて小さい方を採る。
+    /// 近傍側の基準番号の文脈は、どの revision でも min(長さ-2, 3)（行 ls ≥ 3 は文脈 3 を使う）。
     /// r は更新前の rep 距離、st は更新前の state。
     /// flag を除いた部分（通常の距離の価格と、近傍の sel+sign+gap の最小）は dist と r だけで決まるので、
     /// 価格表を作り直すまで小さな表に覚えておく（同じ一致が続く位置で同じ dist・r が繰り返し現れる）。
-    /// 4 つの文脈をすべて求める（呼び出し側は一致の長さの範囲に当たる文脈だけを引く）。
+    /// すべての行を求める（呼び出し側は一致の長さの範囲に当たる行だけを引く）。
     #[inline(always)]
-    fn dist_costs(&mut self, st: usize, dist: u32, r: &[u32; 4]) -> [u32; 4] {
+    fn dist_costs(&mut self, st: usize, dist: u32, r: &[u32; 4]) -> [u32; 8] {
         if !self.near {
-            let mut out = [0; 4];
-            for (ls, o) in out.iter_mut().enumerate() {
+            let mut out = [0; 8];
+            for (ls, o) in out.iter_mut().enumerate().take(self.rows) {
                 *o = self.dist_price_ls(dist, ls);
             }
             return out;
@@ -741,17 +816,18 @@ impl<'a, F: Finder> Encoder<'a, F> {
             v
         };
         let [f0, f1] = self.flag_price[st];
-        let mut out = [0; 4];
-        for ls in 0..4 {
-            out[ls] = (normal[ls] + f0).min(f1.saturating_add(near[ls]));
+        let mut out = [0; 8];
+        for ls in 0..self.rows {
+            out[ls] = (normal[ls] + f0).min(f1.saturating_add(near[ls.min(3)]));
         }
         out
     }
 
-    /// dist_costs の flag を除いた部分：通常の距離の価格と、近傍で書く場合の sel+sign+gap の最小（使えなければ INF）。
-    fn dist_parts(&self, dist: u32, r: &[u32; 4]) -> ([u32; 4], [u32; 4]) {
-        let mut normal = [0; 4];
-        for (ls, o) in normal.iter_mut().enumerate() {
+    /// dist_costs の flag を除いた部分：通常の距離の価格（行ごと）と、近傍で書く場合の sel+sign+gap の最小
+    /// （基準番号の文脈 min(長さ-2, 3) ごと。使えなければ INF）。
+    fn dist_parts(&self, dist: u32, r: &[u32; 4]) -> ([u32; 8], [u32; 4]) {
+        let mut normal = [0; 8];
+        for (ls, o) in normal.iter_mut().enumerate().take(self.rows) {
             *o = self.dist_price_ls(dist, ls);
         }
         let mut near = [INF; 4];
@@ -868,9 +944,10 @@ impl<'a, F: Finder> Encoder<'a, F> {
 
     /// 1 segment を初期状態の model から符号化し、range 符号の body を返す。
     /// 一致探索器は segment の先頭から順に呼ぶ（逐次の BT4 ではそれ以前の位置が索引済みであること）。
-    pub fn encode_segment(&mut self, scope: Scope) -> Vec<u8> {
+    pub fn encode_segment(&mut self, scope: Scope) -> SegOut {
         self.scope = scope;
-        self.m = Model::new();
+        self.m = Model::new(R::DUAL);
+        self.literals = 0;
         self.state = 0;
         self.reps = [0; 4];
         self.cached = None;
@@ -890,11 +967,13 @@ impl<'a, F: Finder> Encoder<'a, F> {
             }
             self.path = path;
         }
-        let rc = std::mem::replace(
-            &mut self.rc,
-            RangeEnc::new((scope.end - scope.seg_start) / 3 + 64),
-        );
-        rc.finish()
+        let rc = std::mem::replace(&mut self.rc, R::new((scope.end - scope.seg_start) / 3 + 64));
+        let (plain, mix) = rc.finish();
+        SegOut {
+            plain,
+            mix,
+            literals: self.literals,
+        }
     }
 
     fn emit(&mut self, pos: usize, len: usize, back: u32) {
@@ -903,24 +982,17 @@ impl<'a, F: Finder> Encoder<'a, F> {
         self.since_refresh += 1;
         if back == LIT {
             self.rc.bit(&mut self.m.is_match[st * POS_STATES + ps], 0);
-            let byte = self.data[pos] as u32;
-            let base = lit_base(self.prev_byte(pos));
+            let byte = self.data[pos];
+            let prev1 = self.prev_byte(pos);
+            let base = lit_base(prev1);
             let mb = self.match_byte(pos, self.reps[0]).filter(|_| st >= 7);
-            let mut matching = mb.is_some();
-            let match_byte = mb.unwrap_or(0) as u32;
-            let probs = &mut self.m.literal[base..base + LIT_SIZE];
-            let mut ctx = 1usize;
-            for i in (0..8).rev() {
-                let bit = (byte >> i) & 1;
-                if matching {
-                    let mbit = ((match_byte >> i) & 1) as usize;
-                    self.rc.bit(&mut probs[((1 + mbit) << 8) + ctx], bit);
-                    matching = mbit as u32 == bit;
-                } else {
-                    self.rc.bit(&mut probs[ctx], bit);
-                }
-                ctx = (ctx << 1) | bit as usize;
-            }
+            self.literals += 1;
+            // 符号器が書く（単一なら LZMA の literal 符号、`DualEnc` なら混合なし・ありの両方）。
+            let probs: &mut [u16; LIT_SIZE] = (&mut self.m.literal[base..base + LIT_SIZE])
+                .try_into()
+                .expect("literal table is LIT_SIZE long");
+            self.rc
+                .literal(probs, self.m.lit_mix.as_deref_mut(), prev1, mb, byte);
             self.state = lit_next(st);
             return;
         }
@@ -983,7 +1055,8 @@ impl<'a, F: Finder> Encoder<'a, F> {
             return;
         }
         let slot = pos_slot(dist);
-        self.rc.tree(&mut self.m.pos_slot[ls], 6, slot);
+        let row = self.row_of(len);
+        self.rc.tree(&mut self.m.pos_slot[row], 6, slot);
         if slot >= 4 {
             let footer = (slot >> 1) - 1;
             let base = (2 | (slot & 1)) << footer;
@@ -1112,7 +1185,7 @@ impl<'a, F: Finder> Encoder<'a, F> {
             let mut dc = self.dist_costs(state, self.first[k].dist, &reps);
             for l in start..=main_len {
                 let m = self.first[k];
-                let p = normal + self.len_prices[ps][l - 2] + dc[(l - 2).min(3)];
+                let p = normal + self.len_prices[ps][l - 2] + dc[self.row_of(l)];
                 if p < self.opts[l].price {
                     self.set(l, p, 0, m.dist + 4);
                 }
@@ -1293,7 +1366,7 @@ impl<'a, F: Finder> Encoder<'a, F> {
                 let mut dc = self.dist_costs(st, self.cur_matches[k].dist, &r);
                 for l in start_len..=nl {
                     let m = self.cur_matches[k];
-                    let pr = normal + self.len_prices[ps][l - 2] + dc[(l - 2).min(3)];
+                    let pr = normal + self.len_prices[ps][l - 2] + dc[self.row_of(l)];
                     if pr < self.opts[cur + l].price {
                         self.set(cur + l, pr, cur as u32, m.dist + 4);
                     }
@@ -1461,10 +1534,17 @@ pub(super) mod sym {
         },
     }
 
-    /// `start` は segment の先頭位置（pos_state の文脈に使う）。`near_stream` は frame revision 2 か
-    /// （通常の一致にも flag=0 を書く）。
-    pub fn encode(syms: &[Sym], start: usize, near_stream: bool) -> Vec<u8> {
-        let mut m = Model::new();
+    /// `start` は segment の先頭位置（pos_state の文脈に使う）。`near_stream` は frame revision 2 以降か
+    /// （通常の一致にも flag=0 を書く）。`wide` は frame revision 4 か（slot 文脈の長さ 8 区分）、`litmix` は
+    /// frame revision 4 の method 2 か（literal の混合）。
+    pub fn encode(
+        syms: &[Sym],
+        start: usize,
+        near_stream: bool,
+        wide: bool,
+        litmix: bool,
+    ) -> Vec<u8> {
+        let mut m = Model::new(litmix);
         let mut rc = RangeEnc::new(1024);
         let mut state = 0usize;
         let mut pos = start;
@@ -1478,11 +1558,16 @@ pub(super) mod sym {
                     rc.bit(&mut m.is_match[state * POS_STATES + ps], 0);
                     let base = lit_base(prev);
                     let probs = &mut m.literal[base..base + LIT_SIZE];
-                    let mut ctx = 1usize;
-                    for i in (0..8).rev() {
-                        let bit = ((byte >> i) & 1) as u32;
-                        rc.bit(&mut probs[ctx], bit);
-                        ctx = (ctx << 1) | bit as usize;
+                    if let Some(lx) = m.lit_mix.as_mut() {
+                        let probs: &mut [u16; LIT_SIZE] = probs.try_into().unwrap();
+                        lx.encode(probs, &mut rc, prev, None, byte);
+                    } else {
+                        let mut ctx = 1usize;
+                        for i in (0..8).rev() {
+                            let bit = ((byte >> i) & 1) as u32;
+                            rc.bit(&mut probs[ctx], bit);
+                            ctx = (ctx << 1) | bit as usize;
+                        }
                     }
                     state = lit_next(state);
                     prev = byte;
@@ -1510,7 +1595,8 @@ pub(super) mod sym {
                         }
                     } else {
                         let slot = pos_slot(dist);
-                        rc.tree(&mut m.pos_slot[ls], 6, slot);
+                        let row = if wide { wide_row(len - 2) } else { ls };
+                        rc.tree(&mut m.pos_slot[row], 6, slot);
                         if slot >= 4 {
                             let footer = (slot >> 1) - 1;
                             let base = (2 | (slot & 1)) << footer;

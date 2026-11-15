@@ -465,3 +465,62 @@ Windows x64、4thread、fsyncなし。7-Zipは LZMA2 d8m fb273 -mx9 -mmt4。展�
 | english | 47,367,278 | 46,074,592 | 52,031,726 | 0.886 | 0.99 | 2.57 |
 
 作成は、一致探索の前処理を1 threadにまとめて次の探索単位と重ねるなどの高速化（出力のbyteは不変）で、7-Zip と交互に測って dblp 39.7〜40.5秒（7-Zip 25.5〜25.7秒、比1.54〜1.59）、linux 33.8〜34.6秒（7-Zip 28.0〜28.2秒、比1.21〜1.23）になった（2026-11-15、高速化前はdblp 45.8〜47.3秒、linux 36.7〜39.8秒）。9MiB前後の小さいentryやsimplewikiでは、4MiBのsegmentが1MiBより最大約1%大きくなる。
+
+## Archive revision 15：wave ごとに literal の混合を選ぶ長距離LZ（実験候補）
+
+Rust `BlockStrategy::LongRangeMixTrial` / CLI `--strategy long-range-mix-trial` の明示指定だけがrevision 15を作る。entryの単位・segment（4MiB）・wave・窓・参照範囲・読む順序・許可するentryの規則はrevision 14と同じで、LLZ1BLKはframe revision 4だけを受理する（frame revision 1〜3との取り違えは拒否する）。revision 12〜14の出力と読取は変えない。
+
+| archive revision | LLZ1BLK frame revision | segment | 近傍距離 | slot 文脈 8 区分 | literal の混合 |
+| ---: | ---: | ---: | --- | --- | --- |
+| 14 | 3 | 4MiB | あり | なし | なし |
+| 15 | 4 | 4MiB | あり | あり | frame ごとに method で選ぶ |
+
+### frame revision 4のmethod
+
+frame header offset 10 の method は、frame revision 4 でだけ次の3値を許す（offset 11 は予約0のまま）。
+
+| method | 内容 |
+| ---: | --- |
+| 0 | 無圧縮 |
+| 1 | LZ：slot 文脈 8 区分あり、literal の混合なし |
+| 2 | LZ：slot 文脈 8 区分あり、literal の混合あり |
+
+frame revision 1〜3 の method 2、frame revision 4 の method 3 以上は拒否する。method は frame ごとに独立に検査し、同じ wave の2 frameの method の一致は形式の規則ではない（encoder は無圧縮の frame を除いてそろえる）。
+
+### frame revision 4の符号
+
+frame revision 3（＝2）の記号列に次を加える。どちらも segment ごとに初期化する。
+
+- **距離 slot の文脈（method 1・2）**：通常一致の距離 slot（6bit の木）の文脈を、長さ−2 の4区分から8区分（0、1、2、3、4〜5、6〜9、10〜21、22以上）にする。近傍距離の基準の番号の文脈は min(長さ−2, 3) のまま。
+- **literal の混合（method 2 だけ）**：literal の各 bit を、2つの予測の logistic 混合による12bit確率（bit=0の確率、1〜4095）で range 符号化する（range は `range >> 12` で分ける）。method 1 の literal は revision 14 と同じ11bit確率の符号。
+  - 入力0：LZMA と同じ literal 確率（lc3、一致byte文脈なら一致 bit で分けた節。11bit、移動量5で更新）。
+  - 入力1：直前1 byte 全体（256通り）×木の節の確率（16bit、初期値32768、移動量5で更新。一致 bit は含めない）。
+  - 混合：12bit の stretch 表で対数オッズにし、重み（i32、初期値 52429・19661、bias 0）との積和を `>> 16` して ±2047 に切り、squash 表で12bit確率にする。重みの組は「一致byte文脈か × bit の位置」の16組。
+  - 更新：誤差 `err`（bit=0 なら 4095−p、1 なら −p）で、各重みに `(入力 × err + 2048) >> 12` を足し、±2^18 に切る（bias の入力は256）。
+  - stretch・squash の表と演算の正本は `src/lhc/longlz/mix.rs`。符号化と復号は同じ関数を通る。
+
+method 1 と 2 で、LZMA 側の確率の更新・価格・記号列は同じになる。
+
+### 作成（encoder の選び方、形式の規則ではない）
+
+- parse は1回で、同じ記号列を2本の range 符号器（method 1 と 2）へ同時に書く。parse の literal 価格は LZMA の確率で近似する。
+- wave（segment 2k と 2k+1、末尾は1 segmentのこともある）ごとに、各 frame の実効長（body 長が5以上・生データ長未満ならその長さ、それ以外は生データ長）の合計を、method 1 側 P、method 2 側 M として、`(P − M) × 1000 ≥ 3 × P` なら method 2、そうでなければ method 1 を選ぶ。選んだ側の body が格納できない frame は method 0 にする。
+- 混合は展開を wave あたり約2割遅くするので、縮みが0.3%未満の wave は混合しない（しきい値は200MB級の開発5入力で決めた暫定値）。出力は thread 数・一致置き場の解放の時機に依存しない。
+
+### 作成・展開のmemory
+
+作成の見積もり `LONG_RANGE_MIX_CREATE_MEMORY_BYTES` は1480MiB（revision 14 の1448MiB に、parse する encoder ごとの混合表と価格表、2本目の body、wave の保留の分を足した値）で、entry buffer（最大512MiB）と合わせて2GiB以下。200MiB入力の実測peakは4threadでワーキングセット1,373MiB（revision 14 は1,370MiB）。展開は method 2 の segment ごとに約128KiB の混合表が増え、実測peakは約82MiB（revision 14 は約83MiB）。
+
+### 開発測定（2026-11-15、判定ではない）
+
+Windows x64、製品の Release CLI、4thread、`--no-fsync`。7-Zipは LZMA2 d8m fb273 -mx9 -mmt4。他の作業による負荷が重く、時間は大きく揺れた。展開は linux・dblp を8回、english・simplewiki を10回、7-Zip・revision 14・15 の展開だけを交互に測り、中央値どうしと最小値どうしの比の範囲を示す（sources は2回）。作成は dblp を3回交互（7-Zip・revision 14・15）、他は2回交互（7-Zip・revision 15）。
+
+| 入力 | revision 14 | revision 15 | 7-Zip | 15/7-Zip | method 2 の wave | 作成 15/7-Zip | 展開 15/7-Zip | 展開 14/7-Zip |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| linux tar | 26,161,485 | 26,027,322 | 27,565,795 | 0.9442 | 23/25 | 1.22〜1.43 | 2.57〜2.64 | 2.15〜2.27 |
+| sources | 30,991,125 | 30,893,692 | 33,324,130 | 0.9271 | 13/25 | 1.45〜1.49 | 2.35〜2.36 | — |
+| dblp | 21,669,061 | 21,492,755 | 23,927,658 | 0.8982 | 17/25 | 1.61〜1.65 | 2.40〜2.46 | 2.03〜2.04 |
+| simplewiki | 40,431,148 | 40,258,767 | 43,975,753 | 0.9155 | 13/25 | 1.30〜1.39 | 2.58〜2.66 | 2.22〜2.29 |
+| english | 46,074,592 | 45,792,811 | 52,031,726 | 0.8801 | 4/25 | 1.26 | 2.45〜2.54 | 2.35〜2.46 |
+
+dblp の作成は revision 14 と同等（中央値の比1.00）。全 wave を method 1 にした書庫の展開は revision 14 と同等（english・simplewiki で0.97〜1.02）。各 frame の payload は、試作（`examples/longlz` の `--lit 1 --wide 1` と `--wide 1`）の対応する segment と byte 一致する。経緯は[設計メモ](experiments/khc/TEXT_CLASS_DESIGN_20261114.md)にある。

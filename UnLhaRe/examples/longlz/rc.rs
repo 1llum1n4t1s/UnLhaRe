@@ -148,6 +148,26 @@ impl RangeEnc {
         }
     }
 
+    /// 外で決めた 12bit 確率（bit=0 の確率、1..=4095）で 1bit を送る（長さ混合の試作用）。
+    #[inline(always)]
+    pub fn bit12(&mut self, p0: u32, bit: u32) {
+        if let Some(st) = self.stats.as_mut() {
+            let q = if bit == 0 { p0 } else { 4096 - p0 } as f64;
+            st[self.cat] -= (q / 4096.0).log2();
+        }
+        let bound = (self.range >> 12) * p0;
+        if bit == 0 {
+            self.range = bound;
+        } else {
+            self.low += bound as u64;
+            self.range -= bound;
+        }
+        while self.range < TOP {
+            self.range <<= 8;
+            self.shift_low();
+        }
+    }
+
     pub fn direct(&mut self, value: u32, count: u32) {
         if let Some(st) = self.stats.as_mut() {
             st[self.cat] += count as f64;
@@ -235,6 +255,24 @@ impl<'a> RangeDec<'a> {
             *p -= *p >> MOVE_BITS;
             1
         };
+        self.normalize();
+        bit
+    }
+
+    /// 12bit 確率（bit=0 の確率）で 1bit を読む（符号化側の `bit12` と対）。
+    #[inline(always)]
+    pub fn bit12(&mut self, p0: u32) -> u32 {
+        let bound = (self.range >> 12) * p0;
+        let bit = if self.code < bound {
+            self.range = bound;
+            0
+        } else {
+            self.range -= bound;
+            self.code -= bound;
+            1
+        };
+        // 確率が 1/4096 まで小さくなりうるので、正規化は最大 2 回要る（符号化側の while と同じ）。
+        self.normalize();
         self.normalize();
         bit
     }

@@ -15,14 +15,15 @@ use std::{
 // 既定(旧来)のworker数と、threads指定時の上限。
 // 1MiB blockの1worker当たりの復号scratchはframe/raw各1MiB強と小さなmodel表の見積もりで数MiBであり、
 // 4worker同時でも64MiB codec gate内に収まる想定（見積もりであり、全familyのpeak実測ではない）。
-// LLZ1BLK（revision 12〜14）の entry は別枠で、同じ file の直近の出力（窓64MiB＋wave）を履歴として持つ。
-// revision 14 は segment が4MiBなので、履歴は約72MiB、wave内で同時に復号する2 segmentのframeとrawが
-// 各最大4MiB強（合計16MiB強）で、codec gateを超える（読み手の別枠）。
+// LLZ1BLK（revision 12〜15）の entry は別枠で、同じ file の直近の出力（窓64MiB＋wave）を履歴として持つ。
+// revision 14・15 は segment が4MiBなので、履歴は約72MiB、wave内で同時に復号する2 segmentのframeとrawが
+// 各最大4MiB強（合計16MiB強）で、codec gateを超える（読み手の別枠）。revision 15はさらに、復号する
+// segmentごとに混合表（約128KiB）を持つ。
 pub(super) const WORKERS: usize = 4;
 const MAX_EVENTS: usize = 32;
 // 投入済みで未消費のblock（queue待ち・復号中・並べ直し待ち）の上限はworker数×この値。
 // 各blockはframeかraw（各1MiB強）を1つ持つので、保持量は最大でも約16MiB（4worker時）に収まる。
-// 4MiB単位のLLZ1BLK（revision 14）はwaveで投入が止まり同時最大2件なので、この上限には達しない。
+// 4MiB単位のLLZ1BLK（revision 14・15）はwaveで投入が止まり同時最大2件なので、この上限には達しない。
 // 重いblock（PPMなど）を待つ間も、他のworkerが後続blockを先に復号できる幅を確保する。
 const WINDOW_PER_WORKER: usize = 4;
 const STACK_BYTES: usize = 2 << 20;
@@ -61,7 +62,7 @@ pub(super) fn eligible(
 ) -> Result<bool> {
     // all_families は threads>=2 の明示指定時だけ。read_frame が revision ごとの family 境界を検証し、
     // decompress_block が全 family を厳密に復号するため、worker_kind の制限を外せる。
-    if !(matches!(revision, 4 | 5) || (all_families && (1..=14).contains(&revision)))
+    if !(matches!(revision, 4 | 5) || (all_families && (1..=15).contains(&revision)))
         || entries.len() > MAX_PARALLEL_ENTRIES
         || entries.iter().map(|entry| entry.name.len()).sum::<usize>() > MAX_PARALLEL_NAME_BYTES
     {
@@ -300,7 +301,7 @@ impl Producer {
         if entry != self.entry {
             return;
         }
-        // LLZ1BLK の entry（revision 14 は最初の frame が LLZ1BLK の entry）だけ履歴を持つ。
+        // LLZ1BLK の entry（revision 14・15 は最初の frame が LLZ1BLK の entry）だけ履歴を持つ。
         let Some(layout) = self.units.as_ref().and_then(UnitReader::long_layout) else {
             return;
         };

@@ -88,6 +88,8 @@ LHCの既定`mdl`は従来のrevision 1を維持します。明示指定の`hybr
 
 明示指定の`long-range-wide-trial`（Rust `BlockStrategy::LongRangeWideTrial`）はrevision 14の実験候補で、revision 13の符号のまま、modelを初期化する単位を4MiBにします（LLZ1BLK frame revision 3）。2026-11-14の開発測定で、linux tar・ソースtar・dblp・simplewiki・英文の200MB級5入力すべてが7-Zip LZMA2 d8m fb273の0.95倍以下（0.886〜0.949）になり、展開は7-Zipの2.0〜2.6倍でした。作成には約1.4GiBのcodec memoryとfile自体のbuffer（合計2GiB以下）を使います。[形式仕様](LHC_FORMAT.md#archive-revision-144mibのsegmentで符号化する長距離lz実験候補)を参照してください。
 
+明示指定の`long-range-mix-trial`（Rust `BlockStrategy::LongRangeMixTrial`）はrevision 15の実験候補で、revision 14の構成に距離slotの文脈の長さ8区分を加え、さらにliteralの各bitを2つの予測の混合で符号化する方式を、縮みが展開の遅れに見合うwave（2 segment）だけに使います（LLZ1BLK frame revision 4、frameのmethodで区別）。2026-11-15の開発測定で、200MB級5入力すべてが7-Zip LZMA2 d8m fb273の0.880〜0.944倍（linux tarは0.949から0.944）、作成は7-Zipの1.2〜1.7倍、展開は2.4〜2.7倍でした。作成のcodec memoryは約1.45GiBです。[形式仕様](LHC_FORMAT.md#archive-revision-15wave-ごとに-literal-の混合を選ぶ長距離lz実験候補)を参照してください。
+
 開発版LHCの実操作（既存`create/list/test/extract`は引き続きLHA）：
 
 MDL復号のモデル表は同じCDFを共有して保持メモリを抑えます。[公開経路の評価](experiments/khc/forest-layout/PUBLIC_RESULT_20261006.md)では調整用11入力の観測展開private最大が約9.74MBから5.33MBへ減りました。全処理の最大メモリは圧縮側でほぼ不変で、全モデルが可変な最悪条件の追加領域も必要です。形式・既定戦略は変更しません。小幅な時間短縮は確認していますが、7-Zip総合優位の証拠ではありません。
