@@ -31,7 +31,7 @@
 //! - method byte で literal の混合の有無を示す：0 無圧縮、1 LZ（混合なし）、2 LZ（literal の各 bit の確率を、
 //!   LZMA と同じ確率と直前 1 byte 全体の文脈の確率の整数の logistic 混合で決める。`mix.rs`）。
 //!   frame revision 1〜3 は method 2 を、frame revision 4 は method 3 以上を拒否する。
-//! - 混合を使うかは wave（2 segment）単位で encoder が選ぶ（`choose_mix`）。wave 内の 2 frame の method が
+//! - 混合を使うかは wave（2 segment）単位で encoder が選ぶ（`choose_mix`：縮みと literal の密度）。wave 内の 2 frame の method が
 //!   そろうことは形式の規則ではなく（`validate_frame` は frame 単独の検査）、encoder が無圧縮の frame を除いて
 //!   そろえる。method 1 の復号は混合の model を持たず、frame revision 3 と同じ速さで復号する。
 //!
@@ -362,7 +362,7 @@ pub fn encode_file(
 #[cfg_attr(not(any(test, feature = "llz-diag")), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MixChoice {
-    /// wave の縮みが 0.3% 以上のときだけ混合する（`choose_mix`）。
+    /// wave の縮みが 0.3% 以上で、literal が生データ 8 byte あたり 1 個以下のときだけ混合する（`choose_mix`）。
     Auto,
     /// すべての wave を混合ありで格納する（有効な body がある frame）。
     AllMix,
@@ -380,11 +380,18 @@ fn effective_len(body_len: usize, raw_len: usize) -> usize {
     }
 }
 
-/// wave を literal の混合ありで格納するか。`plain` は混合なし、`mix` は混合ありの実効長の wave 内の合計（byte）。
-/// 混合で 0.3% 以上縮むとき（`(plain - mix) × 1000 ≥ 3 × plain`）だけ混合する。復号の遅さ（混合ありの wave は
-/// 混合なしより約 20% 遅い）に見合う縮みがない wave は、混合なしの速い復号にする。
-pub fn choose_mix(plain: u64, mix: u64) -> bool {
-    mix < plain && (plain - mix) * 1000 >= 3 * plain
+/// wave を literal の混合ありで格納するか。`plain` は混合なし、`mix` は混合ありの実効長の wave 内の合計（byte）、
+/// `literals` は wave 内の literal の数、`raw` は wave の生データ長（byte）。次の両方を満たすときだけ混合する。
+///
+/// - 混合で 0.3% 以上縮む（`(plain - mix) × 1000 ≥ 3 × plain`）。縮みが小さい wave は混合なしの速い復号にする。
+/// - literal が生データ 8 byte あたり 1 個以下（`literals × 8 ≤ raw`）。混合の復号の費用は混合する literal の bit 数に
+///   比例し（2026-11-15 の診断で 1 bit あたり約 5〜9ns、混合ありの展開は混合なしの 1.8〜2.6 倍）、literal が大半の
+///   入力（アミノ酸配列など）では縮み（約 1.5%）に対して展開が 7-Zip の 3 倍を大きく超える。この上限で、混合して
+///   よい bit の数を生データの byte 数以下に抑える。11 集合の wave の記録では、混合を選んだ wave の密度は
+///   proteins 以外で 0.074 以下、proteins は 1 wave を除いて 0.23 以上で、上限 0.125 はその間にある
+///   （experiments/khc/UNSEEN4_20261115.md）。
+pub fn choose_mix(plain: u64, mix: u64, literals: u64, raw: u64) -> bool {
+    mix < plain && (plain - mix) * 1000 >= 3 * plain && literals.saturating_mul(8) <= raw
 }
 
 /// 診断用の wave ごとの記録の出力先。cargo feature `llz-diag` を有効にしてビルドし、環境変数 `LLZ_WAVE_LOG` に
@@ -404,6 +411,13 @@ fn wave_log() -> Option<std::fs::File> {
         .ok()
 }
 
+// 試験用：wave ごとの literal の数（frame からは分からないので、選択の検算に使う）。sink と同じ呼び出し元の
+// thread で記録する。
+#[cfg(test)]
+thread_local! {
+    static TEST_WAVE_LITERALS: std::cell::RefCell<Vec<(u64, u64)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// 揃った wave（番号順の segment の符号化結果）の混合を選び、frame を番号順に sink へ渡す。
 /// 無圧縮になる frame を除いて、wave 内の method はそろう。
 fn emit_wave(
@@ -420,13 +434,27 @@ fn emit_wave(
     };
     let mut plain = 0u64;
     let mut mix = 0u64;
+    let mut literals = 0u64;
+    let mut raw_total = 0u64;
     for (k, out) in wave.iter() {
         let raw_len = raw_of(*k).len();
         plain += effective_len(out.plain.len(), raw_len) as u64;
         mix += effective_len(out.mix.as_ref().map_or(raw_len, Vec::len), raw_len) as u64;
+        // 混合の復号の費用がかかるのは、混合ありの body を格納する frame だけ。無圧縮になる frame（乱数など）の
+        // literal と生データ長は、密度に数えない。
+        if out
+            .mix
+            .as_ref()
+            .is_some_and(|m| (5..raw_len).contains(&m.len()))
+        {
+            literals += out.literals as u64;
+            raw_total += raw_len as u64;
+        }
     }
+    #[cfg(test)]
+    TEST_WAVE_LITERALS.with(|v| v.borrow_mut().push((literals, raw_total)));
     let use_mix = match choice {
-        MixChoice::Auto => choose_mix(plain, mix),
+        MixChoice::Auto => choose_mix(plain, mix, literals, raw_total),
         MixChoice::AllMix => true,
         MixChoice::AllPlain => false,
     };
@@ -939,23 +967,35 @@ mod tests {
         assert!(validate_frame(&reserved, 1000, LAYOUT_15).is_err());
     }
 
-    /// wave の混合の選択規則（0.3% 以上縮むときだけ混合する）と、frame に入る実効長の境界。
+    /// wave の混合の選択規則（0.3% 以上縮み、literal が生データ 8 byte あたり 1 個以下のときだけ混合する）と、
+    /// frame に入る実効長の境界。
     #[test]
     fn llz_choose_mix_boundaries() {
+        // 縮みの条件だけを見る（literal は 0）。
+        let size = |plain, mix| choose_mix(plain, mix, 0, 8 << 20);
         // 縮まない・同じ・大きくなる・空は混合しない。
-        assert!(!choose_mix(0, 0));
-        assert!(!choose_mix(1000, 1000));
-        assert!(!choose_mix(1000, 1001));
+        assert!(!size(0, 0));
+        assert!(!size(1000, 1000));
+        assert!(!size(1000, 1001));
         // 0.3% ちょうどは混合する、1 byte 足りなければ混合しない。
-        assert!(choose_mix(1_000_000, 997_000));
-        assert!(!choose_mix(1_000_000, 997_001));
-        assert!(choose_mix(1_000, 997));
-        assert!(!choose_mix(1_000, 998));
+        assert!(size(1_000_000, 997_000));
+        assert!(!size(1_000_000, 997_001));
+        assert!(size(1_000, 997));
+        assert!(!size(1_000, 998));
         // 大きな値（8MiB）でも溢れない。
         let p = 8u64 << 20;
-        assert!(choose_mix(p, 0));
-        assert!(choose_mix(p, p - (p * 3).div_ceil(1000)));
-        assert!(!choose_mix(p, p - (p * 3).div_ceil(1000) + 1));
+        assert!(size(p, 0));
+        assert!(size(p, p - (p * 3).div_ceil(1000)));
+        assert!(!size(p, p - (p * 3).div_ceil(1000) + 1));
+        // literal の密度：生データ 8 byte あたり 1 個ちょうどは混合する、1 個多ければ混合しない。
+        let raw = 8u64 << 20;
+        assert!(choose_mix(1000, 900, raw / 8, raw));
+        assert!(!choose_mix(1000, 900, raw / 8 + 1, raw));
+        // 奇数長の最後の wave（生データ 12,345 byte）：8 × 1,543 = 12,344 ≤ 12,345、8 × 1,544 > 12,345。
+        assert!(choose_mix(1000, 900, 1_543, 12_345));
+        assert!(!choose_mix(1000, 900, 1_544, 12_345));
+        // literal の数が極端でも溢れない（生データ長を超える literal 数は不正な値だが、混合しない側に倒れる）。
+        assert!(!choose_mix(1000, 900, u64::MAX, raw));
         // 実効長：LZ の body として格納できる長さ（5 以上、生データ長未満）はそのまま、それ以外は生データ長。
         assert_eq!(effective_len(5, 100), 5);
         assert_eq!(effective_len(99, 100), 99);
@@ -1643,6 +1683,31 @@ mod tests {
         Ok(frames)
     }
 
+    /// 文の写しの中に、ときどき文脈に沿った literal が混じる入力（literal は少ないが、混合で縮む）。
+    fn sparse_literals(len: usize, seed: u32) -> Vec<u8> {
+        let base = literal_heavy(1 << 16, seed);
+        let mut x = seed ^ 0x9e37_79b9;
+        let mut out = Vec::with_capacity(len);
+        while out.len() < len {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            let at = (x as usize >> 4) % (base.len() - 64);
+            out.extend_from_slice(&base[at..at + 24 + (x as usize & 15)]);
+            let prev = *out.last().unwrap();
+            out.push(((prev as u32 * 31 + 17 + ((x >> 20) & 7) * 37) % 251) as u8);
+        }
+        out.truncate(len);
+        out
+    }
+
+    /// wave ごとの、密度に数える literal の数と生データ長（1 回の parse で決まり、混合の選択に依らない）。
+    fn wave_literals(data: &[u8], layout: Layout) -> Vec<(u64, u64)> {
+        TEST_WAVE_LITERALS.with(|v| v.borrow_mut().clear());
+        encode_choice(data, 1, layout, MixChoice::AllPlain).unwrap();
+        TEST_WAVE_LITERALS.with(|v| v.take())
+    }
+
     /// frame の実効長（LZ の frame は payload 長、無圧縮の frame は生データ長）。
     fn frame_effective_len(f: &[u8]) -> u64 {
         if f[10] == METHOD_STORED {
@@ -1718,11 +1783,14 @@ mod tests {
         assert_eq!(golden(&all_mix), REV4_ALLMIX_GOLDEN);
         assert_eq!(golden(&all_plain), REV4_ALLPLAIN_GOLDEN);
         assert_eq!(golden(&auto), REV4_AUTO_GOLDEN);
-        // 自動：wave（segment 0・1、segment 2 だけ）ごとに、実効長の合計から選んだ側と frame が byte 一致する。
-        for ks in [vec![0usize, 1], vec![2]] {
+        // 自動：wave（segment 0・1、segment 2 だけ）ごとに、選んだ側と frame が byte 一致する。literal の数は
+        // frame から分からないので、選択は wave の literal 数と同じ符号化で記録する `wave_literals` で求める。
+        let literals = wave_literals(&data, LAYOUT_15);
+        for (w, ks) in [vec![0usize, 1], vec![2]].into_iter().enumerate() {
             let plain: u64 = ks.iter().map(|&k| frame_effective_len(&all_plain[k])).sum();
             let mix: u64 = ks.iter().map(|&k| frame_effective_len(&all_mix[k])).sum();
-            let chosen = if choose_mix(plain, mix) {
+            let (lits, raw) = literals[w];
+            let chosen = if choose_mix(plain, mix, lits, raw) {
                 &all_mix
             } else {
                 &all_plain
@@ -1774,8 +1842,8 @@ mod tests {
         }
     }
 
-    /// wave の選択の端の場合：literal ばかりの wave は混合、長い一致ばかりの wave は混合なし（method が 2 と 1 の
-    /// 両方が現れる）。segment が奇数個で最後の wave が 1 segment、wave の片方が無圧縮のときも、frame は
+    /// wave の選択の端の場合：literal が少なく混合で縮む wave は混合、長い一致ばかりの wave と literal ばかりの
+    /// wave は混合なし（method が 2 と 1 の両方が現れる）。segment が奇数個で最後の wave が 1 segment、wave の片方が無圧縮のときも、frame は
     /// 強制した結果の wave 単位の組み合わせと byte 一致し、復号で元に戻る。
     #[test]
     #[cfg_attr(
@@ -1783,9 +1851,10 @@ mod tests {
         ignore = "13MiB を 4MiB segment で符号化するため debug では遅い。release で実行する"
     )]
     fn llz_rev4_wave_choice_edge_cases() {
-        // wave 0：literal ばかりの 8MiB（混合で大きく縮む）。wave 1：wave 0 の写し 4MiB と 1MiB（literal がほとんど
-        // 無く、混合しても縮みはしきい値に届かない）。segment は 4 つで、最後の wave は 2 segment。
-        let mut data = literal_heavy(8 << 20, 0x1357_9bdf);
+        // wave 0：写しの中に literal が約 5% 混じる 8MiB（密度は上限 1/8 未満で、混合で大きく縮む）。wave 1：
+        // wave 0 の写し 4MiB と 1MiB（literal がほとんど無く、混合しても縮みはしきい値に届かない）。segment は
+        // 4 つで、最後の wave は 2 segment。
+        let mut data = sparse_literals(8 << 20, 0x1357_9bdf);
         let copy_a = data[..4 << 20].to_vec();
         let copy_b = data[4 << 20..5 << 20].to_vec();
         data.extend_from_slice(&copy_a);
@@ -1809,7 +1878,8 @@ mod tests {
         }
 
         // 奇数個（3 segment）：最後の wave は 1 segment だけで、wave の選択はその 1 segment で決まる。
-        // 長い一致ばかりの 1 segment は混合しない。literal ばかりの 1 segment は混合する。
+        // 長い一致ばかりの 1 segment と literal ばかりの 1 segment（密度が上限を超える）は混合しない。literal が
+        // 少なく混合で縮む 1 segment は混合する。
         let odd = &data[..(8 << 20) + (1 << 20)];
         let auto_odd = encode_blocks(odd, 1, LAYOUT_15).unwrap();
         assert_eq!(
@@ -1817,21 +1887,27 @@ mod tests {
             [METHOD_LZ_MIX, METHOD_LZ_MIX, METHOD_LZ]
         );
         assert_eq!(decode_all(&auto_odd, odd.len(), FRAME_REV_4).unwrap(), odd);
-        let mut odd_literals = data[..8 << 20].to_vec();
-        odd_literals.extend_from_slice(&literal_heavy(1 << 20, 0x7777_1234));
-        let auto_odd = encode_blocks(&odd_literals, 1, LAYOUT_15).unwrap();
-        assert_eq!(
-            auto_odd.iter().map(|f| f[10]).collect::<Vec<_>>(),
-            [METHOD_LZ_MIX, METHOD_LZ_MIX, METHOD_LZ_MIX]
-        );
-        assert_eq!(
-            decode_all(&auto_odd, odd_literals.len(), FRAME_REV_4).unwrap(),
-            odd_literals
-        );
+        for (tail, last) in [
+            (literal_heavy(1 << 20, 0x7777_1234), METHOD_LZ),
+            (sparse_literals(1 << 20, 0x7777_1234), METHOD_LZ_MIX),
+        ] {
+            let mut odd_tail = data[..8 << 20].to_vec();
+            odd_tail.extend_from_slice(&tail);
+            let auto_odd = encode_blocks(&odd_tail, 1, LAYOUT_15).unwrap();
+            assert_eq!(
+                auto_odd.iter().map(|f| f[10]).collect::<Vec<_>>(),
+                [METHOD_LZ_MIX, METHOD_LZ_MIX, last]
+            );
+            assert_eq!(
+                decode_all(&auto_odd, odd_tail.len(), FRAME_REV_4).unwrap(),
+                odd_tail
+            );
+        }
 
         // wave の片方が無圧縮（縮まない乱数 4MiB）：その frame は method 0 のまま、もう片方は選んだ method。
         let mut stored_first = random_bytes(4 << 20, 0x2468_ace1);
-        stored_first.extend_from_slice(&literal_heavy(4 << 20, 0x0bad_f00d));
+        // 無圧縮の frame の literal は密度に数えないので、もう片方だけで混合を選ぶ。
+        stored_first.extend_from_slice(&sparse_literals(4 << 20, 0x0bad_f00d));
         let auto_stored = encode_blocks(&stored_first, 2, LAYOUT_15).unwrap();
         assert_eq!(auto_stored.len(), 2);
         assert_eq!(auto_stored[0][10], METHOD_STORED);

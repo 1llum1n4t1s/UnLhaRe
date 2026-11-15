@@ -109,7 +109,16 @@ struct LlzJob {
     first: usize,
     /// 書庫の revision が許す LLZ1BLK の形式（segment 長・frame revision）。
     layout: longlz::Layout,
-    blocks: Vec<Arc<[u8]>>,
+    blocks: Vec<Segment>,
+}
+/// 復号済みの segment を、複製せずに履歴と書込みで共有する。worker の出力 Vec をそのまま包む
+/// （`Arc<[u8]>` への変換は 4MiB の確保と複製になり、wave の境目の直列区間を延ばすため使わない）。
+#[derive(Clone)]
+struct Segment(Arc<Vec<u8>>);
+impl AsRef<[u8]> for Segment {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
 }
 struct Decoded {
     id: u64,
@@ -271,7 +280,7 @@ struct Producer {
     units: Option<UnitReader>,
     block: usize,
     /// LLZ1BLK の履歴：消費済みの segment（番号 history_first から）。窓＋wave の分だけ保つ。
-    history: VecDeque<Arc<[u8]>>,
+    history: VecDeque<Segment>,
     history_first: usize,
     /// wave の前の block がまだ消費されておらず、投入を待っている frame。
     held: Option<(Vec<u8>, usize)>,
@@ -297,7 +306,7 @@ impl Producer {
     }
 
     /// 消費した block を、現在の entry の LLZ 履歴へ足す（別の entry の block なら何もしない）。
-    fn consumed(&mut self, entry: usize, raw: &[u8]) {
+    fn consumed(&mut self, entry: usize, raw: &Segment) {
         if entry != self.entry {
             return;
         }
@@ -305,7 +314,7 @@ impl Producer {
         let Some(layout) = self.units.as_ref().and_then(UnitReader::long_layout) else {
             return;
         };
-        self.history.push_back(Arc::from(raw));
+        self.history.push_back(raw.clone());
         // 今後の segment が参照しうるのは history_start(現在の segment) 以降だけ。
         let keep_from = longlz::history_start(self.block, layout) / layout.segment;
         while self.history_first < keep_from && !self.history.is_empty() {
@@ -561,17 +570,38 @@ pub(super) fn process(
                     pending = Some(Pending::begin(index, entries, root, destination)?)
                 }
                 Event::Block { id, entry } => {
-                    let raw = pool.receive(id)?;
-                    producer.consumed(entry, &raw);
+                    // 受け取った block を履歴へ足した直後に次の frame を投入し、worker を待たせない。
+                    // LLZ1BLK の次の wave は wave の全 block が履歴に入るまで投入できない（held）ので、その間は
+                    // 同じ entry の次の block も先に受け取って履歴へ足す。CRC と書込みは投入の後に、書庫順で
+                    // まとめて行い、次の wave の復号と重ねる。先に受け取る block は wave 幅までで、保持は有界。
+                    // 投入の失敗は event として後で返るので、受け取った block の CRC 検査・書込みの順序と、
+                    // 失敗時の停止は変わらない。
+                    let mut batch: Vec<Segment> = Vec::with_capacity(longlz::WAVE);
+                    let mut next = Some((id, entry));
+                    while let Some((id, entry)) = next.take() {
+                        let raw = Segment(Arc::new(pool.receive(id)?));
+                        producer.in_flight -= 1;
+                        producer.consumed(entry, &raw);
+                        producer.fill(input, entries, &pool);
+                        batch.push(raw);
+                        if producer.held.is_some()
+                            && batch.len() < longlz::WAVE
+                            && let Some(&Event::Block { id, entry }) = producer.events.front()
+                        {
+                            producer.events.pop_front();
+                            next = Some((id, entry));
+                        }
+                    }
                     let file = pending
                         .as_mut()
                         .ok_or_else(|| Error::Unsupported("LHC decode pipeline entry".into()))?;
-                    file.crc.update(&raw);
-                    if let Some(output) = &mut file.output {
-                        output.write_all(&raw)?;
+                    for raw in &batch {
+                        file.crc.update(raw.as_ref());
+                        if let Some(output) = &mut file.output {
+                            output.write_all(raw.as_ref())?;
+                        }
                     }
-                    // rawはこのiterationで解放し、次のfillから空いた枠を再利用する。
-                    producer.in_flight -= 1;
+                    // batch はこの iteration の終わりで手放す（LLZ の履歴が参照していれば、外れるまで残る）。
                 }
                 Event::End(crc) => pending
                     .take()

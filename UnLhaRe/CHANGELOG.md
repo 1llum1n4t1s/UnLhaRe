@@ -3,6 +3,8 @@
 ## Unreleased
 
 - 配信をタグ・GitHub Releaseから Cloudflare R2（`https://unlhare.kagayoi.com`）へ移行。`release/unlhare/<版>` ブランチのpushで `release-unlhare.yml` が始まり、同じrunでビルド・Sigilune署名・R2配信（`scripts/Publish-R2.ps1`）を行う。版付きファイルは不変で、`latest.json` と `<版>/release.json`（version・commit・ハッシュ）を配信する。NuGet公開workflowの入力もR2へ変更。1.0.3以前のタグは廃止し、版とコミットの対応は `RELEASING.md` に残した。
+- LHCの並列展開で、次のwaveのframeを、受け取ったblockのCRC検査と書込みより前に投入する。waveの全blockを先に受け取って履歴へ足し（複製せず共有する）、CRCと書込みは書庫順にまとめて行う。書庫形式・出力・検査は変わらない。revision 15の展開は、他の負荷がある中での新旧の対比較で中央値が約7〜14%短くなったが、ゲートの手順のbglでは約1.4%だった。
+- LHCの`long-range-mix-trial`（revision 15）で、literalが生データ8byteあたり1個を超えるwaveはliteralの混合を使わない。literalが大半の入力（proteins）で展開が7-Zipの6.4倍から約2.5倍（負荷の少ない診断の値。ゲートの手順では7-Zip側の揺れで1.9倍）になり、サイズは0.824倍から0.837倍になる。開発集合6つと未見集合のテキスト系4つの書庫はbyte単位で変わらない。
 
 - LHCに実験候補`long-range-mix-trial`（`BlockStrategy::LongRangeMixTrial`、archive revision 15、LLZ1BLK frame revision 4）を追加。revision 14の構成に距離slotの文脈の長さ8区分を加え、literalの各bitをLZMAの確率と直前1byte文脈の確率のlogistic混合（整数、12bit確率）で符号化する方式を、0.3%以上縮むwaveだけに使う（frameのmethod 1＝混合なし、2＝混合あり）。parseは1回で両方を同時に書く。200MB級のテキスト系5入力で7-Zip LZMA2 d8m fb273の0.880〜0.944倍（linux tarは0.949から0.944）、展開は7-Zipの2.4〜2.7倍、作成は1.2〜1.7倍。作成の見積もりmemoryは1480MiB。revision 12〜14の出力と読取は変更しない。
 - LHCに実験候補`long-range-wide-trial`（`BlockStrategy::LongRangeWideTrial`、archive revision 14、LLZ1BLK frame revision 3）を追加。revision 13の符号のまま、modelを初期化するsegmentを4MiBにし、200MB級のテキスト系5入力すべてで7-Zip LZMA2 d8m fb273の0.95倍以下になる。作成は一致置き場に上限を設けて完成済みsegmentを並列にparseし、frameを順に書き出す（約1.4GiB＋entry、2GiB以下）。revision 12/13の出力と読取は変更しない。
