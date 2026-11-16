@@ -13,6 +13,15 @@ on:
 permissions:
   contents: read
 
+# 同じ ref の古い検証を取り消して待ち時間を減らす。
+# group は github.workflow を使わない（workflow_call では呼び出し元の名前になり、呼び出し元
+# release-unlhare.yml の group と衝突しないよう固定の接頭辞 modern-rust- を使う）。
+# release/unlhare/** の run（release-unlhare.yml 経由の workflow_call を含む）は配信の途中で
+# 取り消されないよう、取り消さない。
+concurrency:
+  group: modern-rust-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/release/unlhare/') }}
+
 jobs:
   build:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
