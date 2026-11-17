@@ -41,7 +41,8 @@ jobs:
             msvc_arch: arm64
             native_rid: win-arm64
           - target: aarch64-apple-darwin
-            runner: [self-hosted, macOS, ARM64, m3mb14]
+            # 公開リポジトリなので GitHub 提供の Apple Silicon ランナーを使う（使用料なし）。
+            runner: macos-latest
             os: macos
 
     runs-on: ${{ matrix.runner }}
