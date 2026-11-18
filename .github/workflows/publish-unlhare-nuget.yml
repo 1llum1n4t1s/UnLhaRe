@@ -1,12 +1,12 @@
 name: Publish UnLhaRe NuGet package
 
 # 近代化版 UnLhaRe の NuGet パッケージ Kagayoi.UnLhaRe を作成して NuGet.org へ公開する（手動実行だけ）。
-# 入力元は Cloudflare R2 の配布物（https://unlhare.kagayoi.com/<版>/）。タグも GitHub Release も使わない。
-# - release.json の commit（release/unlhare/<版> ブランチの配信時コミット）をチェックアウトして、
+# 入力元は Cloudflare R2 の配布物（https://unlhare.kagayoi.com/<版>/）。GitHub Release は使わない（タグは配信の起点にだけ使う）。
+# - release.json の commit（タグ unlhare-v<版> の配信時コミット）をチェックアウトして、
 #   契約試験・pack に使うソースを配信物と同じ版に固定する。
 # - 署名済み ZIP は R2 から取得し、SHA256SUMS.txt・release.json のハッシュと Authenticode 署名を検証してから梱包する。
 # - environment は付けない（NuGet Trusted Publishing の OIDC claim を変えないため）。
-# 先に release-unlhare.yml（release/unlhare/<版> ブランチの push）で R2 へ配信しておく。
+# 先に release-unlhare.yml（タグ unlhare-v<版> の push）で R2 へ配信しておく。
 
 on:
   workflow_dispatch:

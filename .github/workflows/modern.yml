@@ -2,8 +2,8 @@ name: Modern Rust
 
 # 近代化版の3ネイティブターゲット（Windows x64/ARM64、macOS ARM64）の検証と bundle 作成。
 # - pull_request / workflow_dispatch: 通常の検証。
-# - workflow_call: release-unlhare.yml が release/unlhare/<版> ブランチの push から呼ぶ。
-#   release ブランチへの push で直接は起動しない（配信 workflow が同じ run の中でビルドし、署名・配信へ成果物を渡す）。
+# - workflow_call: release-unlhare.yml が unlhare-v<版> タグの push から呼ぶ。
+#   タグの push で直接は起動しない（配信 workflow が同じ run の中でビルドし、署名・配信へ成果物を渡す）。
 #   呼び出し側へ Secrets は渡さない。
 on:
   pull_request: null
@@ -16,11 +16,11 @@ permissions:
 # 同じ ref の古い検証を取り消して待ち時間を減らす。
 # group は github.workflow を使わない（workflow_call では呼び出し元の名前になり、呼び出し元
 # release-unlhare.yml の group と衝突しないよう固定の接頭辞 modern-rust- を使う）。
-# release/unlhare/** の run（release-unlhare.yml 経由の workflow_call を含む）は配信の途中で
+# タグの run（release-unlhare.yml 経由の workflow_call を含む）は配信の途中で
 # 取り消されないよう、取り消さない。
 concurrency:
   group: modern-rust-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/release/unlhare/') }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   build:

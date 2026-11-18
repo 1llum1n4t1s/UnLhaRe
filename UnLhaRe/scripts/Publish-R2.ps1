@@ -4,8 +4,8 @@
 署名済みの UnLhaRe 配布物を Cloudflare R2（unlhare-updates / https://unlhare.kagayoi.com）へ配信する。
 
 .DESCRIPTION
-release-unlhare.yml（release/unlhare/<版> ブランチの push）の publish ジョブから呼ぶ。
-GitHub Release もタグも使わず、R2 を唯一の配布元にする。
+release-unlhare.yml（タグ unlhare-v<版> の push）の publish ジョブから呼ぶ。
+GitHub Release は使わず（タグは配信の起点にだけ使う）、R2 を唯一の配布元にする。
 
 置き場（バケット直下）:
   <ver>/UnLhaRe-<ver>-win-x64.zip            版付き・不変（immutable）
@@ -43,7 +43,7 @@ DistDirectory の中身（通常モード）は、上の3ファイルと SHA256S
 #>
 [CmdletBinding()]
 param(
-    # 配信する版（例 1.0.4）。ブランチ名と Cargo.toml の照合は呼び出し側（workflow の resolve ジョブ）で保証する。
+    # 配信する版（例 1.0.4）。タグ名と Cargo.toml の照合は呼び出し側（workflow の resolve ジョブ）で保証する。
     [Parameter(Mandatory)][string]$Version,
     # 配布ファイルを置いたフォルダー（上の「DistDirectory の中身」を参照）。
     [Parameter(Mandatory)][string]$DistDirectory,

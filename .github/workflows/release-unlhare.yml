@@ -1,16 +1,17 @@
 name: Release UnLhaRe
 
 # 近代化版 UnLhaRe を署名し、Cloudflare R2（https://unlhare.kagayoi.com）へ配信する。
-# タグも GitHub Release も使わない。配布は R2 が唯一の入口で、release/unlhare/<版> ブランチへの push が配信の起点。
+# GitHub Release は使わない。配布は R2 が唯一の入口で、main のコミットに付けた軽量タグ unlhare-v<版> の push が配信の起点
+# （UnLha32Re の版タグと同居するため、タグ名に unlhare- の名前空間を付ける）。
 #
 # 起動:
-# - push: release/unlhare/** ブランチ。GitHub のブランチフィルタは glob で、`*` は `/` に一致しないため `**` を使う。
-#   paths フィルタは付けない（release ブランチへの push は常に配信の意思表示。ビルドの要否は modern.yml 側で決まる）。
-# - workflow_dispatch: 同じ release/unlhare/<版> ブランチを指定して配信をやり直す。
+# - push: タグ unlhare-v<x.y.z>（`git push origin unlhare-v<版>`。`git push --tags` は使わない）。
+#   paths フィルタは付けない（版タグの push は常に配信の意思表示。ビルドの要否は modern.yml 側で決まる）。
+# - workflow_dispatch: 同じタグ unlhare-v<版> を指定して配信をやり直す（gh workflow run release-unlhare.yml --ref unlhare-v<版>）。
 #   R2 に同じ版があれば、内容が同一のときだけ成功する（別内容は上書きせず失敗する）。
 #
 # ジョブ構成:
-# 1. resolve: ブランチ名 release/unlhare/<版> と UnLhaRe/Cargo.toml の [package] version を照合して版を決める。
+# 1. resolve: タグ unlhare-v<版>（厳密な形・軽量タグ・main の祖先）と UnLhaRe/Cargo.toml の [package] version を照合して版を決める。
 # 2. build  : modern.yml を再利用してこの run の中で3ネイティブターゲットをビルド・検証する（Secrets は渡さない）。
 #             macOS ARM64 の tar.gz（ad-hoc 署名）は、この成果物をそのまま配る。
 # 3. sign   : Windows の DLL・CLI を Sigilune（Certum クラウド署名）で署名し、ZIP・SHA256SUMS.txt・release.json を作る。
@@ -18,13 +19,13 @@ name: Release UnLhaRe
 # sign と publish を分ける理由: 署名し直すとタイムスタンプでバイト列（ハッシュ）が変わる。配信だけが失敗したとき、
 # 失敗した publish ジョブだけを再実行すれば、署名済みの同じバイト列をもう一度配れる。
 #
-# Secrets は Environment "release"（release/unlhare/* だけ許可、承認者なし）にだけ置く。
+# Secrets は Environment "release"（タグ unlhare-v* だけ許可、承認者なし）にだけ置く。
 # 署名用（SIGILUNE_EMAIL / SIGILUNE_TOTP_URI）は sign の署名 step だけ、
 # 配信用（CLOUDFLARE_API_TOKEN）は publish の配信 step だけへ渡す。
 # 配信後の公開手順（NuGet）は publish-unlhare-nuget.yml を手動実行する（入力は R2 の同じ版）。
 on:
   push:
-    branches: ['release/unlhare/**']
+    tags: ['unlhare-v[0-9]+.[0-9]+.[0-9]+']
   workflow_dispatch:
 
 permissions:
@@ -36,7 +37,7 @@ concurrency:
 
 jobs:
   resolve:
-    if: github.repository == '1llum1n4t1s/UnLhaRe' && startsWith(github.ref, 'refs/heads/release/unlhare/')
+    if: github.repository == '1llum1n4t1s/UnLhaRe' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -52,22 +53,35 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: ブランチ名と Cargo.toml から版を解決
+      - name: タグ名と Cargo.toml から版を解決
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # ブランチ名 release/unlhare/<版> から版を取り、安定版 1.0.x の形式だけを受け付ける。
-          # 旧互換版の release/1.0.0 や main では止まる（別の製品・版を誤って配信しない）。
-          if ($env:GITHUB_REF_TYPE -ne 'branch') { throw "ref is not a branch: $env:GITHUB_REF" }
-          $match = [regex]::Match($env:GITHUB_REF_NAME, '^release/unlhare/(1\.0\.\d+)$')
-          if (-not $match.Success) { throw "Branch must be release/unlhare/1.0.x: $env:GITHUB_REF_NAME" }
+          # タグ名 unlhare-v<版> から版を取り、安定版 1.0.x の形式だけを受け付ける。
+          # 旧互換版の版タグ（v1.0.0 など）やブランチでは止まる（別の製品・版を誤って配信しない）。
+          if ($env:GITHUB_REF_TYPE -cne 'tag') { throw "ref is not a tag: $env:GITHUB_REF" }
+          $match = [regex]::Match($env:GITHUB_REF_NAME, '^unlhare-v(1\.0\.(0|[1-9][0-9]*))$')
+          if (-not $match.Success) { throw "Tag must be unlhare-v1.0.x: $env:GITHUB_REF_NAME" }
           $version = $match.Groups[1].Value
-          # Cargo.toml の [package] version がブランチ名の版と一致することを、このコミットで確認する。
+          if ($env:GITHUB_SHA -cnotmatch '^[0-9a-f]{40}$') { throw "Unexpected commit: $env:GITHUB_SHA" }
+          # 軽量タグで、いまもこの commit を指すこと（注釈付きタグ・付け替え済みのタグを拒否する）。
+          $tagObject = (gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:GITHUB_REF_NAME" --jq '.object.type + " " + .object.sha' | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the tag ref.' }
+          if ($tagObject -cne "commit $env:GITHUB_SHA") { throw "The tag is not a lightweight tag that points at $env:GITHUB_SHA ($tagObject)." }
+          # 既定ブランチ（main）の祖先であること（main に取り込み済みの commit だけを配信する）。
+          $default = (gh api "repos/$env:GITHUB_REPOSITORY" --jq .default_branch | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the default branch.' }
+          if ($default -cnotmatch '^[A-Za-z0-9._/-]+$') { throw 'Default branch is invalid.' }
+          $cmp = (gh api "repos/$env:GITHUB_REPOSITORY/compare/$($env:GITHUB_SHA)...$($default)?per_page=1" --jq '.status + " " + (.behind_by | tostring)' | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not compare the commit with the default branch.' }
+          if ($cmp -cne 'ahead 0' -and $cmp -cne 'identical 0') { throw "The tagged commit is not an ancestor of $default ($cmp)." }
+          # Cargo.toml の [package] version がタグ名の版と一致することを、このコミットで確認する。
           $manifest = Get-Content -LiteralPath 'UnLhaRe/Cargo.toml' -Raw
           $package = [regex]::Match($manifest, '(?ms)^\[package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
           $versions = [regex]::Matches($package.Groups['body'].Value, '(?m)^version\s*=\s*"([^"]+)"\s*$')
-          if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -cne $version) { throw 'Cargo package version does not match the release branch.' }
-          if ($env:GITHUB_SHA -cnotmatch '^[0-9a-f]{40}$') { throw "Unexpected commit: $env:GITHUB_SHA" }
+          if ($versions.Count -ne 1 -or $versions[0].Groups[1].Value -cne $version) { throw 'Cargo package version does not match the release tag.' }
           "version=$version" >> $env:GITHUB_OUTPUT
           "commit=$env:GITHUB_SHA" >> $env:GITHUB_OUTPUT
           Write-Host "Release $version at $env:GITHUB_SHA"
@@ -94,7 +108,7 @@ jobs:
       RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
     steps:
       - name: リポジトリをチェックアウト
-        # 署名スクリプト（UnLha32Re/scripts/sign-release.ps1）は、配信するブランチの版を使う。
+        # 署名スクリプト（UnLha32Re/scripts/sign-release.ps1）は、配信するタグの版を使う。
         # actions/checkout@v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -137,7 +151,7 @@ jobs:
 
       - name: Sigilune を導入
         id: sigilune
-        uses: 1llum1n4t1s/Sigilune@b2142b4d1084ec2a5b0a18e83cea7e886406b389 # v1.1.4
+        uses: 1llum1n4t1s/Sigilune@v1
 
       - name: Windows の DLL・CLI へ署名
         # 署名用 Secrets はこの step だけへ渡す。ローカルと同じ sign-release.ps1 を1ファイルずつ呼び、
