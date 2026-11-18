@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- 配信をタグ・GitHub Releaseから Cloudflare R2（`https://unlhare.kagayoi.com`）へ移行。`release/unlhare/<版>` ブランチのpushで `release-unlhare.yml` が始まり、同じrunでビルド・Sigilune署名・R2配信（`scripts/Publish-R2.ps1`）を行う。版付きファイルは不変で、`latest.json` と `<版>/release.json`（version・commit・ハッシュ）を配信する。NuGet公開workflowの入力もR2へ変更。1.0.3以前のタグは廃止し、版とコミットの対応は `RELEASING.md` に残した。
+## 1.0.5 - 2026-11-18
+
+- 配信の起動を release/unlhare/<版> ブランチのpushから、main のコミットに付けた軽量タグ `unlhare-v1.0.5` のpushへ変更。アプリ・ライブラリの動作に変更なし。
+- 配信をGitHub Releaseから Cloudflare R2（`https://unlhare.kagayoi.com`）へ移行。main のコミットに付けた軽量タグ `unlhare-v<版>` のpushで `release-unlhare.yml` が始まり、同じrunでビルド・Sigilune署名・R2配信（`scripts/Publish-R2.ps1`）を行う。版付きファイルは不変で、`latest.json` と `<版>/release.json`（version・commit・ハッシュ）を配信する。NuGet公開workflowの入力もR2へ変更。1.0.3以前のタグ・GitHub Releaseは配信元として使わず、版とコミットの対応は `RELEASING.md` に残した。
 - LHCの並列展開で、次のwaveのframeを、受け取ったblockのCRC検査と書込みより前に投入する。waveの全blockを先に受け取って履歴へ足し（複製せず共有する）、CRCと書込みは書庫順にまとめて行う。書庫形式・出力・検査は変わらない。revision 15の展開は、他の負荷がある中での新旧の対比較で中央値が約7〜14%短くなったが、ゲートの手順のbglでは約1.4%だった。
 - LHCの`long-range-mix-trial`（revision 15）で、literalが生データ8byteあたり1個を超えるwaveはliteralの混合を使わない。literalが大半の入力（proteins）で展開が7-Zipの6.4倍から約2.5倍（負荷の少ない診断の値。ゲートの手順では7-Zip側の揺れで1.9倍）になり、サイズは0.824倍から0.837倍になる。開発集合6つと未見集合のテキスト系4つの書庫はbyte単位で変わらない。
 

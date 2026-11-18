@@ -2,11 +2,11 @@
 
 Windows x64/ARM64とmacOS ARM64向けLHAライブラリとCLIです。Rust 1.98.1 / edition 2024で実装し、Rust APIとUTF-8のC ABIを提供します。従来の `UNLHA32RE.DLL` を置き換えるABIではありません。既存32bitアプリは `../UnLha32Re/` の互換版を使用してください。
 
-## バージョン1.0.4の配布
+## バージョン1.0.5の配布
 
-配布元は[https://unlhare.kagayoi.com](https://unlhare.kagayoi.com)（Cloudflare R2）です。最新版の情報は `latest.json`、各版のファイルは `/<版>/` 以下（例: `/1.0.4/UnLhaRe-1.0.4-win-x64.zip`、`win-arm64.zip`、`macos-arm64.tar.gz`、`SHA256SUMS.txt`、`release.json`）にあり、版付きのファイルは公開後に変更しません。以前にGitHub Releasesで公開した1.0.4のmacOS Intel版tar.gzは、現在のサポート・ビルド・検証・配布の対象外のためR2へ移さず、GitHub Release側の既発行物をそのまま残します。今後の配布対象はWindows x64/ARM64とmacOS Apple Silicon（ARM64）です。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
+配布元は[https://unlhare.kagayoi.com](https://unlhare.kagayoi.com)（Cloudflare R2）です。最新版の情報は `latest.json`、各版のファイルは `/<版>/` 以下（例: `/1.0.5/UnLhaRe-1.0.5-win-x64.zip`、`win-arm64.zip`、`macos-arm64.tar.gz`、`SHA256SUMS.txt`、`release.json`）にあり、版付きのファイルは公開後に変更しません。以前にGitHub Releasesで公開した1.0.4のmacOS Intel版tar.gzは、現在のサポート・ビルド・検証・配布の対象外のためR2へ移さず、GitHub Release側の既発行物をそのまま残します。今後の配布対象はWindows x64/ARM64とmacOS Apple Silicon（ARM64）です。`SHA256SUMS.txt` で整合性を確認できます。Windows版のDLL・CLIはAuthenticode署名付きです。macOS版はad-hoc署名で、Developer ID署名・Apple公証はありません。
 
-旧互換版の `release/1.0.0` とは別の `release/unlhare/<版>` ブランチから配信します。配布した版のソースは、そのブランチと、`release.json` の `commit`（配信したコミット）から取得できます。1.0.3以前の版とコミットの対応は[リリース手順](RELEASING.md)にあります。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
+旧互換版の `release/1.0.0` とは別に、main のコミットに付けたタグ `unlhare-v<版>` から配信します。配布した版のソースは、そのタグと、`release.json` の `commit`（配信したコミット）から取得できます。1.0.3以前の版とコミットの対応は[リリース手順](RELEASING.md)にあります。[変更履歴](CHANGELOG.md)と[リリース手順](RELEASING.md)を参照してください。
 
 ## 機能と制限
 

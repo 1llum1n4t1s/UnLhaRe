@@ -4,7 +4,7 @@ UnLhaRe はLHA書庫を扱うライブラリです。Windows x64/ARM64とmacOS A
 
 ## 提供する2つの版
 
-- **[近代化版 UnLhaRe 1.0.4](UnLhaRe/README.md)**: Rust API、UTF-8 C API、Windows .NET 10向けNuGet `Kagayoi.UnLhaRe`、CLIで一覧・検査・展開・新規作成を提供します。32bitは対象外です。配布元は[https://unlhare.kagayoi.com](https://unlhare.kagayoi.com)（Cloudflare R2。最新版は `latest.json`、各版のファイルは `/<版>/` 以下）で、対象OS・CPUのパッケージを選択し、.NETアプリは[C#バインディング](UnLhaRe/bindings/dotnet/README.md)を参照してください。
+- **[近代化版 UnLhaRe 1.0.5](UnLhaRe/README.md)**: Rust API、UTF-8 C API、Windows .NET 10向けNuGet `Kagayoi.UnLhaRe`、CLIで一覧・検査・展開・新規作成を提供します。32bitは対象外です。配布元は[https://unlhare.kagayoi.com](https://unlhare.kagayoi.com)（Cloudflare R2。最新版は `latest.json`、各版のファイルは `/<版>/` 以下）で、対象OS・CPUのパッケージを選択し、.NETアプリは[C#バインディング](UnLhaRe/bindings/dotnet/README.md)を参照してください。
 - **[互換版 UnLha32Re](UnLha32Re/README.md)**: UNLHA32.DLL 3.00.0.5の32bit ABI互換を目指すWindows DLL。
 
 ## 互換版 UnLha32Re 1.0.0
