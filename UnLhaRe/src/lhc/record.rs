@@ -125,10 +125,10 @@ impl Model {
     }
     fn write(&self, output: &mut Vec<u8>) {
         output.extend_from_slice(&(self.support as u16).to_le_bytes());
-        for symbol in 0..256 {
-            if self.freq[symbol] != 0 {
+        for (symbol, freq) in self.freq.iter().enumerate() {
+            if *freq != 0 {
                 output.push(symbol as u8);
-                output.extend_from_slice(&self.freq[symbol].to_le_bytes());
+                output.extend_from_slice(&freq.to_le_bytes());
             }
         }
     }

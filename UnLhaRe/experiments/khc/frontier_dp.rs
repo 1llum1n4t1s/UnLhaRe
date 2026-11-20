@@ -962,9 +962,9 @@ mod tests {
                     .sum(),
             );
         }
-        for context in 0..SLOT_CONTEXTS {
+        for slots in prices.distance_slot.iter().take(SLOT_CONTEXTS) {
             close_to_one(
-                prices.distance_slot[context][..=distance_slot(64)]
+                slots[..=distance_slot(64)]
                     .iter()
                     .copied()
                     .map(probability)

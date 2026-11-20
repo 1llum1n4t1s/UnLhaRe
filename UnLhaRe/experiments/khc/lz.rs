@@ -2912,7 +2912,7 @@ impl BeamPriceCache {
                 + bit_price(models.is_rep[context], true)
                 + bit_price(models.is_rep0[context], true)
                 + bit_price(models.is_short_rep[context], true);
-            for index in 0..4 {
+            for (index, slot) in result.rep_base[context].iter_mut().enumerate() {
                 let mut price = match_bit
                     + bit_price(models.is_rep[context], true)
                     + bit_price(models.is_rep0[context], index == 0);
@@ -2924,7 +2924,7 @@ impl BeamPriceCache {
                         price += bit_price(models.is_rep2[context], index == 2);
                     }
                 }
-                result.rep_base[context][index] = price;
+                *slot = price;
             }
         }
         Ok(result)

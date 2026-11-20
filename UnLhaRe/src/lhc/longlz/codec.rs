@@ -709,8 +709,8 @@ impl<'a, F: Finder, R: Coder> Encoder<'a, F, R> {
             self.flag_price[st] = [pr.bit(m.near_flag[st], 0), pr.bit(m.near_flag[st], 1)];
         }
         for ls in 0..4 {
-            for i in 0..4 {
-                self.sel_price[ls][i] = pr.tree(&m.near_sel[ls], 2, i as u32);
+            for (i, slot) in self.sel_price[ls].iter_mut().enumerate() {
+                *slot = pr.tree(&m.near_sel[ls], 2, i as u32);
             }
         }
         for i in 0..4 {
@@ -1160,8 +1160,8 @@ impl<'a, F: Finder, R: Coder> Encoder<'a, F, R> {
             self.path.push((1, self.opts[1].back));
             return;
         }
-        for l in 2..=len_end {
-            self.opts[l].price = INF;
+        for opt in &mut self.opts[2..=len_end] {
+            opt.price = INF;
         }
         for (i, &rl) in rep_lens.iter().enumerate() {
             if rl < 2 {

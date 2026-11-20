@@ -197,8 +197,8 @@ fn greedy_token(
 ) -> Token {
     let mut best_len = 0usize;
     let mut best_rep = None;
-    for index in 0..4 {
-        let distance = state.reps[index] as usize;
+    for (index, &rep) in state.reps.iter().enumerate() {
+        let distance = rep as usize;
         let length = matched_length(input, pos, distance, room.min(dictionary), dictionary);
         if length >= MIN_REP && length > best_len {
             best_len = length;

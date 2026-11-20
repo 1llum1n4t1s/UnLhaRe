@@ -119,10 +119,10 @@ impl CountModel {
         let mut out = alloc(MODEL_MAX)?;
         let support = self.freq.iter().filter(|&&n| n != 0).count();
         out.extend_from_slice(&(support as u16).to_le_bytes());
-        for i in 0..256 {
-            if self.freq[i] != 0 {
+        for (i, freq) in self.freq.iter().enumerate() {
+            if *freq != 0 {
                 out.push(i as u8);
-                out.extend_from_slice(&self.freq[i].to_le_bytes());
+                out.extend_from_slice(&freq.to_le_bytes());
             }
         }
         Ok(out)

@@ -262,10 +262,10 @@ impl Fit {
                 1 => w.write(dominant as u32, if k == 2 { 1 } else { 2 })?,
                 2 => {
                     w.write(dominant as u32, if k == 2 { 1 } else { 2 })?;
-                    for i in 0..k {
+                    for (i, &freq) in n.frequency.iter().enumerate().take(k) {
                         if i != dominant {
-                            let code = floor_code(n.frequency[i])?;
-                            if MINOR_LUT[usize::from(code)] != n.frequency[i] {
+                            let code = floor_code(freq)?;
+                            if MINOR_LUT[usize::from(code)] != freq {
                                 return Err("compact writer off-grid".into());
                             }
                             book.write(code, w)?;
